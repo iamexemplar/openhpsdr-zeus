@@ -54,8 +54,8 @@ describe('AddPanelModal', () => {
     const cards = container.querySelectorAll(
       '[data-testid="add-panel-cards"] .add-panel-card',
     );
-    // 17 panels in registry.
-    expect(cards.length).toBe(17);
+    // 18 panels in registry.
+    expect(cards.length).toBe(18);
     unmount();
   });
 
@@ -141,8 +141,11 @@ describe('AddPanelModal', () => {
     const cards = container.querySelectorAll(
       '[data-testid="add-panel-cards"] .add-panel-card',
     );
-    expect(cards.length).toBe(1);
-    expect(cards[0]?.getAttribute('data-panel-id')).toBe('azimuth');
+    // azimuth (the existing map) + rotator (carries 'azimuth' tag for the
+    // compass dial). Both legitimately match a search for "azimuth".
+    expect(cards.length).toBe(2);
+    const ids = Array.from(cards).map((c) => c.getAttribute('data-panel-id'));
+    expect(ids).toEqual(expect.arrayContaining(['azimuth', 'rotator']));
     unmount();
   });
 });

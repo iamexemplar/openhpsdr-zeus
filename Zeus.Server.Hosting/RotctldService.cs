@@ -91,6 +91,11 @@ public sealed class RotctldService : BackgroundService
         double? cur, tgt;
         lock (_state) { cur = _currentAz; tgt = _targetAz; }
         var moving = tgt != null && cur != null && Math.Abs(NormDelta(tgt.Value - cur.Value)) > MovingEpsilonDeg;
+        // hamlib reports signed azimuths when the rotor crosses its zero point
+        // (e.g. -75°). Targets set via SetAzAsync are already normalised to
+        // 0..360. Normalise here so frontend never sees a sign asymmetry —
+        // diff-checks against TargetAz would otherwise look "off by 360".
+        if (cur.HasValue) cur = ((cur.Value % 360) + 360) % 360;
         return new RotctldStatus(
             Enabled: _config.Enabled,
             Connected: _connected,

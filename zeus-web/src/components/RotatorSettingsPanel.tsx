@@ -230,6 +230,26 @@ export function RotatorSettingsPanel() {
           </button>
         </div>
 
+        <pre
+          style={{
+            margin: 0,
+            padding: 8,
+            fontSize: 10,
+            lineHeight: 1.5,
+            fontFamily: 'monospace',
+            color: 'var(--fg-3)',
+            background: 'var(--bg-0)',
+            border: '1px solid var(--panel-border)',
+            borderRadius: 'var(--r-sm)',
+            whiteSpace: 'pre',
+            overflowX: 'auto',
+          }}
+        >
+{`macOS:   brew install hamlib
+Linux:   apt install hamlib-utils    (or: dnf install hamlib)
+Then:    rotctld -m <model> -r <serial-port>     # e.g. -m 902 for SPID Rot1Prog`}
+        </pre>
+
         <div
           style={{
             fontSize: 10,

@@ -60,6 +60,7 @@ import { ModePanel } from './panels/ModePanel';
 import { StepPanel } from './panels/StepPanel';
 import { MetersPanel } from './panels/MetersPanel';
 import { AnalogMeterPanel } from './panels/AnalogMeterPanel';
+import { RotatorPanel } from './panels/RotatorPanel';
 
 export type PanelCategory = 'spectrum' | 'vfo' | 'meters' | 'dsp' | 'log' | 'tools' | 'controls';
 
@@ -260,6 +261,13 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['analog', 'meter', 'smeter', 's-meter', 'signal', 'rx', 'tx', 'power', 'swr', 'needle'],
     component: AnalogMeterPanel,
     headerless: true,
+  },
+  rotator: {
+    id: 'rotator',
+    name: 'Rotator · Compass',
+    category: 'tools',
+    tags: ['rotator', 'rotctld', 'hamlib', 'compass', 'azimuth', 'antenna'],
+    component: RotatorPanel,
   },
 };
 
