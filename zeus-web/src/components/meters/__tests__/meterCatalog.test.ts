@@ -10,6 +10,8 @@ import {
   METER_READINGS,
   MeterReadingId,
   meterMatchesFilter,
+  zoneTransitionTicks,
+  type MeterReadingDef,
 } from '../meterCatalog';
 
 describe('meterCatalog', () => {
@@ -55,12 +57,12 @@ describe('meterCatalog', () => {
     expect(METER_CATALOG[MeterReadingId.TxFwdWatts].colorToken).toBe('power');
   });
 
-  it('TxSwr defaults to a digital widget kind', () => {
-    expect(METER_CATALOG[MeterReadingId.TxSwr].defaultKind).toBe('digital');
+  it('TxSwr defaults to a bigarc widget kind (immersive SWR gauge)', () => {
+    expect(METER_CATALOG[MeterReadingId.TxSwr].defaultKind).toBe('bigarc');
   });
 
-  it('TxFwdWatts defaults to a dial widget kind', () => {
-    expect(METER_CATALOG[MeterReadingId.TxFwdWatts].defaultKind).toBe('dial');
+  it('TxFwdWatts defaults to a bigarc widget kind (immersive watts gauge)', () => {
+    expect(METER_CATALOG[MeterReadingId.TxFwdWatts].defaultKind).toBe('bigarc');
   });
 
   it('library filter "rx" includes signal/adc/agc and excludes tx', () => {
@@ -106,5 +108,125 @@ describe('meterCatalog', () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+describe('zoneTransitionTicks', () => {
+  it('TxMicPk emits four ticks at -25 / -20 / -10 / -3 dBFS', () => {
+    const def = METER_CATALOG[MeterReadingId.TxMicPk];
+    const ticks = zoneTransitionTicks(def, def.defaultMin, def.defaultMax);
+    expect(ticks.length).toBe(4);
+    // Span: max - min = 12 - (-30) = 42; boundaries at -25 / -20 / -10 / -3.
+    const span = def.defaultMax - def.defaultMin;
+    const expected: ReadonlyArray<{ at: number; level: 'ok' | 'warn' | 'danger' }> = [
+      { at: -25, level: 'warn' },
+      { at: -20, level: 'ok' },
+      { at: -10, level: 'warn' },
+      { at: -3, level: 'danger' },
+    ];
+    for (let i = 0; i < expected.length; i++) {
+      const want = expected[i]!;
+      const tick = ticks[i]!;
+      expect(tick.level).toBe(want.level);
+      expect(tick.frac).toBeCloseTo((want.at - def.defaultMin) / span, 5);
+    }
+  });
+
+  it('TxFwdWatts (3-zone derivation) emits two ticks at warnAt and dangerAt', () => {
+    const def = METER_CATALOG[MeterReadingId.TxFwdWatts];
+    const ticks = zoneTransitionTicks(def, def.defaultMin, def.defaultMax);
+    expect(ticks.length).toBe(2);
+    const t0 = ticks[0]!;
+    const t1 = ticks[1]!;
+    expect(t0.level).toBe('warn');
+    expect(t0.frac).toBeCloseTo(0.9, 5); // 4.5 / 5
+    expect(t1.level).toBe('danger');
+    // dangerAt === defaultMax → frac=1.0 must be retained (rated-rail tick).
+    expect(t1.frac).toBeCloseTo(1.0, 5);
+  });
+
+  it('skips ticks with frac < 0.02 (gauge-anchor edge rule)', () => {
+    // Synthetic def: explicit zones with a level boundary at 0.5/100 = 0.005.
+    const def: MeterReadingDef = {
+      id: MeterReadingId.TxFwdWatts,
+      label: 'synthetic',
+      short: 'syn',
+      category: 'tx-power',
+      unit: 'W',
+      defaultMin: 0,
+      defaultMax: 100,
+      colorToken: 'power',
+      defaultKind: 'hbar',
+      zones: [
+        { from: 0, to: 0.5, level: 'ok' },
+        { from: 0.5, to: 100, level: 'danger' },
+      ],
+    };
+    const ticks = zoneTransitionTicks(def, 0, 100);
+    // Boundary at 0.5 → frac = 0.005 → below the 0.02 threshold → skipped.
+    expect(ticks.length).toBe(0);
+  });
+
+  it('keeps a tick at exactly frac = 1.0 (rated-rail allowed)', () => {
+    // Synthetic def: boundary at the axis maximum.
+    const def: MeterReadingDef = {
+      id: MeterReadingId.TxFwdWatts,
+      label: 'synthetic',
+      short: 'syn',
+      category: 'tx-power',
+      unit: 'W',
+      defaultMin: 0,
+      defaultMax: 10,
+      colorToken: 'power',
+      defaultKind: 'hbar',
+      zones: [
+        { from: 0, to: 10, level: 'ok' },
+        { from: 10, to: 10, level: 'danger' },
+      ],
+    };
+    const ticks = zoneTransitionTicks(def, 0, 10);
+    expect(ticks.length).toBe(1);
+    const t = ticks[0]!;
+    expect(t.frac).toBeCloseTo(1.0, 5);
+    expect(t.level).toBe('danger');
+  });
+
+  it('returns empty when the reading has no zones (no thresholds)', () => {
+    // RxAgcGain has neither warnAt/dangerAt nor explicit zones.
+    const def = METER_CATALOG[MeterReadingId.RxAgcGain];
+    const ticks = zoneTransitionTicks(def, def.defaultMin, def.defaultMax);
+    expect(ticks).toEqual([]);
+  });
+
+  it('collapses adjacent zones with the same level (no false ticks)', () => {
+    // Two consecutive 'ok' zones — no colour change → no tick at the seam.
+    const def: MeterReadingDef = {
+      id: MeterReadingId.TxFwdWatts,
+      label: 'synthetic',
+      short: 'syn',
+      category: 'tx-power',
+      unit: 'W',
+      defaultMin: 0,
+      defaultMax: 10,
+      colorToken: 'power',
+      defaultKind: 'hbar',
+      zones: [
+        { from: 0, to: 4, level: 'ok' },
+        { from: 4, to: 7, level: 'ok' },
+        { from: 7, to: 10, level: 'danger' },
+      ],
+    };
+    const ticks = zoneTransitionTicks(def, 0, 10);
+    expect(ticks.length).toBe(1);
+    const t = ticks[0]!;
+    expect(t.frac).toBeCloseTo(0.7, 5);
+    expect(t.level).toBe('danger');
+  });
+
+  it('returns empty when min >= max (defensive)', () => {
+    const def = METER_CATALOG[MeterReadingId.TxMicPk];
+    expect(zoneTransitionTicks(def, 0, 0)).toEqual([]);
+    expect(zoneTransitionTicks(def, 5, 5)).toEqual([]);
+    expect(zoneTransitionTicks(def, 10, 5)).toEqual([]);
   });
 });

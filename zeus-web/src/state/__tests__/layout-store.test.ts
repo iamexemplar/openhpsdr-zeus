@@ -161,7 +161,7 @@ describe('parseWorkspaceLayout', () => {
       tiles: [
         {
           uid: 'm',
-          panelId: 'meters',
+          panelId: 'metergroup',
           x: 0,
           y: 0,
           w: 6,

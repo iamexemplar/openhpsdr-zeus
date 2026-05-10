@@ -24,12 +24,14 @@ describe('parseBoardCapabilities', () => {
       hasAudioAmplifier: true,
       hasSteppedAttenuationRx2: true,
       supportsPathIllustrator: false,
+      maxPowerWatts: 120,
     });
     expect(caps.rxAdcCount).toBe(2);
     expect(caps.mkiiBpf).toBe(true);
     expect(caps.adcSupplyMv).toBe(50);
     expect(caps.hasVolts).toBe(true);
     expect(caps.supportsPathIllustrator).toBe(false);
+    expect(caps.maxPowerWatts).toBe(120);
   });
 
   it('falls back to UNKNOWN_BOARD_CAPABILITIES on garbage input', () => {
@@ -42,5 +44,23 @@ describe('parseBoardCapabilities', () => {
     expect(caps.rxAdcCount).toBe(2);
     expect(caps.adcSupplyMv).toBe(UNKNOWN_BOARD_CAPABILITIES.adcSupplyMv);
     expect(caps.hasVolts).toBe(false);
+    expect(caps.maxPowerWatts).toBe(UNKNOWN_BOARD_CAPABILITIES.maxPowerWatts);
+  });
+
+  it('rejects non-positive maxPowerWatts and falls back to default', () => {
+    // A misconfigured backend (or an old server pre-MaxPowerWatts) might
+    // ship 0 or a negative number. The parser should treat that as "unset"
+    // and use the safe fallback so the meter axis stays usable.
+    expect(parseBoardCapabilities({ maxPowerWatts: 0 }).maxPowerWatts).toBe(
+      UNKNOWN_BOARD_CAPABILITIES.maxPowerWatts,
+    );
+    expect(parseBoardCapabilities({ maxPowerWatts: -5 }).maxPowerWatts).toBe(
+      UNKNOWN_BOARD_CAPABILITIES.maxPowerWatts,
+    );
+  });
+
+  it('accepts kilowatt-class radios (G2-1K)', () => {
+    const caps = parseBoardCapabilities({ maxPowerWatts: 1000 });
+    expect(caps.maxPowerWatts).toBe(1000);
   });
 });

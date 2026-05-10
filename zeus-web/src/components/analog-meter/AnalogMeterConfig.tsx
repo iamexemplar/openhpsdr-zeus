@@ -8,7 +8,7 @@
 // (attack/decay/avg/peak hold). All controls drive the persisted
 // useAnalogMeterStore — operator changes survive a reload.
 
-import { ALL_S_TICKS, useAnalogMeterStore } from './analogMeterStore';
+import { useAnalogMeterStore } from './analogMeterStore';
 
 interface SliderProps {
   label: string;
@@ -79,8 +79,6 @@ function Pill({ on, onClick, children }: PillProps) {
   );
 }
 
-const labelForS = (v: number): string => (v <= 9 ? `S${v}` : `+${(v - 9) * 10}`);
-
 interface AnalogMeterConfigProps {
   open: boolean;
   onClose: () => void;
@@ -111,20 +109,6 @@ export function AnalogMeterConfig({ open, onClose }: AnalogMeterConfigProps) {
             </CheckRow>
           </header>
           <div className="am-cf-body">
-            <div className="am-cf-sublbl">S-units shown on dial</div>
-            <div className="am-tickgrid">
-              {ALL_S_TICKS.map((v) => (
-                <button
-                  type="button"
-                  key={v}
-                  className={`am-tick ${cfg.sTicks.includes(v) ? 'on' : ''}`}
-                  onClick={() => cfg.toggleSTick(v)}
-                  disabled={!cfg.scaleS}
-                >
-                  {labelForS(v)}
-                </button>
-              ))}
-            </div>
             <CheckRow
               checked={cfg.showDbm}
               onChange={cfg.setShowDbm}

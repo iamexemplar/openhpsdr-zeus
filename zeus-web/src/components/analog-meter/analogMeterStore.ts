@@ -16,8 +16,6 @@ export interface AnalogMeterConfig {
   scaleS: boolean;
   scalePo: boolean;
   scaleSwr: boolean;
-  /** Subset of [1,3,5,7,8,9,11,13,15] — labels rendered on the S arc. */
-  sTicks: number[];
   showDbm: boolean;
   /** SWR threshold above which the readout switches to --tx. */
   swrAlarm: number;
@@ -35,7 +33,6 @@ export interface AnalogMeterConfig {
 
 export interface AnalogMeterState extends AnalogMeterConfig {
   setScale: (id: 's' | 'po' | 'swr', on: boolean) => void;
-  toggleSTick: (v: number) => void;
   setShowDbm: (on: boolean) => void;
   setSwrAlarm: (r: number) => void;
   setAttack: (s: number) => void;
@@ -46,14 +43,10 @@ export interface AnalogMeterState extends AnalogMeterConfig {
   resetBallistics: () => void;
 }
 
-export const ALL_S_TICKS: ReadonlyArray<number> = [1, 3, 5, 7, 8, 9, 11, 13, 15];
-
 export const ANALOG_METER_DEFAULTS: AnalogMeterConfig = {
   scaleS: true,
   scalePo: true,
   scaleSwr: true,
-  // S8 omitted by default to match real moving-coil meters.
-  sTicks: [1, 3, 5, 7, 9, 11, 13, 15],
   showDbm: true,
   swrAlarm: 3.0,
   attack: 0.05,
@@ -73,12 +66,6 @@ export const useAnalogMeterStore = create<AnalogMeterState>()(
           if (id === 'po') return { ...s, scalePo: on };
           return { ...s, scaleSwr: on };
         }),
-      toggleSTick: (v) =>
-        set((s) => ({
-          sTicks: s.sTicks.includes(v)
-            ? s.sTicks.filter((x) => x !== v)
-            : [...s.sTicks, v].sort((a, b) => a - b),
-        })),
       setShowDbm: (on) => set({ showDbm: on }),
       setSwrAlarm: (r) => set({ swrAlarm: Math.max(1.5, Math.min(5, r)) }),
       setAttack: (s) => set({ attack: Math.max(0.005, Math.min(0.5, s)) }),

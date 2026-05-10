@@ -19,6 +19,13 @@ export interface BoardCapabilities {
   hasAudioAmplifier: boolean;
   hasSteppedAttenuationRx2: boolean;
   supportsPathIllustrator: boolean;
+  /** Rated maximum forward output power in watts. Used as the default top
+   *  of the TX power meter axis so a fresh connect to any radio gives a
+   *  meter that's neither cramped nor blank. HermesLite2 / Hermes = 10 W,
+   *  HermesII / ANAN-10E = 30 W, ANAN-100/200/G2 family = 120 W,
+   *  ANAN-8000DLE = 250 W, ANAN-G2-1K = 1000 W. Operator override lives in
+   *  the PA settings panel. */
+  maxPowerWatts: number;
 }
 
 // Safe defaults matching Zeus.Contracts.BoardCapabilities.UnknownDefaults —
@@ -35,6 +42,7 @@ export const UNKNOWN_BOARD_CAPABILITIES: BoardCapabilities = {
   hasAudioAmplifier: false,
   hasSteppedAttenuationRx2: false,
   supportsPathIllustrator: false,
+  maxPowerWatts: 100,
 };
 
 export function parseBoardCapabilities(raw: unknown): BoardCapabilities {
@@ -59,6 +67,10 @@ export function parseBoardCapabilities(raw: unknown): BoardCapabilities {
       typeof r.supportsPathIllustrator === 'boolean'
         ? r.supportsPathIllustrator
         : UNKNOWN_BOARD_CAPABILITIES.supportsPathIllustrator,
+    maxPowerWatts:
+      typeof r.maxPowerWatts === 'number' && r.maxPowerWatts > 0
+        ? r.maxPowerWatts
+        : UNKNOWN_BOARD_CAPABILITIES.maxPowerWatts,
   };
 }
 

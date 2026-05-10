@@ -40,6 +40,7 @@ describe('AddPanelModal', () => {
       'dsp',
       'log',
       'tools',
+      'amplifiers',
       'controls',
     ]) {
       expect(
@@ -54,8 +55,8 @@ describe('AddPanelModal', () => {
     const cards = container.querySelectorAll(
       '[data-testid="add-panel-cards"] .add-panel-card',
     );
-    // 17 panels in registry.
-    expect(cards.length).toBe(17);
+    // 18 panels in registry.
+    expect(cards.length).toBe(18);
     unmount();
   });
 
@@ -76,7 +77,7 @@ describe('AddPanelModal', () => {
       c.getAttribute('data-panel-id'),
     );
     expect(ids).toEqual(
-      expect.arrayContaining(['smeter', 'txmeters', 'meters', 'analogmeter']),
+      expect.arrayContaining(['smeter', 'txmeters', 'metergroup', 'analogmeter']),
     );
     unmount();
   });
@@ -90,34 +91,34 @@ describe('AddPanelModal', () => {
       metersBtn.click();
     });
     const card = container.querySelector(
-      '.add-panel-card[data-panel-id="meters"]',
+      '.add-panel-card[data-panel-id="metergroup"]',
     ) as HTMLButtonElement;
     expect(card).not.toBeNull();
     act(() => {
       card.click();
     });
-    expect(onAdd).toHaveBeenCalledWith('meters');
+    expect(onAdd).toHaveBeenCalledWith('metergroup');
     expect(onClose).toHaveBeenCalled();
     unmount();
   });
 
   it('hides single-instance panels that already exist; keeps multi-instance ones', () => {
-    // 'cw' is single-instance; 'meters' is multiInstance.
-    const { container, unmount } = setup(new Set(['cw', 'meters']));
+    // 'cw' is single-instance; 'metergroup' is multiInstance.
+    const { container, unmount } = setup(new Set(['cw', 'metergroup']));
     const ids = Array.from(
       container.querySelectorAll(
         '[data-testid="add-panel-cards"] .add-panel-card',
       ),
     ).map((c) => c.getAttribute('data-panel-id'));
     expect(ids).not.toContain('cw');
-    expect(ids).toContain('meters');
+    expect(ids).toContain('metergroup');
     unmount();
   });
 
   it('shows the "+ Add another" badge on a multi-instance card already in use', () => {
-    const { container, unmount } = setup(new Set(['meters']));
+    const { container, unmount } = setup(new Set(['metergroup']));
     const card = container.querySelector(
-      '.add-panel-card[data-panel-id="meters"]',
+      '.add-panel-card[data-panel-id="metergroup"]',
     ) as HTMLElement;
     expect(card).not.toBeNull();
     expect(card.textContent).toContain('Add another');

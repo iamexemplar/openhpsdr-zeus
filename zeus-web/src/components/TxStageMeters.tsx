@@ -23,6 +23,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTxStore } from '../state/tx-store';
 import { useConnectionStore } from '../state/connection-store';
 import { usePaStore } from '../state/pa-store';
+import { useRadioStore } from '../state/radio-store';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Overdrive indicator (re-exported so App.tsx can keep wiring it as the
@@ -173,6 +174,18 @@ function pwrPctOf(watts: number, max: number): number {
   if (!isFinite(watts) || max <= 0) return 0;
   const clamped = Math.max(0, Math.min(max, watts));
   return (clamped / max) * 100;
+}
+
+// Generate six tick labels (0..max in five equal steps) so the PWR axis
+// numbers track the actual rated wattage of the connected radio. HL2 = 10
+// → "0 2 4 6 8 10"; ANAN-100 = 120 → "0 24 48 72 96 120"; 8000DLE = 250 →
+// "0 50 100 150 200 250"; G2-1K = 1000 → "0 200 400 600 800 1000". Sub-W
+// resolution shows one decimal so a 5 W HL2 stays readable.
+function pwrTicks(max: number): ReadonlyArray<string> {
+  if (!isFinite(max) || max <= 0) return ['0', '20', '40', '60', '80', '100'];
+  const step = max / 5;
+  const decimals = step >= 10 ? 0 : step >= 1 ? 0 : 1;
+  return Array.from({ length: 6 }, (_, i) => (i * step).toFixed(decimals));
 }
 
 const SWR_FLOOR = 1.0;
@@ -524,11 +537,16 @@ export function TxStageMeters() {
   const tunOn = useTxStore((s) => s.tunOn);
   const transmitting = moxOn || tunOn;
 
-  // Rated PA power for the PWR axis — operator sets this in the PA panel
-  // so the percentage bar matches their hardware. Falls back to 100 W
-  // when un-configured (HL2 / Hermes ballpark) so the bar still reads.
+  // Rated PA power for the PWR axis. Resolution order:
+  //   1. Operator override from the PA settings panel (paMaxPowerWatts > 0)
+  //   2. Board's published MaxPowerWatts (from /api/radio/capabilities)
+  //   3. 100 W last-ditch fallback for an unrecognised radio
+  // The board-default path is what makes a fresh connect to an HL2 show a
+  // 10 W axis instead of the historical 100 W axis where 5 W barely moved
+  // the bar.
   const paMaxWatts = usePaStore((s) => s.settings.global.paMaxPowerWatts);
-  const ratedW = paMaxWatts > 0 ? paMaxWatts : 100;
+  const boardMaxWatts = useRadioStore((s) => s.capabilities.maxPowerWatts);
+  const ratedW = paMaxWatts > 0 ? paMaxWatts : boardMaxWatts > 0 ? boardMaxWatts : 100;
 
   // ── MIC ────────────────────────────────────────────────────────────
   const micBypassed = !isFinite(wdspMicPk) || isBypassed(wdspMicPk);
@@ -647,7 +665,7 @@ export function TxStageMeters() {
         <MeterRow
           id="pwr"
           label="PWR"
-          ticks={['0', '20', '40', '60', '80', '100']}
+          ticks={pwrTicks(ratedW)}
           pct={pwrPct}
           color="var(--power)"
           gradient={pwrSwrGradient}
@@ -656,7 +674,7 @@ export function TxStageMeters() {
           pkLabel="PEP"
           pkValue={pwrPkValue}
           hot={pwrHot}
-          hint={`Forward power. Axis 0..${ratedW} W (set by PA panel; defaults to 100 W when un-configured).`}
+          hint={`Forward power. Axis 0..${ratedW} W (PA panel override → board default → 100 W fallback).`}
         />
         <MeterRow
           id="swr"

@@ -39,11 +39,11 @@ import {
 import { AddPanelModal } from './AddPanelModal';
 import { TileChrome } from './TileChrome';
 import { TerminatorLines } from '../components/design/TerminatorLines';
-import { MetersPanel } from './panels/MetersPanel';
+import { MeterGroupPanel } from '../components/meter-group/MeterGroupPanel';
 import {
-  parseMetersPanelConfig,
-  type MetersPanelConfig,
-} from '../components/meters/metersConfig';
+  parseMeterGroupConfig,
+  type MeterGroupConfig,
+} from '../components/meter-group/meterGroupConfig';
 
 export function FlexWorkspace() {
   const { terminatorActive } = useWorkspace();
@@ -290,22 +290,22 @@ function PanelBody({
 }) {
   // Per-tile config-bound rendering for multi-instance / configurable
   // panels. Single-instance panels just render their component as-is.
-  if (tile.panelId === 'meters') {
-    return <MetersTileBody tile={tile} onRemove={onRemove} />;
+  if (tile.panelId === 'metergroup') {
+    return <MeterGroupTileBody tile={tile} onRemove={onRemove} />;
   }
   const def = PANELS[tile.panelId];
   if (!def) return null;
   const Component = def.component;
   // Headerless single-instance panels that own their own header receive
-  // onRemove so their close button can drop the tile (matches the meters
-  // special-case above without pulling in MetersPanel's per-tile config).
+  // onRemove so their close button can drop the tile (matches the meter
+  // group special-case above without pulling in its per-tile config).
   if (def.headerless && onRemove) {
     return <Component onRemove={onRemove} />;
   }
   return <Component />;
 }
 
-function MetersTileBody({
+function MeterGroupTileBody({
   tile,
   onRemove,
 }: {
@@ -315,17 +315,17 @@ function MetersTileBody({
   const updateTileInstanceConfig = useLayoutStore(
     (s) => s.updateTileInstanceConfig,
   );
-  const config: MetersPanelConfig = useMemo(
-    () => parseMetersPanelConfig(tile.instanceConfig),
+  const config: MeterGroupConfig = useMemo(
+    () => parseMeterGroupConfig(tile.instanceConfig),
     [tile.instanceConfig],
   );
   const setConfig = useCallback(
-    (next: MetersPanelConfig) => {
+    (next: MeterGroupConfig) => {
       updateTileInstanceConfig(tile.uid, next);
     },
     [tile.uid, updateTileInstanceConfig],
   );
   return (
-    <MetersPanel config={config} setConfig={setConfig} onRemove={onRemove} />
+    <MeterGroupPanel config={config} setConfig={setConfig} onRemove={onRemove} />
   );
 }

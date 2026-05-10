@@ -203,6 +203,15 @@ public static class ZeusHost
         builder.Services.AddSingleton<RotctldService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<RotctldService>());
 
+        // RF2K-S amplifier client. BackgroundService that polls the amp's
+        // REST API on TCP/8080 and exposes Tune/Bypass via Rf2kVncClient
+        // (RFB click injection on TCP/5900, the only firmware path that
+        // remotely engages those buttons — see Rf2kVncClient.cs preamble).
+        builder.Services.AddSingleton<Rf2kSettingsStore>();
+        builder.Services.AddSingleton<Rf2kVncClient>();
+        builder.Services.AddSingleton<Rf2kService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Rf2kService>());
+
         // Plugin foundation (PR-A). PluginManager scans the per-platform XDG
         // plugin directory at boot, loads each manifest into a collectible
         // AssemblyLoadContext, and runs IZeusPlugin.InitializeAsync. Plugins

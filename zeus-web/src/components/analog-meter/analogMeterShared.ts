@@ -73,7 +73,6 @@ export const S_SCALE: ScaleDef = {
     { v: 3, label: '3', major: true },
     { v: 5, label: '5', major: true },
     { v: 7, label: '7', major: true },
-    { v: 8, label: '8', major: false },
     { v: 9, label: '9', major: true },
     { v: 11, label: '+20', major: true, plus: true },
     { v: 13, label: '+40', major: true, plus: true },

@@ -190,14 +190,6 @@ export function AnalogMeterPanel({ onClose }: AnalogMeterPanelProps = {}) {
     return 'po';
   }, [mode, enabled.s, enabled.po, enabled.swr]);
 
-  // Filtered S-tick subset rendered onto the dial (operator-selectable).
-  const customSScale = useMemo(() => {
-    return {
-      ...S_SCALE,
-      ticks: S_SCALE.ticks.filter((t) => cfg.sTicks.includes(t.v)),
-    };
-  }, [cfg.sTicks]);
-
   // PO arc full-scale is derived from the rated PA power configured in the
   // main PA Settings panel: max(10 W, 120% of rated). A 5 W HL2 → 10 W scale,
   // a 100 W rig → 120 W scale. When the operator hasn't configured a rated
@@ -217,10 +209,10 @@ export function AnalogMeterPanel({ onClose }: AnalogMeterPanelProps = {}) {
   }, [poMax]);
 
   const activeScale = useMemo(() => {
-    if (activeScaleId === 's') return customSScale;
+    if (activeScaleId === 's') return S_SCALE;
     if (activeScaleId === 'po') return dynamicPoScale;
     return SWR_SCALE;
-  }, [activeScaleId, customSScale, dynamicPoScale]);
+  }, [activeScaleId, dynamicPoScale]);
 
   // Ballistics state. Stored in a ref so the rAF loop can mutate without
   // triggering renders; `tick` is the only state we touch from the loop.
@@ -342,12 +334,10 @@ export function AnalogMeterPanel({ onClose }: AnalogMeterPanelProps = {}) {
     };
   }, [activeScaleId, activeScale, cfg.attack, cfg.decay, cfg.peakHold]);
 
-  // The face needs the operator-filtered S-arc; we override SCALES.s for the
-  // duration of this render via a wrapper that hands AnalogMeterFace the
-  // same object shape.
+  // PO arc tracks rated PA power dynamically; S/SWR are static.
   const scalesForFace = useMemo(
-    () => ({ s: customSScale, po: dynamicPoScale, swr: SWR_SCALE }),
-    [customSScale, dynamicPoScale],
+    () => ({ s: S_SCALE, po: dynamicPoScale, swr: SWR_SCALE }),
+    [dynamicPoScale],
   );
 
   // Convert needle position back to scale value for the readout.

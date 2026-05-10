@@ -42,12 +42,27 @@
 // Zeus is distributed WITHOUT ANY WARRANTY; see the GNU General Public
 // License for details.
 
-import { TxStageMeters } from '../../components/TxStageMeters';
+import { ImmersiveMetersPanel } from '../../components/immersive-meters/ImmersiveMetersPanel';
 
+// "TX Stage Meters" panel — the operator-facing TX gauge cluster. Replaced
+// the legacy four-row strip (MIC / ALC / PWR / SWR + footer) with the
+// immersive three-section design (Final Output arcs, Signal Chain VU
+// columns, Gain Reduction pull-down arcs). Existing workspaces that
+// reference this panel by id auto-pick up the new visual; their saved
+// layout stays valid because the panel id (`txmeters`) hasn't changed.
+//
+// The legacy `TxStageMeters` component still exists in
+// `components/TxStageMeters.tsx` because the OverdriveIndicator export it
+// hosts is wired into the top-bar chrome elsewhere; only the visual panel
+// is replaced here. A follow-up can extract OverdriveIndicator to its own
+// file and delete the legacy component entirely.
+//
+// Render `<ImmersiveMetersPanel />` directly without an intervening
+// wrapper. The surrounding `.workspace-tile-body` is `display: block`,
+// not flex — so a `flex: 1` wrapper would collapse to content height
+// and the immersive panel's grey background would only fill that
+// content height (~700 px) instead of the tile's full body (~810 px),
+// leaving a lighter strip exposed below the footer.
 export function TxMetersPanel() {
-  return (
-    <div style={{ flex: 1, overflow: 'auto' }}>
-      <TxStageMeters />
-    </div>
-  );
+  return <ImmersiveMetersPanel />;
 }

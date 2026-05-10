@@ -138,6 +138,40 @@ public class BoardCapabilitiesTableTests
         Assert.InRange(caps.RxAdcCount, 1, 2);
         Assert.True(caps.AdcSupplyMv == 33 || caps.AdcSupplyMv == 50,
             $"{board} has unexpected ADC supply {caps.AdcSupplyMv} mV");
+        Assert.InRange(caps.MaxPowerWatts, 1, 2000);
+    }
+
+    [Theory]
+    [InlineData(HpsdrBoardKind.HermesLite2, 10)]
+    [InlineData(HpsdrBoardKind.Metis, 10)]
+    [InlineData(HpsdrBoardKind.Hermes, 10)]
+    [InlineData(HpsdrBoardKind.HermesII, 30)]
+    [InlineData(HpsdrBoardKind.Angelia, 120)]
+    [InlineData(HpsdrBoardKind.Orion, 120)]
+    [InlineData(HpsdrBoardKind.HermesC10, 120)]
+    public void MaxPowerWatts_Per_Board_Defaults(HpsdrBoardKind board, int expectedW)
+    {
+        // Pin the per-board axis-top so the TX power meter renders with a
+        // sensible scale on first connect. HL2 = 10 W, ANAN-10 = 10 W,
+        // 10E = 30 W, 100/200/G2E = 120 W (variant fan-out covered below).
+        var caps = BoardCapabilitiesTable.For(board);
+        Assert.Equal(expectedW, caps.MaxPowerWatts);
+    }
+
+    [Theory]
+    [InlineData(OrionMkIIVariant.G2, 120)]
+    [InlineData(OrionMkIIVariant.G2_1K, 1000)]
+    [InlineData(OrionMkIIVariant.Anan7000DLE, 120)]
+    [InlineData(OrionMkIIVariant.Anan8000DLE, 250)]
+    [InlineData(OrionMkIIVariant.OrionMkII, 120)]
+    [InlineData(OrionMkIIVariant.AnvelinaPro3, 120)]
+    [InlineData(OrionMkIIVariant.RedPitaya, 120)]
+    public void MaxPowerWatts_OrionMkII_Variant_FanOut(OrionMkIIVariant variant, int expectedW)
+    {
+        // 0x0A wire byte aliases — variant disambiguates 8000DLE (250 W) and
+        // G2-1K (1 kW) from the rest of the Saturn family (120 W).
+        var caps = BoardCapabilitiesTable.For(HpsdrBoardKind.OrionMkII, variant);
+        Assert.Equal(expectedW, caps.MaxPowerWatts);
     }
 
     public static IEnumerable<object[]> EveryBoardKind() =>

@@ -62,12 +62,22 @@ public sealed record BoardCapabilities(
     /// <c>clsHardwareSpecific.cs:773-780</c> excludes the high-power
     /// MkII family (OrionMkII / 7000DLE / 8000DLE / G2 / G2-1K /
     /// ANVELINA-PRO3 / Red Pitaya / G2E).</summary>
-    bool SupportsPathIllustrator)
+    bool SupportsPathIllustrator,
+    /// <summary>Rated maximum forward output power in watts, used as the
+    /// default top-of-axis for the TX power meter so a fresh connect to any
+    /// supported radio gives a meter that's neither cramped nor blank.
+    /// HermesLite2 / ANAN-10 = 10 W, ANAN-10E = 30 W, ANAN-100/200/G2 family
+    /// = 120 W, ANAN-8000DLE = 250 W, ANAN-G2-1K = 1000 W. The operator can
+    /// still override per-rig in the PA settings panel; this is the
+    /// out-of-the-box default the meter axis snaps to on connect.</summary>
+    int MaxPowerWatts)
 {
     /// <summary>Safe defaults for an unrecognised / disconnected board.
     /// Single ADC, no extras — minimum-surprise capability set so a
     /// pre-connect UI doesn't show conditional panels for unknown
-    /// hardware.</summary>
+    /// hardware. <see cref="MaxPowerWatts"/> defaults to 100 W so the
+    /// power meter has a usable axis range before the radio identifies
+    /// itself.</summary>
     public static readonly BoardCapabilities UnknownDefaults = new(
         RxAdcCount: 1,
         MkiiBpf: false,
@@ -77,5 +87,6 @@ public sealed record BoardCapabilities(
         HasAmps: false,
         HasAudioAmplifier: false,
         HasSteppedAttenuationRx2: false,
-        SupportsPathIllustrator: false);
+        SupportsPathIllustrator: false,
+        MaxPowerWatts: 100);
 }

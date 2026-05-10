@@ -54,7 +54,9 @@ internal static class BoardCapabilitiesTable
         // excludes only the high-power MkII family).
         HpsdrBoardKind.Metis      => HermesClass,
         HpsdrBoardKind.Hermes     => HermesClass,
-        HpsdrBoardKind.HermesII    => HermesClass, // ANAN-10E / 100B firmware
+        // ANAN-10E (HermesII firmware): ~30 W output, so it gets its own
+        // capability snapshot with the larger meter axis.
+        HpsdrBoardKind.HermesII    => HermesIIClass,
         // --- ANAN-100D: dual-ADC Hermes-supply ---
         // clsHardwareSpecific.cs:122-128 — first DDC family entrant.
         HpsdrBoardKind.Angelia    => Angelia,
@@ -68,10 +70,16 @@ internal static class BoardCapabilitiesTable
         HpsdrBoardKind.HermesLite2 => HermesLite2,
         // --- 0x0A family ---
         // Operator-selected variant (issue #218) routes to the matching
-        // Saturn vs Apache-OrionMkII-original fingerprint.
-        HpsdrBoardKind.OrionMkII  => variant == OrionMkIIVariant.OrionMkII
-            ? OrionMkIIOriginal
-            : Saturn,
+        // Saturn vs Apache-OrionMkII-original fingerprint. The 8000DLE and
+        // G2-1K variants additionally need a higher MaxPowerWatts than the
+        // 120 W Saturn baseline, so they fan out here too.
+        HpsdrBoardKind.OrionMkII  => variant switch
+        {
+            OrionMkIIVariant.OrionMkII   => OrionMkIIOriginal,
+            OrionMkIIVariant.Anan8000DLE => Saturn8000DLE,
+            OrionMkIIVariant.G2_1K       => SaturnG2_1K,
+            _                            => Saturn,
+        },
         // --- ANAN-G2E (HermesC10, N1GP) ---
         // clsHardwareSpecific.cs:129-135. Hybrid: single RX + 33 mV supply
         // (Hermes-class) BUT MKII BPF on + LR-swap off + telemetry +
@@ -81,6 +89,7 @@ internal static class BoardCapabilitiesTable
         _                          => BoardCapabilities.UnknownDefaults,
     };
 
+    // Hermes / Metis / ANAN-10 — small-signal Hermes-class single-RX. ~10 W.
     private static readonly BoardCapabilities HermesClass = new(
         RxAdcCount: 1,
         MkiiBpf: false,
@@ -90,8 +99,25 @@ internal static class BoardCapabilitiesTable
         HasAmps: false,
         HasAudioAmplifier: false,
         HasSteppedAttenuationRx2: false, // single-RX: RX2 doesn't exist
-        SupportsPathIllustrator: true);
+        SupportsPathIllustrator: true,
+        MaxPowerWatts: 10);
 
+    // ANAN-10E (HermesII firmware) — same Hermes-class fingerprint but the
+    // 10E hardware is rated to ~30 W, so its meter axis gets the bigger top.
+    private static readonly BoardCapabilities HermesIIClass = new(
+        RxAdcCount: 1,
+        MkiiBpf: false,
+        AdcSupplyMv: 33,
+        LrAudioSwap: true,
+        HasVolts: false,
+        HasAmps: false,
+        HasAudioAmplifier: false,
+        HasSteppedAttenuationRx2: false,
+        SupportsPathIllustrator: true,
+        MaxPowerWatts: 30);
+
+    // ANAN-100D — 100 W class. Meter axis 120 W gives some headroom past
+    // the rated rail without truncating PEP overshoots.
     private static readonly BoardCapabilities Angelia = new(
         RxAdcCount: 2,
         MkiiBpf: false,
@@ -101,8 +127,11 @@ internal static class BoardCapabilitiesTable
         HasAmps: false,
         HasAudioAmplifier: false,
         HasSteppedAttenuationRx2: true,
-        SupportsPathIllustrator: true);
+        SupportsPathIllustrator: true,
+        MaxPowerWatts: 120);
 
+    // ANAN-200D — 200 W class but axis matches the 100/200/G2 family at
+    // 120 W: half-axis at 100 W is the natural reading point.
     private static readonly BoardCapabilities Orion = new(
         RxAdcCount: 2,
         MkiiBpf: false,
@@ -112,10 +141,11 @@ internal static class BoardCapabilitiesTable
         HasAmps: false,
         HasAudioAmplifier: false,
         HasSteppedAttenuationRx2: true,
-        SupportsPathIllustrator: true);
+        SupportsPathIllustrator: true,
+        MaxPowerWatts: 120);
 
-    // 0x0A family (G2 / G2-1K / 7000DLE / 8000DLE / OrionMkII / ANVELINA-PRO3 /
-    // Red Pitaya). Saturn-class facts.
+    // 0x0A family default (G2 / 7000DLE / OrionMkII / ANVELINA-PRO3 /
+    // Red Pitaya). Saturn-class facts. 100–200 W typical → 120 W axis.
     private static readonly BoardCapabilities Saturn = new(
         RxAdcCount: 2,
         MkiiBpf: true,
@@ -125,7 +155,21 @@ internal static class BoardCapabilitiesTable
         HasAmps: true,
         HasAudioAmplifier: true,
         HasSteppedAttenuationRx2: true,
-        SupportsPathIllustrator: false);
+        SupportsPathIllustrator: false,
+        MaxPowerWatts: 120);
+
+    // ANAN-8000DLE — 250 W per Apache spec; axis snaps to that.
+    private static readonly BoardCapabilities Saturn8000DLE = Saturn with
+    {
+        MaxPowerWatts = 250,
+    };
+
+    // ANAN-G2-1K — kilowatt-class with internal 1 kW PA. Same Saturn fingerprint
+    // but the meter axis needs the room.
+    private static readonly BoardCapabilities SaturnG2_1K = Saturn with
+    {
+        MaxPowerWatts = 1000,
+    };
 
     private static readonly BoardCapabilities HermesC10 = new(
         RxAdcCount: 1,
@@ -136,7 +180,8 @@ internal static class BoardCapabilitiesTable
         HasAmps: true,
         HasAudioAmplifier: true,
         HasSteppedAttenuationRx2: false, // single-RX: RX2 doesn't exist
-        SupportsPathIllustrator: false);
+        SupportsPathIllustrator: false,
+        MaxPowerWatts: 120);
 
     // Apache OrionMkII original (Orion-MkII firmware, 100 W) — Saturn-class
     // hardware fingerprint but without on-board telemetry / audio amp per
@@ -151,8 +196,12 @@ internal static class BoardCapabilitiesTable
         HasAmps: false,
         HasAudioAmplifier: false,
         HasSteppedAttenuationRx2: true,
-        SupportsPathIllustrator: false);
+        SupportsPathIllustrator: false,
+        MaxPowerWatts: 120);
 
+    // HermesLite2 — rated 5 W stock but operators routinely run to 10 W with
+    // adequate cooling, so the meter axis is 10 W to cover the realistic
+    // operating range without leaving the bar visually pegged at half scale.
     private static readonly BoardCapabilities HermesLite2 = new(
         RxAdcCount: 1,
         MkiiBpf: false,
@@ -162,5 +211,6 @@ internal static class BoardCapabilitiesTable
         HasAmps: false,
         HasAudioAmplifier: false,
         HasSteppedAttenuationRx2: false,
-        SupportsPathIllustrator: false);
+        SupportsPathIllustrator: false,
+        MaxPowerWatts: 10);
 }

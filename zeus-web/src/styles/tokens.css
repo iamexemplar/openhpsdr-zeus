@@ -34,6 +34,9 @@
   --tx:          #e63a2b;   /* TX red (like "TX: OFF" red) */
   --tx-soft:     rgba(230,58,43,0.18);
   --power:       #ffc93a;   /* yellow digits like "20W" */
+  --power-soft:  rgba(255,201,58,0.16);
+  --ok:          #2e7a2e;   /* healthy / normal-range green for meter zones */
+  --ok-soft:     rgba(46,122,46,0.18);
   --orange:      #f28524;   /* Lookup button top */
   --orange-dk:   #6b1100;   /* Lookup button shadow edge */
 
@@ -66,6 +69,74 @@
   /* ----- Meters ----- */
   --meter-bg:    #0d0e10;
   --meter-fill:  linear-gradient(90deg, #2e7a2e 0%, #4aa04a 55%, #d4a42a 80%, #d04040 100%);
+
+  /* ----- Immersive meter chrome (BigArc / VuColumn / PullDownArc) -----
+     Deeper-than-meter-bg fills used inside the immersive Meters panel so
+     the gauges read as "lit instruments on a black bench" against the
+     surrounding panel-bg. The trio is layered: panel (body), panel-2
+     (section-card top stop), well / well-2 (gauge card gradient).
+     Originally taken from the design prototype's blue-black palette
+     (#161a23 / #11151c / #0c1019) — flattened to neutral greys per the
+     operator's "less blues, more greys" feedback. The *-glow tokens
+     carry the bloom alpha used by SVG drop-shadows + filters. */
+  --immersive-bg:        #07080a;
+  --immersive-panel:     #1a1c20;
+  --immersive-panel-2:   #16181c;
+  --immersive-well:      #101216;
+  --immersive-well-2:    #0a0b0e;
+  --immersive-rim:       rgba(255,255,255,0.06);
+  --immersive-rim-strong:rgba(255,255,255,0.10);
+  --immersive-line:      rgba(255,255,255,0.05);
+  --immersive-line-2:    rgba(255,255,255,0.09);
+  /* Accent for needle / peak pip / hub / section LED. Originally a blue
+     (#5b9aff) — swapped to a warm-neutral light grey that still reads
+     as "lit indicator" against the immersive panel chrome. The signal
+     gradient on the fill arcs (good → warn → tx) is unchanged — it's the
+     whole point of the meter. */
+  --immersive-accent:      #c8ccd6;
+  --immersive-accent-glow: rgba(200,204,214,0.30);
+  /* Subtle neutral elevation glow for arc/vu card backgrounds — replaces
+     the previous blue radial-gradient bloom. */
+  --immersive-bloom:       rgba(255,255,255,0.05);
+  --immersive-good:      #5cd49a;
+  --immersive-good-glow: rgba(92,212,154,0.45);
+  --immersive-warn:      #f4c168;
+  --immersive-warn-glow: rgba(244,193,104,0.45);
+  --immersive-tx:        #ef6b54;
+  --immersive-tx-glow:   rgba(239,107,84,0.45);
+
+  /* Warm "lamp glow" palette — pale-cream / soft-yellow tones used to
+     light gauge faces, ticks, labels, needles, and active state pills
+     on the immersive meters and the RF2K-S amplifier panel. The signal
+     gradient (--immersive-good/warn/tx) on the active fills is unchanged
+     because those colours are semantic. The lamp tones simulate a warm
+     incandescent bulb illuminating the instrument from below — Brian's
+     "white-grey-yellow gradient" direction (chat12 final state). All
+     tokens are kept separate from the existing immersive-* palette so a
+     future operator preference toggle can swap lamp colour temperature
+     without touching component code. */
+  --immersive-lamp-bloom-1: rgba(255,250,210,0.22);
+  --immersive-lamp-bloom-2: rgba(245,235,180,0.10);
+  --immersive-lamp-bloom-3: rgba(255,250,220,0.10);
+  --immersive-lamp-bloom-blob: rgba(255,248,210,0.16);
+  --immersive-lamp-border:  rgba(240,235,210,0.10);
+  --immersive-lamp-rim:     rgba(255,250,220,0.10);
+  --immersive-lamp-tick:    rgba(245,240,210,0.55);
+  --immersive-lamp-label:   #d8d4bd;
+  --immersive-lamp-units:   #a09e8c;
+  --immersive-lamp-readout: #f6f3e4;
+  --immersive-lamp-readout-glow: rgba(255,245,200,0.30);
+  --immersive-lamp-corner:    #b8b6a4;
+  --immersive-lamp-corner-em: #8a8878;
+  --immersive-lamp-needle:     #f5f0d8;
+  --immersive-lamp-needle-bri: #fffbe8;
+  --immersive-lamp-pin:        #f5f0d0;
+  --immersive-lamp-pin-glow:   rgba(245,240,180,0.65);
+  --immersive-lamp-hub-glow:   rgba(245,240,200,0.9);
+  --immersive-lamp-chip-bloom: rgba(245,240,210,0.08);
+  --immersive-lamp-chip-text:  #f4f1e2;
+  --immersive-lamp-chip-text-glow: rgba(255,245,200,0.16);
+  --immersive-lamp-active-glow: rgba(245,240,180,0.18);
 
   /* ----- Type ----- */
   --font-sans: 'Archivo Narrow', 'Arial Narrow', sans-serif;
