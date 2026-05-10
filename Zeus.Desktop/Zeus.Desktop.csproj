@@ -22,7 +22,23 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zeus.Server.Hosting\Zeus.Server.Hosting.csproj" />
+    <!-- Mirror Zeus.Server: build the in-tree sample plugins but don't link
+         them in. CopyPluginsToOutput drops them under plugins/<Name>/ next
+         to the desktop binary so PluginManager can discover them. -->
+    <ProjectReference Include="..\samples\plugins\Rotator\Rotator.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
   </ItemGroup>
+
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_RotatorPluginFiles Include="..\samples\plugins\Rotator\bin\$(Configuration)\$(TargetFramework)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RotatorPluginFiles)"
+          DestinationFolder="$(OutputPath)plugins\Rotator\%(RecursiveDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_RotatorPluginFiles)' != ''" />
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Photino.NET" Version="4.0.16" />

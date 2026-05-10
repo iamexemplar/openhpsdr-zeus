@@ -18,6 +18,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text.Json;
 using Zeus.Contracts.Plugins;
+using Zeus.Plugins.Hosting;
 
 namespace Zeus.Server.Plugins;
 
@@ -48,6 +49,7 @@ public sealed class PluginManager : IHostedService
     private readonly IConfiguration _config;
     private readonly List<LoadedPlugin> _plugins = new();
     private readonly object _gate = new();
+    private bool _loaded;
 
     public PluginManager(ILogger<PluginManager> log, ILoggerFactory loggerFactory, IConfiguration config)
     {
@@ -66,12 +68,12 @@ public sealed class PluginManager : IHostedService
     }
 
     /// <summary>
-    /// Resolved plugin directory for the current platform.
+    /// Per-user XDG plugin directory for the current platform.
     /// Linux:   <c>~/.local/share/zeus/plugins/</c>
     /// macOS:   <c>~/Library/Application Support/Zeus/plugins/</c>
     /// Windows: <c>%APPDATA%\Zeus\plugins\</c>
     /// </summary>
-    public static string ResolvePluginDirectory()
+    public static string ResolveUserPluginDirectory()
     {
         // On Linux and macOS, LocalApplicationData maps to the per-user
         // data root (~/.local/share and ~/Library/Application Support
@@ -86,47 +88,124 @@ public sealed class PluginManager : IHostedService
         return Path.Combine(root, vendor, "plugins");
     }
 
+    /// <summary>
+    /// Plugin directory next to the Zeus binary — populated by build /
+    /// publish for plugins that ship with Zeus (e.g. the in-tree rotator
+    /// sample). Operators don't normally write here.
+    /// </summary>
+    public static string ResolveAppPluginDirectory()
+        => Path.Combine(AppContext.BaseDirectory, "plugins");
+
+    private string[] ResolvePluginDirectories()
+    {
+        // Config override (single directory) wins — this keeps tests
+        // hermetic and lets operators with non-standard installs point
+        // at /opt/zeus/plugins/ etc.
+        var configured = _config.GetValue<string?>("Plugins:Directory");
+        if (!string.IsNullOrWhiteSpace(configured)) return new[] { configured };
+
+        // Default: scan both the app-shipped dir and the per-user XDG
+        // dir. Either may be missing and that's fine.
+        return new[] { ResolveAppPluginDirectory(), ResolveUserPluginDirectory() };
+    }
+
     public Task StartAsync(CancellationToken cancellationToken)
     {
+        // Idempotent: ZeusHost.Build() typically calls LoadAsync directly so
+        // that plugin HTTP endpoints can be mapped before the request
+        // pipeline accepts traffic. If that pre-load already happened this
+        // is a no-op; otherwise (e.g. unit tests that just spin up the
+        // hosted-service surface) we run discovery here.
+        if (_loaded) return Task.CompletedTask;
+        return LoadAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Discover, load, and initialise every plugin under the resolved
+    /// plugin directory. Idempotent — calling more than once is a no-op.
+    /// Intended to be invoked from <c>ZeusHost.Build()</c> after the
+    /// service container is ready but before route mapping, so plugins
+    /// that implement <c>IPluginHttpEndpoints</c> can register routes
+    /// alongside core Zeus endpoints.
+    /// </summary>
+    public async Task LoadAsync(CancellationToken cancellationToken)
+    {
+        if (_loaded) return;
+        _loaded = true;
+
         if (IsSafeMode())
         {
             _log.LogInformation("plugins disabled (safe mode); skipping discovery");
-            return Task.CompletedTask;
+            return;
         }
 
-        // Operators (and tests) can override the directory via configuration
-        // — handy for non-standard installs (e.g. /opt/zeus/plugins/) and
-        // essential for hermetic unit tests.
-        var configured = _config.GetValue<string?>("Plugins:Directory");
-        var dir = !string.IsNullOrWhiteSpace(configured) ? configured : ResolvePluginDirectory();
-        try
+        var dirs = ResolvePluginDirectories();
+        var manifests = new List<string>();
+        foreach (var dir in dirs)
         {
-            Directory.CreateDirectory(dir);
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "could not create plugin directory {Dir}; skipping discovery", dir);
-            return Task.CompletedTask;
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+                manifests.AddRange(Directory.EnumerateFiles(dir, "plugin.json", SearchOption.AllDirectories));
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "plugin discovery failed under {Dir}; skipping", dir);
+            }
         }
 
-        var manifests = Directory.EnumerateFiles(dir, "plugin.json", SearchOption.AllDirectories).ToList();
         if (manifests.Count == 0)
         {
-            _log.LogInformation("no plugins found under {Dir}", dir);
-            return Task.CompletedTask;
+            _log.LogInformation("no plugins found under {Dirs}", string.Join(", ", dirs));
+            return;
         }
 
-        _log.LogInformation("discovered {Count} plugin manifest(s) under {Dir}", manifests.Count, dir);
-        // Load synchronously inside StartAsync — the host blocks here, which
-        // is what we want: a plugin that needs to register an HTTP route or
-        // service must be ready before the request pipeline starts. Each
-        // plugin is allowed up to InitTimeout; a hung plugin will not stall
-        // boot beyond that.
+        _log.LogInformation("discovered {Count} plugin manifest(s) across {Dirs}",
+            manifests.Count, string.Join(", ", dirs));
+        // Each plugin is allowed up to InitTimeout; a hung plugin will not
+        // stall boot beyond that.
         foreach (var manifestPath in manifests)
         {
-            LoadOne(manifestPath, cancellationToken).GetAwaiter().GetResult();
+            await LoadOne(manifestPath, cancellationToken);
         }
-        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Map every loaded plugin's HTTP endpoints onto <paramref name="endpoints"/>.
+    /// Plugins that don't implement <see cref="IPluginHttpEndpoints"/> are
+    /// skipped silently. Failures inside a plugin's MapEndpoints call are
+    /// caught and recorded as a load error against the plugin so they
+    /// surface in /api/plugins diagnostics; a misbehaving plugin can never
+    /// stall the host's route registration.
+    /// </summary>
+    public void MapEndpoints(IEndpointRouteBuilder endpoints)
+    {
+        LoadedPlugin[] snapshot;
+        lock (_gate) snapshot = _plugins.ToArray();
+
+        foreach (var p in snapshot)
+        {
+            if (p.Instance is not IPluginHttpEndpoints httpPlugin) continue;
+            try
+            {
+                httpPlugin.MapEndpoints(endpoints);
+                _log.LogInformation("mapped HTTP endpoints for plugin {Id}", p.Manifest.Id);
+            }
+            catch (Exception ex)
+            {
+                _log.LogError(ex, "plugin {Id} MapEndpoints failed", p.Manifest.Id);
+                // Replace the LoadedPlugin entry with one carrying the
+                // route-registration error so /api/plugins shows it.
+                lock (_gate)
+                {
+                    var idx = _plugins.IndexOf(p);
+                    if (idx >= 0)
+                    {
+                        _plugins[idx] = p with { LoadError = $"MapEndpoints failed: {ex.Message}" };
+                    }
+                }
+            }
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
@@ -204,8 +283,23 @@ public sealed class PluginManager : IHostedService
                     $"manifest Id '{manifest.Id}' does not match assembly Metadata.Id '{instance.Metadata.Id}'");
             }
 
+            // Parse the manifest's capability strings into the flags enum
+            // and verify the assembly's declared metadata fits inside the
+            // manifest grant. The manifest is the trust boundary — an
+            // assembly that requests more than the manifest declares is
+            // refused so a malicious plugin can't quietly elevate by
+            // shipping an assembly with bigger Metadata.Capabilities than
+            // the manifest the user approved.
+            var grantedCaps = ParseCapabilities(manifest.Capabilities);
+            var requestedCaps = instance.Metadata.Capabilities;
+            if ((requestedCaps & ~grantedCaps) != PluginCapabilities.None)
+            {
+                throw new InvalidOperationException(
+                    $"assembly requests capabilities {requestedCaps} but manifest only grants {grantedCaps}; refusing to load");
+            }
+
             var pluginLogger = _loggerFactory.CreateLogger($"Plugin.{manifest.Id}");
-            var ctx = new PluginContext(manifest.Id, pluginLogger);
+            var ctx = new PluginContext(manifest.Id, pluginLogger, grantedCaps);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(InitTimeout);
@@ -225,6 +319,20 @@ public sealed class PluginManager : IHostedService
     private void Record(LoadedPlugin p)
     {
         lock (_gate) _plugins.Add(p);
+    }
+
+    private static PluginCapabilities ParseCapabilities(IReadOnlyList<string> names)
+    {
+        var caps = PluginCapabilities.None;
+        foreach (var n in names)
+        {
+            if (string.IsNullOrWhiteSpace(n)) continue;
+            if (!Enum.TryParse<PluginCapabilities>(n.Trim(), ignoreCase: true, out var flag))
+                throw new InvalidDataException($"unknown capability '{n}' in manifest");
+            if (flag == PluginCapabilities.None) continue;
+            caps |= flag;
+        }
+        return caps;
     }
 
     private static Type FindPluginType(Assembly asm)

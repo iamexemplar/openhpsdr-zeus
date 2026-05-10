@@ -34,6 +34,7 @@
     <ProjectReference Include="..\Zeus.Protocol2\Zeus.Protocol2.csproj" />
     <ProjectReference Include="..\Zeus.Dsp\Zeus.Dsp.csproj" />
     <ProjectReference Include="..\Zeus.PluginHost\Zeus.PluginHost.csproj" />
+    <ProjectReference Include="..\Zeus.Plugins.Hosting.Abstractions\Zeus.Plugins.Hosting.Abstractions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

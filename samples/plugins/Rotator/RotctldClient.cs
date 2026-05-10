@@ -1,69 +1,32 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
 // Zeus — OpenHPSDR Protocol-1 / Protocol-2 client.
-// Copyright (C) 2025-2026 Brian Keating (EI6LF),
-//                         Douglas J. Cerrato (KB2UKA), and contributors.
+// Copyright (C) 2025-2026 Brian Keating (EI6LF) and contributors.
 //
-// This program is free software: you can redistribute it and/or modify it
-// under the terms of the GNU General Public License as published by the
-// Free Software Foundation, either version 2 of the License, or (at your
-// option) any later version. See the LICENSE file at the root of this
-// repository for the full text, or https://www.gnu.org/licenses/.
+// Persistent TCP client for hamlib's rotctld. Holds a single socket,
+// sends commands, polls position at RotctldConfig.PollingIntervalMs,
+// and reconnects with 5-second backoff on failure.
 //
-// Zeus is an independent reimplementation in .NET — not a fork. Its
-// Protocol-1 / Protocol-2 framing, WDSP integration, meter pipelines, and
-// TX behaviour were informed by studying the Thetis project
-// (https://github.com/ramdor/Thetis), the authoritative reference
-// implementation in the OpenHPSDR ecosystem. Zeus gratefully acknowledges
-// the Thetis contributors whose work made this possible:
-//
-//   Richard Samphire (MW0LGE), Warren Pratt (NR0V),
-//   Laurence Barker (G8NJJ),   Rick Koch (N1GP),
-//   Bryan Rambo (W4WMT),       Chris Codella (W2PA),
-//   Doug Wigley (W5WC),        FlexRadio Systems,
-//   Richard Allen (W5SD),      Joe Torrey (WD5Y),
-//   Andrew Mansfield (M0YGG),  Reid Campbell (MI0BOT),
-//   Sigi Jetzlsperger (DH1KLM).
-//
-// Thetis itself continues the GPL-governed lineage of FlexRadio PowerSDR
-// and the OpenHPSDR (TAPR/OpenHPSDR) ecosystem; that lineage is preserved
-// here. See ATTRIBUTIONS.md at the repository root for the full provenance
-// statement and per-component attribution.
-//
-// Protocol-2 / PureSignal / Saturn-class behaviour was additionally informed
-// by pihpsdr (https://github.com/dl1ycf/pihpsdr), maintained by Christoph
-// Wüllen (DL1YCF); and by DeskHPSDR
-// (https://github.com/dl1bz/deskhpsdr), maintained by Heiko (DL1BZ).
-// Both are GPL-2.0-or-later.
-//
-// WDSP — loaded by Zeus via P/Invoke — is Copyright (C) Warren Pratt
-// (NR0V), distributed under GPL v2 or later.
-//
-// Zeus is distributed WITHOUT ANY WARRANTY; see the GNU General Public
-// License for details.
+// Lifted from the in-tree Zeus.Server.Hosting/RotctldService.cs verbatim
+// — the only changes are: (1) base class is gone (the plugin owns the
+// loop via StartAsync/StopAsync), (2) namespace moved into the plugin.
 
 using System.Globalization;
 using System.Net.Sockets;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Zeus.Contracts;
 
-namespace Zeus.Server;
+namespace OpenHpsdr.Zeus.Plugins.Rotator;
 
-/// <summary>
-/// Persistent TCP client for hamlib's rotctld. Holds a single socket,
-/// sends commands, polls position at <see cref="RotctldConfig.PollingIntervalMs"/>,
-/// and reconnects with 5-second backoff on failure. Shape mirrors Log4YM's
-/// RotatorService but keeps state in-memory (single-operator).
-/// </summary>
-public sealed class RotctldService : BackgroundService
+internal sealed class RotctldClient : IAsyncDisposable
 {
     private const int MovingEpsilonDeg = 1;
     private static readonly TimeSpan ReconnectBackoff = TimeSpan.FromSeconds(5);
 
-    private readonly ILogger<RotctldService> _log;
+    private readonly ILogger _log;
     private readonly SemaphoreSlim _io = new(1, 1);
 
-    // Serialised by _io for connection state, lock-free volatile reads for status snapshot.
     private TcpClient? _client;
     private StreamReader? _reader;
     private StreamWriter? _writer;
@@ -72,18 +35,36 @@ public sealed class RotctldService : BackgroundService
     private volatile bool _connected;
     private volatile string? _lastError;
 
-    // Position/target fields need atomic writes. double? via object lock.
     private readonly object _state = new();
     private double? _currentAz;
     private double? _targetAz;
     private DateTime _lastCommandUtc;
 
-    // Signal the loop to reconnect after a config change.
     private readonly SemaphoreSlim _configChanged = new(0, 1);
 
-    public RotctldService(ILogger<RotctldService> log)
+    private CancellationTokenSource? _loopCts;
+    private Task? _loopTask;
+
+    public RotctldClient(ILogger log)
     {
         _log = log;
+    }
+
+    public Task StartAsync(CancellationToken ct)
+    {
+        _loopCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _loopTask = Task.Run(() => RunLoop(_loopCts.Token));
+        return Task.CompletedTask;
+    }
+
+    public async Task StopAsync(CancellationToken ct)
+    {
+        try { _loopCts?.Cancel(); } catch { /* ignore */ }
+        if (_loopTask is not null)
+        {
+            try { await _loopTask.WaitAsync(ct); } catch { /* ignore */ }
+        }
+        DisconnectLocked();
     }
 
     public RotctldStatus GetStatus()
@@ -116,7 +97,6 @@ public sealed class RotctldService : BackgroundService
             DisconnectLocked();
             lock (_state) { _currentAz = null; _targetAz = null; }
             _lastError = null;
-            // Kick the loop so it picks up the new config immediately.
             if (_configChanged.CurrentCount == 0) _configChanged.Release();
         }
         finally
@@ -144,7 +124,6 @@ public sealed class RotctldService : BackgroundService
                 await _writer.FlushAsync(ct);
                 var reply = await _reader.ReadLineAsync(ct);
                 if (reply == null) throw new IOException("rotctld closed connection");
-                // rotctld answers "RPRT 0" on success, "RPRT -<n>" otherwise.
                 if (!reply.StartsWith("RPRT 0", StringComparison.Ordinal))
                 {
                     _lastError = $"rotctld P command: {reply}";
@@ -194,7 +173,6 @@ public sealed class RotctldService : BackgroundService
         return GetStatus();
     }
 
-    /// <summary>One-shot probe against an arbitrary host:port without disturbing the running connection.</summary>
     public async Task<RotctldTestResult> TestAsync(string host, int port, CancellationToken ct)
     {
         try
@@ -211,7 +189,6 @@ public sealed class RotctldService : BackgroundService
             readCts.CancelAfter(TimeSpan.FromSeconds(2));
             var az = await sr.ReadLineAsync(readCts.Token);
             if (az == null) return new RotctldTestResult(false, "rotctld closed connection before reply");
-            // Accept either numeric az line or "RPRT -n" error — connection proves rotctld is there.
             return new RotctldTestResult(true, null);
         }
         catch (Exception ex)
@@ -220,14 +197,13 @@ public sealed class RotctldService : BackgroundService
         }
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    private async Task RunLoop(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
         {
             var cfg = _config;
             if (!cfg.Enabled)
             {
-                // Wait for enable or cancellation.
                 try { await _configChanged.WaitAsync(stoppingToken); } catch (OperationCanceledException) { return; }
                 continue;
             }
@@ -246,7 +222,6 @@ public sealed class RotctldService : BackgroundService
 
                 if (!_connected)
                 {
-                    // Back off; wake early on config change.
                     var delayTask = Task.Delay(ReconnectBackoff, stoppingToken);
                     var configTask = _configChanged.WaitAsync(stoppingToken);
                     await Task.WhenAny(delayTask, configTask);
@@ -254,7 +229,6 @@ public sealed class RotctldService : BackgroundService
                 }
             }
 
-            // Poll a position sample.
             await _io.WaitAsync(stoppingToken);
             try
             {
@@ -330,15 +304,19 @@ public sealed class RotctldService : BackgroundService
         _client = null;
     }
 
-    public override void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        try { _loopCts?.Cancel(); } catch { /* ignore */ }
+        if (_loopTask is not null)
+        {
+            try { await _loopTask; } catch { /* ignore */ }
+        }
         DisposeConnectionLocked();
         _io.Dispose();
         _configChanged.Dispose();
-        base.Dispose();
+        _loopCts?.Dispose();
     }
 
-    // Shortest signed delta in degrees across the 0/360 wrap.
     private static double NormDelta(double d)
     {
         d = ((d % 360) + 360) % 360;

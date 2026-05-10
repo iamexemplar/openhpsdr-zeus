@@ -10,7 +10,29 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zeus.Server.Hosting\Zeus.Server.Hosting.csproj" />
+    <!-- Ship the in-tree sample plugins next to the binary. Each entry is
+         built by msbuild but its assembly is NOT linked into Zeus.Server
+         (ReferenceOutputAssembly=false) — they get loaded dynamically by
+         PluginManager from the plugins/<Name>/ subdirectory dropped by
+         the CopyPluginsToOutput target below. -->
+    <ProjectReference Include="..\samples\plugins\Rotator\Rotator.csproj"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all"
+                      OutputItemType="ZeusPlugin" />
   </ItemGroup>
+
+  <!-- After Zeus.Server builds, mirror each referenced plugin's bin output
+       into $(OutputPath)plugins/<PluginName>/. PluginManager scans this
+       directory at boot. -->
+  <Target Name="CopyPluginsToOutput" AfterTargets="Build">
+    <ItemGroup>
+      <_RotatorPluginFiles Include="..\samples\plugins\Rotator\bin\$(Configuration)\$(TargetFramework)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RotatorPluginFiles)"
+          DestinationFolder="$(OutputPath)plugins\Rotator\%(RecursiveDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_RotatorPluginFiles)' != ''" />
+  </Target>
 
   <!-- Build the React frontend into Zeus.Server.Hosting/wwwroot so it flows to
        every downstream consumer (Zeus.Server publish output, Zeus.Desktop, etc).

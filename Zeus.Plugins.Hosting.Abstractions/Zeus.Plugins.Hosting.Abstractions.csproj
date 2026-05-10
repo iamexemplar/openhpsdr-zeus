@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- Plugins that contribute HTTP endpoints reference this opt-in
+       assembly. We pull in the ASP.NET Core shared framework via
+       FrameworkReference here so Zeus.Contracts can stay free of
+       AspNetCore deps (it's consumed by Zeus.Protocol1/2 which must
+       remain runnable in non-web hosts). -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zeus.Contracts\Zeus.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

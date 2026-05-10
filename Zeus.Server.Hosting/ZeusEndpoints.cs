@@ -7,10 +7,12 @@
 
 using System.Net;
 using Zeus.Contracts;
+using Zeus.Contracts.Plugins;
 using Zeus.Dsp;
 using Zeus.Dsp.Wdsp;
 using Zeus.Protocol1;
 using Zeus.Protocol1.Discovery;
+using Zeus.Server.Plugins;
 using Zeus.Server.Tci;
 
 namespace Zeus.Server;
@@ -39,6 +41,26 @@ public static class ZeusEndpoints
         // features (e.g. TX Audio Tools when vstHost.available=false).
         app.MapGet("/api/capabilities",
             (CapabilitiesService caps) => Results.Ok(caps.Snapshot()));
+
+        // Plugins inventory — one row per plugin discovered at boot,
+        // including failures so the operator can see why a misbehaving
+        // plugin didn't load. The Plugins settings page will surface
+        // this list and the per-plugin LoadError column.
+        app.MapGet("/api/plugins", (PluginManager pm) =>
+        {
+            var rows = pm.Plugins.Select(p => new PluginInfo(
+                Id: p.Manifest.Id,
+                Name: p.Manifest.Name,
+                Version: p.Manifest.Version,
+                Author: p.Manifest.Author,
+                Description: p.Manifest.Description,
+                HomepageUrl: p.Manifest.HomepageUrl,
+                Capabilities: p.Manifest.Capabilities,
+                Status: p.LoadError is null ? "loaded" : "failed",
+                LoadError: p.LoadError,
+                LoadedAt: p.LoadedAt)).ToArray();
+            return Results.Ok(rows);
+        });
 
         app.MapGet("/api/state", (RadioService r) => r.Snapshot());
 
@@ -1033,36 +1055,9 @@ public static class ZeusEndpoints
                 Results: results));
         });
 
-        app.MapGet("/api/rotator/status", (RotctldService rot) => rot.GetStatus());
-
-        app.MapPost("/api/rotator/config", async (RotctldConfig req, RotctldService rot, HttpContext ctx) =>
-        {
-            log.LogInformation("api.rotator.config enabled={En} host={Host} port={Port}", req.Enabled, req.Host, req.Port);
-            var status = await rot.SetConfigAsync(req, ctx.RequestAborted);
-            return Results.Ok(status);
-        });
-
-        app.MapPost("/api/rotator/set", async (RotctldSetAzRequest req, RotctldService rot, HttpContext ctx) =>
-        {
-            if (!double.IsFinite(req.Azimuth)) return Results.BadRequest(new { error = "azimuth must be finite" });
-            var status = await rot.SetAzAsync(req.Azimuth, ctx.RequestAborted);
-            if (!status.Connected) return Results.Json(status, statusCode: StatusCodes.Status503ServiceUnavailable);
-            return Results.Ok(status);
-        });
-
-        app.MapPost("/api/rotator/stop", async (RotctldService rot, HttpContext ctx) =>
-        {
-            var status = await rot.StopRotatorAsync(ctx.RequestAborted);
-            return Results.Ok(status);
-        });
-
-        app.MapPost("/api/rotator/test", async (RotctldTestRequest req, RotctldService rot, HttpContext ctx) =>
-        {
-            if (string.IsNullOrWhiteSpace(req.Host) || req.Port is <= 0 or >= 65536)
-                return Results.BadRequest(new { error = "host and port required" });
-            var result = await rot.TestAsync(req.Host.Trim(), req.Port, ctx.RequestAborted);
-            return Results.Ok(result);
-        });
+        // /api/rotator/* is owned by the Rotator plugin
+        // (samples/plugins/Rotator). Routes are registered via
+        // IPluginHttpEndpoints during plugin initialization.
 
         // ----------------------------------------------------------------
         //  RF2K-S amplifier (network device, REST + RFB click injection)

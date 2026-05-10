@@ -19,18 +19,20 @@ namespace Zeus.Server.Plugins;
 
 /// <summary>
 /// Default in-process implementation of <see cref="IPluginContext"/>.
-/// PR-A skeleton wires only PluginId and a scoped logger; later phases
-/// will add Radio / Settings / Network / FileSystem subsystems gated on
-/// the manifest's capabilities.
+/// PR-B wires PluginId, a scoped logger, and the resolved capability
+/// grants from the manifest. Later phases will add Radio / Settings /
+/// Network / FileSystem subsystems and per-capability accessors.
 /// </summary>
 internal sealed class PluginContext : IPluginContext
 {
     public string PluginId { get; }
     public ILogger Logger { get; }
+    public PluginCapabilities Capabilities { get; }
 
-    public PluginContext(string pluginId, ILogger logger)
+    public PluginContext(string pluginId, ILogger logger, PluginCapabilities capabilities)
     {
         PluginId = pluginId;
         Logger = logger;
+        Capabilities = capabilities;
     }
 }

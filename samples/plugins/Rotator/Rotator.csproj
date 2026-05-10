@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OpenHpsdr.Zeus.Plugins.Rotator</RootNamespace>
+    <AssemblyName>Rotator</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <!-- Self-contained outputs: ship every dependency next to the
+         plugin assembly so the AssemblyLoadContext can resolve them
+         from the plugin directory without leaning on the host's
+         deps.json / runtimeconfig. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Zeus.Contracts\Zeus.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Zeus.Plugins.Hosting.Abstractions\Zeus.Plugins.Hosting.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin.json" CopyToOutputDirectory="Always" />
+    <None Include="README.md" />
+  </ItemGroup>
+
+</Project>

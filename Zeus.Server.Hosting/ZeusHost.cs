@@ -197,12 +197,6 @@ public static class ZeusHost
         builder.Services.AddSingleton<BandPlanService>();
         builder.Services.AddSingleton<IBandPlanService>(sp => sp.GetRequiredService<BandPlanService>());
 
-        // rotctld (hamlib rotator daemon) client. BackgroundService with persistent
-        // TCP and reconnect-on-failure. Singleton so config/state survive across
-        // requests; hosted-service registration runs ExecuteAsync.
-        builder.Services.AddSingleton<RotctldService>();
-        builder.Services.AddHostedService(sp => sp.GetRequiredService<RotctldService>());
-
         // RF2K-S amplifier client. BackgroundService that polls the amp's
         // REST API on TCP/8080 and exposes Tune/Bypass via Rf2kVncClient
         // (RFB click injection on TCP/5900, the only firmware path that
@@ -337,6 +331,20 @@ public static class ZeusHost
             var bandPlan = app.Services.GetRequiredService<BandPlanService>();
             var hub = app.Services.GetRequiredService<StreamingHub>();
             bandPlan.PlanChanged += () => hub.BroadcastBandPlanChanged(bandPlan.CurrentRegion.Id);
+        }
+
+        // Plugin foundation: load plugins and let any that implement
+        // IPluginHttpEndpoints register routes alongside core Zeus endpoints.
+        // We load synchronously here (rather than waiting for the hosted-service
+        // StartAsync) because the route table is frozen once app.RunAsync starts
+        // — plugins must be ready *before* MapZeusEndpoints if their HTTP
+        // surface is going to be addressable. PluginManager.StartAsync becomes
+        // a no-op once LoadAsync has run, so the IHostedService registration
+        // still owns shutdown.
+        {
+            var pluginManager = app.Services.GetRequiredService<PluginManager>();
+            pluginManager.LoadAsync(CancellationToken.None).GetAwaiter().GetResult();
+            pluginManager.MapEndpoints(app);
         }
 
         app.MapZeusEndpoints();

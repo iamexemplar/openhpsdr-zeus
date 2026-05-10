@@ -23,9 +23,11 @@ namespace Zeus.Contracts.Plugins;
 /// presence/absence of subsystems on this interface to enforce the
 /// capability flags declared in the manifest.
 ///
-/// PR-A skeleton: only PluginId + Logger are wired. Subsystems (radio
-/// state, scoped settings, network, filesystem) land in PR-B and PR-C
-/// alongside capability enforcement and the per-plugin settings store.
+/// PR-B: PluginId, Logger, and Capabilities are wired. The granted flags
+/// reflect the manifest's <c>capabilities</c> array — plugins should check
+/// before doing privileged work (network sockets, file IO, child
+/// processes). Strongly-typed subsystem accessors (network, filesystem,
+/// radio control) and per-plugin settings storage land in later phases.
 /// </summary>
 public interface IPluginContext
 {
@@ -38,4 +40,13 @@ public interface IPluginContext
     /// per-plugin diagnostics page in the future.
     /// </summary>
     ILogger Logger { get; }
+
+    /// <summary>
+    /// Capabilities the host has granted to this plugin. The host has
+    /// already verified that the assembly's declared
+    /// <see cref="PluginMetadata.Capabilities"/> is a subset of the
+    /// manifest grants — a plugin reading this value sees what was
+    /// actually approved, not what it asked for.
+    /// </summary>
+    PluginCapabilities Capabilities { get; }
 }
