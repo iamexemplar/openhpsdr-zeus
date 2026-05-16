@@ -223,7 +223,7 @@ public class MicGainEndpointTests : IClassFixture<MicGainEndpointTests.Factory>
         RadioService radio,
         StreamingHub hub,
         ILoggerFactory logs,
-        StubEngine engine) : DspPipelineService(radio, hub, logs)
+        StubEngine engine) : DspPipelineService(radio, hub, Array.Empty<IRxAudioSink>(), logs)
     {
         public override IDspEngine CurrentEngine => engine;
     }

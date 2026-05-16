@@ -73,7 +73,7 @@ public class TxTimeoutTests : IDisposable
         var paStore = new PaSettingsStore(NullLogger<PaSettingsStore>.Instance, _dbPath + ".pa");
         var radio = new RadioService(loggerFactory, dspStore, paStore);
         var hub = new StreamingHub(new NullLogger<StreamingHub>());
-        var pipeline = new DspPipelineService(radio, hub, loggerFactory);
+        var pipeline = new DspPipelineService(radio, hub, Array.Empty<IRxAudioSink>(), loggerFactory);
         tx = new TxService(radio, pipeline, hub, NullBandPlanService.Instance, new NullLogger<TxService>());
         return new TxMetersService(hub, radio, tx, pipeline, new NullLogger<TxMetersService>());
     }

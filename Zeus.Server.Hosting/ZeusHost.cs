@@ -155,6 +155,12 @@ public static class ZeusHost
             sp.GetRequiredService<Zeus.Protocol1.TxIqRing>());
         builder.Services.AddSingleton<RadioService>();
         builder.Services.AddSingleton<StreamingHub>();
+        // RX audio publish seam (Phase 1). DspPipelineService.PublishAudio
+        // fans each AudioFrame across every registered IRxAudioSink. The
+        // default WebSocketAudioSink reproduces the pre-seam direct hub
+        // broadcast; desktop mode registers NativeAudioSink in its place
+        // (Phase 2b) so the audio bypasses the WS path entirely.
+        builder.Services.AddSingleton<IRxAudioSink, WebSocketAudioSink>();
         // WDSPwisdom bootstrap: run FFTW plan caching on a worker at app start so the
         // first /api/connect isn't blocked for ~2 min while WDSP plans FFTs 64..262144.
         // Clients are told to keep Connect disabled until phase=Ready.

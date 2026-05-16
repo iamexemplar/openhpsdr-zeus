@@ -66,6 +66,7 @@ public class DspPipelineService : BackgroundService,
 
     private readonly RadioService _radio;
     private readonly StreamingHub _hub;
+    private readonly IRxAudioSink[] _audioSinks;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<DspPipelineService> _log;
 
@@ -263,12 +264,25 @@ public class DspPipelineService : BackgroundService,
     private long _calPanSnapshotMs;
     private readonly object _calPanLock = new();
 
-    public DspPipelineService(RadioService radio, StreamingHub hub, ILoggerFactory loggerFactory)
+    public DspPipelineService(
+        RadioService radio,
+        StreamingHub hub,
+        IEnumerable<IRxAudioSink> audioSinks,
+        ILoggerFactory loggerFactory)
     {
         _radio = radio;
         _hub = hub;
+        // Materialise once at construction so the per-tick fan-out is an
+        // array-index loop (no enumerator allocation, no LINQ on the hot path).
+        _audioSinks = audioSinks.ToArray();
         _loggerFactory = loggerFactory;
         _log = loggerFactory.CreateLogger<DspPipelineService>();
+    }
+
+    private void PublishAudio(in AudioFrame frame)
+    {
+        for (int i = 0; i < _audioSinks.Length; i++)
+            _audioSinks[i].Publish(in frame);
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
@@ -1558,7 +1572,7 @@ public class DspPipelineService : BackgroundService,
                     SampleRateHz: (uint)AudioOutputRateHz,
                     SampleCount: (ushort)audioSampleCount,
                     Samples: new ReadOnlyMemory<float>(audioBuf, 0, audioSampleCount));
-                _hub.Broadcast(audioFrame);
+                PublishAudio(in audioFrame);
                 RxAudioAvailable?.Invoke(0, AudioOutputRateHz, new ReadOnlyMemory<float>(audioBuf, 0, audioSampleCount));
             }
         }
@@ -1581,7 +1595,7 @@ public class DspPipelineService : BackgroundService,
                     SampleRateHz: (uint)AudioOutputRateHz,
                     SampleCount: (ushort)monCount,
                     Samples: new ReadOnlyMemory<float>(audioBuf, 0, monCount));
-                _hub.Broadcast(monFrame);
+                PublishAudio(in monFrame);
             }
         }
 

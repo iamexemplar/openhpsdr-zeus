@@ -54,7 +54,7 @@ public class TwoToneLatchTests : IDisposable
         var paStore = new PaSettingsStore(NullLogger<PaSettingsStore>.Instance, _dbPath + ".pa");
         var radio = new RadioService(loggerFactory, dspStore, paStore);
         var hub = new StreamingHub(new NullLogger<StreamingHub>());
-        var pipeline = new DspPipelineService(radio, hub, loggerFactory);
+        var pipeline = new DspPipelineService(radio, hub, Array.Empty<IRxAudioSink>(), loggerFactory);
         return new TxService(radio, pipeline, hub, NullBandPlanService.Instance, new NullLogger<TxService>());
     }
 
@@ -112,7 +112,7 @@ public class TwoToneLatchTests : IDisposable
         // ConnectP2Async; here we shortcut.
         radio.MarkProtocol2Connected("127.0.0.1:1024", 48_000);
         var hub = new StreamingHub(new NullLogger<StreamingHub>());
-        var pipeline = new DspPipelineService(radio, hub, loggerFactory);
+        var pipeline = new DspPipelineService(radio, hub, Array.Empty<IRxAudioSink>(), loggerFactory);
         return (radio, new TxService(radio, pipeline, hub, NullBandPlanService.Instance, new NullLogger<TxService>()));
     }
 

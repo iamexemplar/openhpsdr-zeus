@@ -154,7 +154,7 @@ public class LevelerMaxGainEndpointTests : IClassFixture<LevelerMaxGainEndpointT
             RadioService radio,
             StreamingHub hub,
             ILoggerFactory logs,
-            MicGainEndpointTests.StubEngine engine) : DspPipelineService(radio, hub, logs)
+            MicGainEndpointTests.StubEngine engine) : DspPipelineService(radio, hub, Array.Empty<IRxAudioSink>(), logs)
         {
             public override IDspEngine CurrentEngine => engine;
         }
