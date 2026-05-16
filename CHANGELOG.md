@@ -110,7 +110,7 @@ thanks for the careful, well-tested patches.
 
 ### A teaser for what's next
 
-If you've been asking for **a real in-process voice audio chain** — gate, EQ, compressor, leveler, de-esser, all wired into the TX path before WDSP — that's the headline feature in flight for the **next release**. RFC is up at #332, and the work extends the existing `feature/plugins-foundation` foundation Brian has been landing. The goal is the AetherSDR-style operator experience: drop a chain on TX in-app, no external Loopback / VST host, every block deterministic and CPU-cheap enough to run alongside PureSignal. Watch #332 for the v1 block cut sign-off.
+Big things coming in the next release — including one many of you have been asking about for a while. Stay tuned.
 
 ---
 
