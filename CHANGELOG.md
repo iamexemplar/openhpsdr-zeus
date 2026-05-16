@@ -10,6 +10,110 @@ see the corresponding GitHub Release page.
 
 ---
 
+## [0.7.4] — 2026-05-16
+
+A correctness, capability, and polish release. **Hermes-class Protocol-1 boards
+(ANAN-10, ANAN-10E, ANAN-100B/D, ANAN-200D, OrionMkII family, Brick2) transmit
+correctly for the first time on Zeus** — two compounding bugs that capped them
+at a fraction of rated power are fixed, so PR #324 and PR #338 together make
+non-HL2 P1 a first-class radio. **WSJT-X over TCI now keys cleanly on every
+ExpertSDR2-convention digital client** (MSHV, JTDX-TCI, etc.) and FT8 phase
+continuity is rock-solid thanks to demand-driven, real-time TX_CHRONO pacing.
+**One-button WWV auto-cal** lands the operator's dial inside a few Hertz of
+truth without typing a number, on every board. **HL2 PureSignal stops
+breaking up** out-of-the-box — the auto-attenuate dance now has hysteresis, a
+cooldown, MOX-drop recovery, and a stall warning instead of oscillating in
+silence. Plus: a new **Rotator Compass** map panel with one-click short-path /
+long-path slew from the QRZ Lookup card, an opt-in **brushed-silver light
+theme** with an operator-tweakable colour palette, and a **30m WARC band-plan
+fix** so digital modes (FT8, RTTY) key correctly on Hermes-Lite 2.
+
+### 👋 Welcome new contributor
+
+**Ramon Martinez (rampa069)** lands his first two PRs in this release — and
+they're substantial. PR #319 rewrote our TCI server's TX_CHRONO pacing into a
+real-time, demand-driven loop and fixed three on-the-wire issues that kept
+ExpertSDR2-convention digital clients (MSHV, JTDX-TCI) from keying through
+Zeus. PR #339 fixed a long-standing 30m WARC band-plan bug where segments
+labelled "CW/Digital" were silently rejecting digital-mode TX, and shipped a
+new `ModeRestriction.CwAndDigital` wire value plus 13 segment corrections
+across IARU R1 / R2 / R3 and US FCC region files. Welcome aboard, Ramon — and
+thanks for the careful, well-tested patches.
+
+### Fixed
+
+- **Hermes-class Protocol-1 boards no longer treated as HL2 post-connect.** *(KB2UKA-Agent, PR #324, closes #294 on this release-merge — reported by @RonnieC82)*
+  - `Protocol1Client._boardKind` was never updated from its constructor default after the socket handshake, so any non-HL2 P1 radio (ANAN-10, ANAN-10E, ANAN-100B / 100D / 200D, OrionMkII, Brick2 over P1) used the HL2 drive profile downstream. Result: wrong PA-gain table, wrong drive quantization, RX worked but TX was capped at a tiny fraction of rated output.
+  - Fix: `RadioService.ConnectAsync` calls `client.SetBoardKind(discoveredKind)` after handshake (mirrors the Protocol-2 pattern), `/api/connect` plumbs `boardId` through, and the frontend P1 connect path passes the discovered board byte. Connect logs now show `board=Hermes` (or HermesII, etc.) instead of HermesLite2, and PA / drive profiles route to the correct table.
+  - Backwards-compatible: an older client that sends no `boardId` keeps the previous Unknown behaviour, so manual-connect flows still work.
+
+- **Hermes / HermesII / Metis: drive slider now sweeps full power.** *(Brian Keating / EI6LF, PR #338)*
+  - `PaMaxPowerWatts` was seeded at `10` on Hermes, HermesII, and Metis, but the `HermesGains` PA-gain bracket they share (38.8 dB on 10 m) was calibrated against a **100 W target** in Thetis. Zeus's drive slider is "percent of `MaxPowerWatts`", so at 100 % it only ever asked the DAC for ~32 % of full amplitude. A 10 W Brick2 made roughly **1 W at max TUN**.
+  - Fix: bump `MaxPowerWatts` to `100` for those three boards so byte=255 is reachable at slider=100. Physical 10 W radios self-clamp to their rated max as in Thetis. Operators on Hermes-class radios will feel this immediately — the slider is no longer secretly running at one-tenth amplitude. New `docs/lessons/hermes-pa-maxwatts.md` explains the math so future board seeding doesn't repeat the mistake. HL2, ANAN-100/100B/100D/200D, G2 / G2-1K / 8000DLE, and ANAN-G2E are unaffected (already correct).
+  - Together with PR #324, this is what makes ANAN-10E and other Hermes-class P1 boards a first-class Zeus radio. `RonnieC82` bench-verified earlier in the cycle.
+
+- **HL2 PureSignal stops breaking up out-of-the-box.** *(Brian Keating / EI6LF + KB2UKA, PR #341)*
+  - Two compounding bugs in HL2 PS calibration. (1) The shipped `hw_peak` default (`0.233`, blanket-inherited from mi0bot) was too high for typical drive — the bench-measured DDC3(tx) envelope at standard 2-tone is ≈ 0.190, so the calcc bin never filled, COLLECT never advanced, and PS sat silently armed-but-dead. (2) Once `hw_peak` was corrected, the legacy `128 / 181` dead-band combined with a full `ddB` attenuation step caused the auto-attenuate dance to oscillate forever, disabling PS every ~300 ms via `SetPsControl(reset=1)` — heard on-air as a once-per-second IMD3 bloom.
+  - Fixes (every deviation from mi0bot annotated in-code with the bench measurement that justified it):
+    - `hw_peak` default `0.233 → 0.2500` on HL2 (P1 and P2 paths).
+    - Dance dead-band `128 / 181 → 110 / 195` (P1 and P2) so a single ±2 dB correction lands in-window.
+    - 3-second per-dance cooldown.
+    - MOX-drop-mid-dance recovery: if MOX drops while the state machine is in `SetNewValues` / `RestoreOperation`, re-arm PS instead of leaving it in `reset=1`.
+    - Stall warning: PS armed + keyed for >5 s with `CalibrationAttempts == 0` surfaces `PsCalibrationStalled` on the state DTO and shows a banner in the PURESIGNAL panel pointing the operator at HW Peak.
+  - **Operator-calibrated `HwPeak` now persists per board across restarts.** *(KB2UKA, in PR #341)* — `PsSettingsEntry.HwPeakByBoard` maps each connected board kind to its tuned value, so an HL2 + ANAN-G2 + RF2K-S chain that needed `0.655` doesn't have to be re-dialled every backend restart. Older rows without the map fall back to the resolver default.
+  - The `correcting` pill no longer latches on stale `info[14]` after MOX drop (PR #341 also folds in a small gate refactor for that).
+
+- **TCI TX meters and SWR now update during WSJT-X / JTDX transmissions.** *(KB2UKA-Agent, PR #343, fixes #342)*
+  - `ImmersiveMetersPanel` gates forward-power and SWR display on `useTxStore.moxOn || tunOn`. When a TCI client keyed via `TciSession → TxService.TrySetMox`, the backend flipped to TX and `TxMetersV2Frame` payloads were correct — but no MOX state push went to connected WebSocket clients, so `moxOn` stayed `false` and the meter panel rendered `—` / `1.00` for the whole QSO. (SWR trip protection was unaffected; it rides `AlertFrame`.)
+  - Fix: new `MoxStateFrame` (`0x1C`) broadcast from every MOX / TUN edge in `TxService` — `TrySetMox`, `TrySetTun`, two-tone arm/disarm, and `TryTripForAlert`. Frontend's existing `setMoxOn` / `setTunOn` store actions enforce the MOX/TUN mutual exclusion. WSJT-X-via-TCI now drives the panel correctly.
+
+- **WSJT-X / MSHV / JTDX-TCI now key cleanly on every digital client.** *(Ramon Martinez / rampa069, PR #319)*
+  - Five fixes in the TCI server, several of which were independently load-bearing:
+    - **Demand-driven, real-time TX_CHRONO pacing.** The server now sends TX_CHRONO sync frames only when MOX is on and the TCI session is the TRX source, paced by stopwatch-tick spacing instead of integer-ms intervals. Each fire advances by a fixed sample increment instead of `nowTicks` — load-bearing because resetting to wall-clock would let OS-timer drift accumulate and overflow `TxAudioIngest._accumulator` every ~1.8 s, breaking FT8 phase continuity.
+    - **`tx_enable` inbound echo.** ExpertSDR2-convention clients (MSHV 2.76, JTDX-TCI) send `tx_enable:<rx>,true;` after handshake and wait for the server to echo it back before issuing `trx:0,true;`. Zeus was silently dropping the inbound request — MOX / Tune on those clients were no-ops while RX worked fine. New `HandleTxEnable` mirrors the existing `HandleTune` shape.
+    - **`BuildTxChrono` length contract.** Updated from `0` to `4096` (2048 samples × 2 channels) to match the modern Thetis length semantics from SunSDR TCI Protocol v2.0 §3.4.
+    - **WSJT-X oversized buffer decode.** WSJT-X allocates `length * 2` floats but only writes `length`; we now cap `floatCount` at the declared length so the trailing zero pad doesn't corrupt the audio path.
+    - **QRP-accurate `tx_power` / `tx_forward_power` / `tx_sensors`.** Format upgraded from `int` to `F1` (0.1 W decimal) so WSJT-X-style clients that parse `split(".")[1]` for the fractional part show accurate low-power readouts.
+  - Plus an Apple-Silicon-relevant memory barrier in `TxAudioIngest._onWdspConsumed` (`Interlocked.Exchange` / `Volatile.Read` for the cross-thread handoff between the TCI timer thread and the WDSP worker — x86 TSO hid the bug; Pi-class ARM does not), and post-call truth in TCI MOX / TUN echoes so a mid-disconnect or no-op set never leaves the client with a desynchronised view.
+
+- **30m WARC: digital modes (FT8, RTTY) now key correctly on bands labelled "CW/Digital".** *(Ramon Martinez / rampa069, PR #339, closes #337 on this release-merge — reported on Hermes-Lite 2)*
+  - The shipped band-plan JSON marked 30m WARC and several US FCC sub-bands as `CwOnly`, even though the labels said "CW/Digital". Result: an operator on HL2 trying to FT8 at 10.130 MHz had MOX silently denied with no on-screen indication.
+  - Fix: new wire value `ModeRestriction.CwAndDigital = 4` (existing values keep their byte positions, signed off by @Kb2uka in the issue). `BandPlanService.ModeMatchesRestriction` accepts CW + DIG, rejects phone (USB / LSB / AM / SAM / DSB / FM). `TxService.CheckBandGuard` now also broadcasts `AlertFrame(AlertKind.OutOfBand, …)` when blocking, so out-of-band attempts surface in the same banner UX as SWR trips. Frontend `BandPlanEditor` dropdown gains the fifth option; client-side `modeMatchesRestriction()` mirrors the server. Shipped JSON updated across 13 segments in IARU R1 / R2 / R3, US FCC Extra, and US FCC General. 17 new unit tests pin the matrix.
+
+- **RF2K-S amp panel no longer flaps green-red on transient poll blips.** *(KB2UKA, PR #335)*
+  - `Rf2kService.PollOnceAsync` was flipping `Connected = false` on **any** single failed HTTP fetch across its 8 sequential endpoints (`/info`, `/data`, `/power`, `/tuner`, `/operate-mode`, `/operational-interface`, `/antennas`, `/antennas/active`). A 3 s timeout on any one of them, a transient RST, or a momentary 5xx from the amp's embedded web server produced a panel-visible flap every 5 s — even though the next poll cycle reconnected cleanly.
+  - Fix: tolerate up to 3 consecutive failed polls before flipping the Connected light; snapshot fields are kept during the tolerance window so the UI shows last-known values rather than blanking on each blip. Every poll failure is now logged at warning level (previously it was silently stashed into `_error`), so operators can see *which* endpoint is flaking. Worst-case latency before a real disconnect is reported is ~3 × `PollingIntervalMs` (≈ 3 s) — well under operator-noticeable. Live-bench verified on the maintainer's amp.
+
+### Added
+
+- **Per-radio frequency calibration with one-button WWV auto-cal.** *(KB2UKA, PR #334, closes #325 on this release-merge)*
+  - Adds a dimensionless multiplicative `FrequencyCorrectionFactor` near 1.0, applied host-side at the Protocol-1 and Protocol-2 `SetVfoAHz` seams, persisted per radio in `PreferredRadioStore`. Modelled on Thetis / piHPSDR / deskHPSDR — applied to the wire **without touching any clock or sample-rate register**. Clamped to ±100 ppm, NaN / Infinity rejected. Older rows hydrate as `1.0` so upgrading operators see no shift.
+  - **One-button auto-cal** modelled on Thetis's WWV procedure (`console.cs:9779-9854`): click `Calibrate` in Settings → CALIBRATION; backend snapshots operator state, tunes to WWV 10 MHz USB at zoom 16, settles 1.5 s, captures the panadapter, finds the spectral peak, computes `factor = 1 + offsetHz / 10e6`, persists it, re-tunes so the new factor lands on the wire immediately, then restores operator state in `finally`. Sanity bounds on peak strength (−90 dBFS noise floor) and offset (±1 kHz at 10 MHz). Operator types nothing.
+  - **Per-board scope**: applies to every Protocol-1 board (Radioberry / Hermes / ANAN-10 / 10E / 100B / 100D / 200D / OrionMkII / HermesC10 / HL2 / Metis) and every Protocol-2 board through the same shared apply site. Zero per-board branching.
+  - New endpoints `GET / POST /api/radio/frequency-calibration{,/calibrate,/reset}`. No Zeus.Contracts DTO change. 23 new tests, all green.
+  - Out of scope for v0.7.4 (called out in #325): automatic reference-frequency selection (5 / 10 / 15 / 20 MHz WWV/WWVH), external 10 MHz reference, per-band cal tables, XVTR offsets.
+
+- **Rotator Compass panel + one-click SP / LP slew from QRZ Lookup.** *(Brian Keating / EI6LF, PR #331)*
+  - New full-bleed Esri satellite Leaflet map (category: Tools) showing operator QRZ home + lookup target, great-circle arc, and the live beam-wedge overlay. Right-rail column carries a `DIST` badge, side-by-side `SP NNN°` / `LP NNN°` buttons, a numeric `HDG` input + `GO`, and `STOP`. A `NOW NNN° → tgt` chip at top-left tracks live rotator status. Right-click any marker for "Rotate to NNN°".
+  - **Inline `SP` / `LP` buttons in the QRZ Lookup footer** when `rotctld` is connected and both home + contact have lat/lon — one-click slew is reachable straight from the lookup card alongside Clear / Log QSO. Row collapses gracefully when rotctld is disabled.
+  - New shared brass-instrument-plate button family (`.rc-btn` + `--path` / `--go` / `--stop` / `--neutral`) — gold-on-black for primary rotate actions, white-on-black for supporting Clear / Log QSO, all on the same near-black plate as the panel header rail.
+
+- **Brushed-silver Light theme + operator-tweakable colour palette.** *(Brian Keating / EI6LF, PR #340)*
+  - Opt-in **Light** theme alongside the existing v3 Lifted Dark chrome (which is preserved byte-for-byte as the default). Chassis surfaces reskin to a silver palette taken verbatim from the Zeus Lifted Dark v4 reference; **display wells (panadapter, VFO, S-meter, gauges, LED meters) deliberately stay dark** in light mode so they still read as lit instruments embedded in a silver front panel — the classic transceiver look.
+  - **Operator-facing colour palette tweaker** in Settings → DISPLAY: native colour pickers for Accent / TX / Power / Amber / Cyan / OK · Green / Orange, with per-row Reset and a global Reset-all. Overrides persist in localStorage (`zeus.theme.overrides`) and apply across both themes; defaults match `tokens.css` verbatim so this surface is opt-in only.
+  - Seeds `data-theme` on `<html>` before React mounts, so a saved light preference paints immediately on reload with no flash of dark chrome.
+
+### Known issues
+
+- The maintainer's bench tests for PR #341 covered 2-tone source and rode every code path. Voice-source / HL2-variant-other-than-EI6LF's coverage is the v0.7.5 ask — if your HL2 dances or stalls differently, please file an issue with a 10–15 s `SetPsControl` log.
+- Frequency calibration's auto-cal hard-codes 10 MHz as the reference. Operators on the wrong side of the planet (no propagation to WWV / WWVH) currently get a `NoSignal` result and the persisted factor is left unchanged. Multi-reference + external 10 MHz support is queued for a future release per #325.
+
+### A teaser for what's next
+
+If you've been asking for **a real in-process voice audio chain** — gate, EQ, compressor, leveler, de-esser, all wired into the TX path before WDSP — that's the headline feature in flight for the **next release**. RFC is up at #332, and the work extends the existing `feature/plugins-foundation` foundation Brian has been landing. The goal is the AetherSDR-style operator experience: drop a chain on TX in-app, no external Loopback / VST host, every block deterministic and CPU-cheap enough to run alongside PureSignal. Watch #332 for the v1 block cut sign-off.
+
+---
+
 ## [0.7.3] — 2026-05-14
 
 A polish + correctness release. Major visible refresh of the **v3 Lifted Dark
