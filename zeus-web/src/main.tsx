@@ -68,6 +68,19 @@ import { installFetchInterceptor } from './serverUrl';
 // to a LAN address; on plain web this is a no-op (relative paths).
 installFetchInterceptor();
 
+// Seed the operator's chosen theme on <html> BEFORE React paints. The
+// ThemeApplier component reapplies on store changes; this just prevents
+// a flash of dark-chrome on first render when the operator's saved
+// preference is light. The store factory itself reads localStorage.
+try {
+  const saved = localStorage.getItem('zeus.theme');
+  if (saved === 'light' || saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', saved);
+  }
+} catch {
+  /* private mode — falls back to dark, the default. */
+}
+
 // PERF_PASS_3_DEBUG: window debug helpers for playwright-driven validation.
 (window as unknown as Record<string, unknown>).__zeusPerf3 = {
   txStore: useTxStore,

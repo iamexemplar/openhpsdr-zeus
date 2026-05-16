@@ -14,11 +14,13 @@
 // in issue #241 — layout switching now lives entirely in the LeftLayoutBar.
 
 import { BackgroundSettingsPanel } from './BackgroundSettingsPanel';
+import { ThemeSettingsPanel } from './ThemeSettingsPanel';
 import { TraceColorPanel } from './TraceColorPanel';
 
 export function DisplayPanel() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      <ThemeSettingsPanel />
       <BackgroundSettingsPanel />
       <TraceColorPanel />
     </div>

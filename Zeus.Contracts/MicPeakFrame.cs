@@ -57,7 +57,7 @@ namespace Zeus.Contracts;
 ///
 /// <para>Wire format (header-less, like RxMeterFrame / PaTempFrame):</para>
 /// <code>
-///   [0x1C] [peakDbfs:f32 LE] [tsUnixMs:i64 LE]
+///   [0x1D] [peakDbfs:f32 LE] [tsUnixMs:i64 LE]
 /// </code>
 /// <para>Total = 1 + 4 + 8 = 13 bytes. The timestamp is the server's
 /// best estimate of when the peak was sampled — not strictly required for

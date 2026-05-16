@@ -88,6 +88,12 @@ export function PsSettingsPanel() {
   const psCorrecting = useTxStore((s) => s.psCorrecting);
   const psCorrectionDb = useTxStore((s) => s.psCorrectionDb);
   const psMaxTxEnvelope = useTxStore((s) => s.psMaxTxEnvelope);
+  const psCalibrationStalled = useTxStore((s) => s.psCalibrationStalled);
+  // Used to gate the "correcting" indicator — WDSP's info[14] stays high
+  // across MOX-down once calcc has a curve loaded, so without this gate the
+  // panel claims "correcting" with no RF being emitted. twoToneOn is read
+  // a few lines below for the 2-tone control row.
+  const moxOn = useTxStore((s) => s.moxOn);
   const setPsAuto = useTxStore((s) => s.setPsAuto);
   const setPsSingle = useTxStore((s) => s.setPsSingle);
   const setPsPtol = useTxStore((s) => s.setPsPtol);
@@ -205,21 +211,31 @@ export function PsSettingsPanel() {
   const feedbackLen = feedbackPct * DIAL_C;
   const feedbackRound = Math.round(psFeedbackLevel);
 
-  // Dial state visualization. Converged → green ring + "ok" pill;
-  // active calibration → animated pulse; otherwise idle.
-  const isConverged = psCorrecting;
-  const isRunning = psEnabled && !isConverged && psCalState > 0;
-  const dialClass = isConverged ? 'is-converged' : '';
-  const pillClass = isConverged ? 'ok' : isRunning ? 'run' : '';
-  const pillText = isConverged
+  // Dial state visualization. WDSP info[14] (psCorrecting) reports "iqc
+  // curve loaded + engaged" — true even when MOX is off, because the curve
+  // persists between keying cycles. Split into two pill states so the
+  // operator sees the right thing:
+  //   - "correcting" only when actively transmitting (curve applied to live RF)
+  //   - "ready"      when curve is loaded but radio is idle
+  const keyed = moxOn || twoToneOn;
+  const isCorrecting = psCorrecting && keyed;
+  const isReady = psCorrecting && !keyed;
+  const isRunning = psEnabled && !psCorrecting && psCalState > 0;
+  const dialClass = isCorrecting || isReady ? 'is-converged' : '';
+  const pillClass = isCorrecting || isReady ? 'ok' : isRunning ? 'run' : '';
+  const pillText = isCorrecting
     ? 'CAL · correcting'
-    : isRunning
-      ? 'CAL · running'
-      : 'CAL · idle';
+    : isReady
+      ? 'CAL · ready'
+      : isRunning
+        ? 'CAL · running'
+        : 'CAL · idle';
 
-  const feedbackSubText = isConverged
+  const feedbackSubText = isCorrecting
     ? `${Math.round(feedbackPct * 100)} % · locked`
-    : `${Math.round(feedbackPct * 100)} % · ${calStateLabel.toLowerCase()}`;
+    : isReady
+      ? `${Math.round(feedbackPct * 100)} % · curve loaded`
+      : `${Math.round(feedbackPct * 100)} % · ${calStateLabel.toLowerCase()}`;
 
   // Elapsed timer. Mounts when the panel mounts; resets when the operator
   // clicks Run-now or Reset. Display is purely informational.
@@ -236,10 +252,13 @@ export function PsSettingsPanel() {
   // can see whether the inverse-model dB number is jittering or stable.
   const sparkRef = useRef<number[]>([]);
   useEffect(() => {
-    if (!psCorrecting) return;
+    // Only record while actively predistorting RF — info[14] persists across
+    // MOX cycles, so without the keyed gate the sparkline would fill with
+    // stale post-key samples.
+    if (!isCorrecting) return;
     sparkRef.current.push(psCorrectionDb);
     if (sparkRef.current.length > SPARK_LEN) sparkRef.current.shift();
-  }, [psCorrectionDb, psCorrecting]);
+  }, [psCorrectionDb, isCorrecting]);
 
   const sparkPoints = buildSparkline(sparkRef.current);
 
@@ -259,7 +278,7 @@ export function PsSettingsPanel() {
   // Signal-flow node states: TX is always "on" when psEnabled; remaining
   // nodes light up when calibration is actually running so the operator
   // sees the path go live during MOX.
-  const flowActive = psEnabled && (isRunning || isConverged);
+  const flowActive = psEnabled && (isRunning || isCorrecting || isReady);
 
   return (
     <div className="ps-shell">
@@ -417,8 +436,8 @@ export function PsSettingsPanel() {
               <div className="ps-peak-row">
                 <span className="ps-peak-nm">Correction</span>
                 <span className="ps-peak-val">
-                  {psCorrecting ? `+${psCorrectionDb.toFixed(2)}` : '—'}
-                  {psCorrecting ? <small>dB</small> : null}
+                  {isCorrecting ? `+${psCorrectionDb.toFixed(2)}` : '—'}
+                  {isCorrecting ? <small>dB</small> : null}
                 </span>
               </div>
               <div className="ps-spark">
@@ -568,6 +587,17 @@ export function PsSettingsPanel() {
             <span className="ps-card-hint">advanced — most users won't change</span>
           </h4>
 
+          {psCalibrationStalled ? (
+            <div
+              className="ps-stall-banner"
+              role="status"
+              aria-live="polite"
+              title="PureSignal has been keyed for more than 5 seconds without completing a calibration fit. This almost always means HW peak is set higher than the actual TX envelope peak — calcc bin 15 never fills."
+            >
+              ⚠ PS not converging — try lowering HW peak below your observed TX peak.
+            </div>
+          ) : null}
+
           <FieldRow
             label="HW peak"
             help="Override coupler ADC ceiling"
@@ -664,10 +694,12 @@ export function PsSettingsPanel() {
       <div className="ps-status-row">
         <div className="ps-status-left">
           <span>Calibration</span>
-          {psCorrecting ? (
+          {isCorrecting ? (
             <span className="saved">
               {`converged · ${psCorrectionDb.toFixed(2)} dB`}
             </span>
+          ) : isReady ? (
+            <span className="saved">curve loaded · idle</span>
           ) : (
             <span>{calStateLabel}</span>
           )}

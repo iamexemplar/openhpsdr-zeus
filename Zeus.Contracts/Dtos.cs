@@ -222,6 +222,13 @@ public sealed record StateDto(
     double PsFeedbackLevel = 0.0,   // info[4] read-back, 0..256
     byte PsCalState = 0,            // info[15] enum
     bool PsCorrecting = false,      // info[14]
+    // Set by PsAutoAttenuateService when calcc has been alive (PS armed +
+    // keyed) for >5 s without producing a fit (CalibrationAttempts pinned
+    // at 0). Almost always means hw_peak is set higher than the actual TX
+    // envelope peak — calcc bin 15 never fills so COLLECT never advances.
+    // Frontend shows a banner pointing the operator at HW peak. See
+    // PsAutoAttenuateService stall detection + project_hl2_ps_hwpeak_calibration.
+    bool PsCalibrationStalled = false,
     // ---- TwoTone test generator (TXA PostGen mode=1; protocol-agnostic) ----
     // Standard PureSignal calibration excitation. Defaults match pihpsdr's
     // TwoTone defaults — 700/1900 Hz, 0.49 linear amplitude per tone.

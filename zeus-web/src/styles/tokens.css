@@ -188,6 +188,75 @@
 html[data-fonts="geist"] { --font-sans: 'Inter', sans-serif; --font-mono: 'JetBrains Mono', monospace; --font-display: 'Inter', sans-serif; }
 
 /* ===========================================================
+   LIGHT THEME — brushed silver chassis, dark displays
+   ===========================================================
+   Source: docs/designs "Zeus Lifted Dark v4" (chat1 — Brian's
+   light-theme direction: "strong silver element, not washed-out
+   white"). Chassis surfaces flip to cool silver while DISPLAY
+   wells (panadapter, VFO, S-meter, gauges, LED meters) stay dark
+   so the radio still reads as "lit instruments embedded in a
+   silver front panel" — classic transceiver aesthetic. Operator
+   colour overrides (theme-store) cascade *under* this block via
+   the runtime <style> tag injected by ThemeApplier, so per-token
+   tweaks survive a theme flip. */
+:root[data-theme="light"] {
+  /* Chassis surfaces — cool silver, never washed-out white */
+  --bg-app:       #b8bcc3;
+  --bg-workspace: #b8bcc3;
+  --bg-0:         #b8bcc3;
+  --bg-1:         #cdd1d7;
+  --bg-2:         #b3b8bf;
+  --bg-3:         #a3a8b0;
+
+  /* Display surfaces stay DARK — panadapter / VFO / S-meter /
+     gauges / LED-meter wells all look like screens embedded in
+     silver. */
+  --bg-inset:     #0e1014;
+  --bg-meter:     #050507;
+
+  /* Lines — darker silvers / steel for definition on light chassis */
+  --line:         #8a8f96;
+  --line-soft:    #a8adb4;
+  --line-strong:  #6a6e75;
+
+  /* Text on chassis flips to near-black */
+  --fg-0:         #1a1c20;
+  --fg-1:         #2f3239;
+  --fg-2:         #555a62;
+  --fg-3:         #797d84;
+  --fg-4:         #989ca2;
+
+  /* Panel chrome — brushed silver gradient (top → bottom) */
+  --panel-head-top: #d2d6dc;
+  --panel-head-bot: #c4c8ce;
+  --panel-border:   #8a8f96;
+  --panel-hl-top:   rgba(255,255,255,0.6);
+  --panel-top:      #d2d6dc;
+  --panel-bot:      #c4c8ce;
+  --panel-edge:     #8a8f96;
+  --panel-shadow:   0 1px 0 rgba(255,255,255,0.6) inset, 0 1px 2px rgba(0,0,0,0.18);
+
+  /* Buttons on silver — flat with steel edge */
+  --btn-top:        #c4c8ce;
+  --btn-bot:        #b3b8bf;
+  --btn-hl:         rgba(255,255,255,0.5);
+  --btn-edge:       #6a6e75;
+  --btn-text:       #1a1c20;
+  --btn-active-top: var(--accent);
+  --btn-active-bot: var(--accent);
+  --btn-active-text:#ffffff;
+}
+
+/* Brushed silver gradient washes — applied to the four chrome
+   strips so the chassis reads as a single machined panel.
+   Display surfaces (spec-bg, immersive-*) deliberately keep
+   their dark defaults from :root, so they appear as inset
+   screens against the silver. */
+:root[data-theme="light"] body {
+  background: linear-gradient(180deg, #c4c8ce 0%, #b3b8c0 100%);
+}
+
+/* ===========================================================
    Base resets
    =========================================================== */
 * { box-sizing: border-box; }

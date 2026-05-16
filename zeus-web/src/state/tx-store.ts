@@ -237,6 +237,11 @@ export type TxState = {
   psCalState: number;
   psCorrecting: boolean;
   psMaxTxEnvelope: number;
+  // Hydrated from server state — true when calcc has been alive (PS armed +
+  // keyed) for >5 s without producing a fit. Drives the HW-peak warning
+  // banner in the PURESIGNAL panel. Server-side detection in
+  // PsAutoAttenuateService stall path.
+  psCalibrationStalled: boolean;
   setPsMeters: (m: {
     feedbackLevel: number;
     correctionDb: number;
@@ -379,6 +384,7 @@ export const useTxStore = create<TxState>()(
       psCalState: 0,
       psCorrecting: false,
       psMaxTxEnvelope: 0,
+      psCalibrationStalled: false,
       setPsMeters: (m) => set({
         psFeedbackLevel: m.feedbackLevel,
         psCorrectionDb: m.correctionDb,
@@ -418,6 +424,7 @@ export const useTxStore = create<TxState>()(
           // operator-tuned psHwPeak so the UI sees a coherent pair.
           psHwPeak: s.psHwPeak,
           psHwPeakDefault: s.psHwPeakDefault,
+          psCalibrationStalled: s.psCalibrationStalled ?? false,
           twoToneFreq1: s.twoToneFreq1,
           twoToneFreq2: s.twoToneFreq2,
           twoToneMag: s.twoToneMag,

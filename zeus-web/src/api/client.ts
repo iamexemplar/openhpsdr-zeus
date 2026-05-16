@@ -199,6 +199,11 @@ export type RadioStateDto = {
   // HardwareSpecific.PSDefaultPeak;`.
   psHwPeak: number;
   psHwPeakDefault: number;
+  // Server raises this when calcc is alive (PS armed + keyed) for >5 s with
+  // CalibrationAttempts pinned at 0 — almost always means hw_peak is set
+  // higher than the actual TX envelope peak. Drives the HW-peak warning
+  // banner in the PURESIGNAL panel.
+  psCalibrationStalled?: boolean;
   psIntsSpiPreset: string;
   psFeedbackSource: 'internal' | 'external';
   twoToneFreq1: number;
@@ -447,6 +452,8 @@ export function normalizeState(raw: unknown): RadioStateDto {
     psHwPeak: typeof r.psHwPeak === 'number' ? r.psHwPeak : 0.4072,
     psHwPeakDefault:
       typeof r.psHwPeakDefault === 'number' ? r.psHwPeakDefault : 0.4072,
+    psCalibrationStalled:
+      typeof r.psCalibrationStalled === 'boolean' ? r.psCalibrationStalled : false,
     psIntsSpiPreset: typeof r.psIntsSpiPreset === 'string' ? r.psIntsSpiPreset : '16/256',
     psFeedbackSource:
       r.psFeedbackSource === 'External' || r.psFeedbackSource === 'external' ? 'external' : 'internal',

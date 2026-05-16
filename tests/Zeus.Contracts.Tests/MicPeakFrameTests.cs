@@ -41,7 +41,7 @@ public class MicPeakFrameTests
     public void Deserialize_RejectsWrongMsgType()
     {
         var bogus = new byte[MicPeakFrame.ByteLength];
-        bogus[0] = (byte)MsgType.PaTemp; // 0x17, not 0x1C
+        bogus[0] = (byte)MsgType.PaTemp; // 0x17, not 0x1D
         Assert.Throws<InvalidDataException>(() => MicPeakFrame.Deserialize(bogus));
     }
 
@@ -61,13 +61,15 @@ public class MicPeakFrameTests
     }
 
     [Fact]
-    public void MsgType_MicPeak_Is0x1C()
+    public void MsgType_MicPeak_Is0x1D()
     {
-        // Lock the wire-format byte assignment: 0x1A VstHostEvent and 0x1B
-        // BandPlanChanged are taken; 0x1C is the next free slot above the
-        // 0x1x server→client telemetry block. (0x20 is the client→server
-        // MicPcm uplink — a different direction, deliberately separate.)
-        Assert.Equal((byte)0x1C, (byte)MsgType.MicPeak);
+        // Lock the wire-format byte assignment: 0x1A VstHostEvent, 0x1B
+        // BandPlanChanged, 0x1C MoxState are taken; 0x1D is the next free
+        // slot above the 0x1x server→client telemetry block. (0x20 is the
+        // client→server MicPcm uplink — a different direction, deliberately
+        // separate.) Originally 0x1C on the audio-native branch; renumbered
+        // on merge with develop to resolve the collision with MoxState.
+        Assert.Equal((byte)0x1D, (byte)MsgType.MicPeak);
     }
 
     [Fact]
