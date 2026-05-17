@@ -398,8 +398,15 @@ public static class ZeusHost
         }
 
         app.MapZeusEndpoints();
-        Zeus.Plugins.Host.PluginEndpoints.MapAll(app,
-            app.Services.GetRequiredService<Zeus.Plugins.Host.PluginManager>());
+        // PluginEndpoints.MapAll iterates manager.Active to wire each
+        // IBackendPlugin's MapEndpoints into the route table. The hosted-
+        // service StartAsync fires later (during app.Run), so we have to
+        // activate plugins synchronously here or their routes never land.
+        // ActivateAsync is idempotent per id, so the runtime's StartAsync
+        // call below is a no-op.
+        var pluginManager = app.Services.GetRequiredService<Zeus.Plugins.Host.PluginManager>();
+        pluginManager.StartAsync(default).GetAwaiter().GetResult();
+        Zeus.Plugins.Host.PluginEndpoints.MapAll(app, pluginManager);
 
         // Optional startup banner — service mode prints to its console window
         // (operator-facing UI), desktop mode hides the console and skips this.

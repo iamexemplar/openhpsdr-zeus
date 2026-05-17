@@ -27,6 +27,8 @@ export type PluginPanelDto = {
   title: string;
   icon: string;
   slot: string;
+  /** Add Panel modal category — see PanelCategory in layout/panels.ts. */
+  category: string;
 };
 
 export type PluginUiDto = {
@@ -132,6 +134,7 @@ function parsePanel(raw: unknown): PluginPanelDto {
     title: asString(o.title),
     icon: asString(o.icon),
     slot: asString(o.slot),
+    category: asString(o.category, 'plugins'),
   };
 }
 

@@ -21,6 +21,7 @@ public sealed class PluginManager : IHostedService, IAsyncDisposable
     private readonly PluginManagerOptions _options;
 
     private readonly ConcurrentDictionary<string, ActivatedPlugin> _active = new();
+    private int _started; // 0 = pending, 1 = StartAsync ran
 
     public PluginManager(
         PluginLoader loader,
@@ -58,6 +59,14 @@ public sealed class PluginManager : IHostedService, IAsyncDisposable
 
     public async Task StartAsync(CancellationToken ct)
     {
+        // StartAsync may be invoked manually before app.Run() so that
+        // PluginEndpoints.MapAll sees an already-populated Active set;
+        // the hosted-service path then re-invokes it. Guard against the
+        // second call, otherwise activated plugins would be torn down
+        // and replaced — invalidating any backend-route closures that
+        // captured the first instance.
+        if (Interlocked.Exchange(ref _started, 1) == 1) return;
+
         if (_options.SafeMode)
         {
             _log.LogWarning("Plugin safe mode enabled — skipping plugin discovery.");

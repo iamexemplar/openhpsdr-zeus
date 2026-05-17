@@ -127,6 +127,16 @@ public sealed record PanelContribution
     /// </summary>
     [JsonPropertyName("slot")]
     public required string Slot { get; init; }
+
+    /// <summary>
+    /// Add Panel modal category the panel appears under. Known values
+    /// mirror the built-in PanelCategory enum in zeus-web/panels.ts
+    /// (spectrum / vfo / meters / dsp / log / tools / amplifiers /
+    /// controls / switches / plugins). Defaults to "plugins" when
+    /// omitted so legacy manifests keep working.
+    /// </summary>
+    [JsonPropertyName("category")]
+    public string Category { get; init; } = "plugins";
 }
 
 public sealed record AudioBlock

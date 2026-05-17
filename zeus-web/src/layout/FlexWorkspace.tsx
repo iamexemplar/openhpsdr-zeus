@@ -26,7 +26,8 @@ import {
 import { absoluteStrategy } from 'react-grid-layout/core';
 import { useWorkspace } from './WorkspaceContext';
 import { useLayoutStore } from '../state/layout-store';
-import { PANELS } from './panels';
+import { getPanelDef } from './panels';
+import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 import {
   WORKSPACE_GRID_COLS,
   WORKSPACE_ROW_HEIGHT_MIN_PX,
@@ -137,6 +138,10 @@ function WorkspaceCanvas({
   // measurement. mounted=false on first paint to avoid the 1280-px width
   // flash before the observer fires. Same pattern MetersCanvas uses.
   const { width, containerRef, mounted } = useContainerWidth();
+  // Subscribe to plugin-registered panels so rglLayouts recomputes once
+  // plugin modules load at startup (getPanelDef inside the useMemo would
+  // otherwise return undefined and never re-resolve).
+  const pluginPanels = usePluginPanels();
   // Track container height so rowHeight can scale with the viewport — this
   // is what gives panels their "anchor: bottom" feel: hero (h=18) fills the
   // available vertical space, right-column tiles distribute proportionally,
@@ -173,7 +178,7 @@ function WorkspaceCanvas({
   const rglLayouts = useMemo(
     () => ({
       lg: tiles.map((t) => {
-        const def = PANELS[t.panelId];
+        const def = getPanelDef(t.panelId);
         return {
           i: t.uid,
           x: t.x,
@@ -187,7 +192,7 @@ function WorkspaceCanvas({
         };
       }),
     }),
-    [tiles],
+    [tiles, pluginPanels],
   );
 
   return (
@@ -258,7 +263,7 @@ const PanelTile = memo(function PanelTile({
     () => onRemoveTile(tile.uid),
     [onRemoveTile, tile.uid],
   );
-  const def = PANELS[tile.panelId];
+  const def = getPanelDef(tile.panelId);
   if (!def) return null;
   // Headerless panels own their entire tile surface and draw their own
   // header (if any). They MUST include an element with class
@@ -293,7 +298,7 @@ function PanelBody({
   if (tile.panelId === 'metergroup') {
     return <MeterGroupTileBody tile={tile} onRemove={onRemove} />;
   }
-  const def = PANELS[tile.panelId];
+  const def = getPanelDef(tile.panelId);
   if (!def) return null;
   const Component = def.component;
   // Headerless single-instance panels that own their own header receive

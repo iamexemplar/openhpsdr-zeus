@@ -43,7 +43,30 @@
 // License for details.
 
 import { StrictMode } from 'react';
+import * as React from 'react';
+import * as ReactJsxRuntime from 'react/jsx-runtime';
 import { createRoot } from 'react-dom/client';
+
+// Plugins import `react` and `react/jsx-runtime` as bare specifiers; the
+// import map in index.html points them at /zeus-sdk/{react,react-jsx-runtime}.js
+// which read from these globals. Has to happen before any plugin module
+// loads — set it synchronously here, before installFetchInterceptor and
+// loadInstalledPluginUis.
+(window as unknown as { __zeus: { React: typeof React; ReactJsxRuntime: typeof ReactJsxRuntime } }).__zeus = {
+  React,
+  ReactJsxRuntime,
+};
+
+// Plugin bundles built with Vite often retain `process.env.NODE_ENV`
+// references (React's dev/prod detection) even when react is externalised.
+// Browser has no `process`, so shim it minimally — this is what every
+// "browser process polyfill" does. Production-only flag avoids React's
+// dev-time invariants firing in plugin code.
+if (typeof (window as unknown as { process?: unknown }).process === 'undefined') {
+  (window as unknown as { process: { env: Record<string, string> } }).process = {
+    env: { NODE_ENV: 'production' },
+  };
+}
 // PERF_PASS_3_DEBUG: expose tx-store + audio client on window so playwright
 // can drive MOX edges from synthetic mode (no radio = no MOX button).
 // Uncommitted local edit; stash before merge.
@@ -63,10 +86,16 @@ import './styles/pa-settings.css';
 import './styles/analog-meter.css';
 import App from './App.tsx';
 import { installFetchInterceptor } from './serverUrl';
+import { loadInstalledPluginUis } from './plugins/runtime/pluginRuntime';
 
 // Capacitor / standalone-host builds set localStorage["zeus.serverUrl"]
 // to a LAN address; on plain web this is a no-op (relative paths).
 installFetchInterceptor();
+
+// Fire and forget — plugin UIs join the workspace once their ES modules
+// finish loading. The Add Panel modal subscribes via usePluginPanels()
+// and re-renders when entries land.
+void loadInstalledPluginUis();
 
 // Seed the operator's chosen theme on <html> BEFORE React paints. The
 // ThemeApplier component reapplies on store changes; this just prevents

@@ -15,11 +15,12 @@
 
 import { useState } from 'react';
 import {
-  PANELS,
+  getAllPanels,
   PANEL_CATEGORIES,
   PANEL_CATEGORY_LABELS,
   type PanelCategory,
 } from './panels';
+import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 
 interface AddPanelModalProps {
   /** Set of panelIds currently in the workspace (one entry per id, regardless
@@ -36,8 +37,12 @@ export function AddPanelModal({ existingPanels, onAdd, onClose }: AddPanelModalP
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] =
     useState<CategoryFilter>('all');
+  // Subscribe to plugin runtime so the picker re-renders when plugin
+  // panels load (or change after install/uninstall). Return value is
+  // unused — getAllPanels() reads the same registry directly.
+  usePluginPanels();
 
-  const availablePanels = Object.values(PANELS).filter((panel) => {
+  const availablePanels = getAllPanels().filter((panel) => {
     // Single-instance panels disappear from the list once added; multi-
     // instance panels stay visible (the badge changes to "+ Add another").
     if (existingPanels.has(panel.id) && !panel.multiInstance) return false;

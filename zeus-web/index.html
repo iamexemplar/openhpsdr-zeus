@@ -14,6 +14,19 @@
       href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <!-- Import map for plugin ES modules. Plugins bundle their own JSX
+         runtime but external-ise `react` / `react/jsx-runtime`; the
+         browser resolves those bare specifiers through this map to
+         host-served shims that re-export from window.__zeus, so plugin
+         and host share one React instance (required for hooks). -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/zeus-sdk/react.js",
+          "react/jsx-runtime": "/zeus-sdk/react-jsx-runtime.js"
+        }
+      }
+    </script>
   </head>
   <body style="height:100%;margin:0">
     <div id="root" style="height:100%"></div>

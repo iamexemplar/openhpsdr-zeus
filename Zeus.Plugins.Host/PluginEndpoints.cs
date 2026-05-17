@@ -89,6 +89,44 @@ public static class PluginEndpoints
             }
         });
 
+        // Static UI module files. Plugins ship ES modules under
+        // <PluginRoot>/<id>/ui/<file>.js; the frontend dynamic-imports
+        // them via this route to register panels with the workspace.
+        app.MapGet("/api/plugins/{id}/ui/{*path}", (string id, string path, HttpContext http) =>
+        {
+            var p = manager.Find(id);
+            if (p is null) return Results.NotFound();
+
+            // Dev iteration aid: re-installs swap the file on disk; without
+            // no-cache headers the browser holds the previous module forever
+            // since the URL is stable. Production hosting can fingerprint
+            // these later if needed.
+            http.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+            http.Response.Headers["Pragma"] = "no-cache";
+
+            var pluginDir = Path.Combine(PluginRoot.Get(), id);
+            var uiDir = Path.GetFullPath(Path.Combine(pluginDir, "ui"));
+            var fullPath = Path.GetFullPath(Path.Combine(uiDir, path));
+
+            // Guard against `../` traversal.
+            if (!fullPath.StartsWith(uiDir + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+                && fullPath != uiDir)
+                return Results.NotFound();
+
+            if (!File.Exists(fullPath)) return Results.NotFound();
+
+            var contentType = Path.GetExtension(fullPath).ToLowerInvariant() switch
+            {
+                ".js"   => "application/javascript",
+                ".mjs"  => "application/javascript",
+                ".css"  => "text/css",
+                ".json" => "application/json",
+                ".map"  => "application/json",
+                _        => "application/octet-stream",
+            };
+            return Results.File(fullPath, contentType);
+        });
+
         // Per-plugin endpoints from IBackendPlugin
         foreach (var p in manager.Active)
         {
@@ -139,6 +177,7 @@ public static class PluginEndpoints
                 Title = panel.Title,
                 Icon = panel.Icon,
                 Slot = panel.Slot,
+                Category = panel.Category,
             }).ToArray(),
         },
         Audio = p.Loaded.Manifest.Audio is { } a ? new PluginAudioDto
@@ -184,6 +223,7 @@ public sealed record PluginPanelDto
     public string Title { get; init; } = "";
     public string Icon { get; init; } = "";
     public string Slot { get; init; } = "";
+    public string Category { get; init; } = "plugins";
 }
 
 public sealed record PluginAudioDto

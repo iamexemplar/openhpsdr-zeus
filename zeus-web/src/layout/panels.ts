@@ -71,7 +71,9 @@ export type PanelCategory =
   | 'log'
   | 'tools'
   | 'amplifiers'
-  | 'controls';
+  | 'controls'
+  | 'switches'
+  | 'plugins';
 
 /** Human-friendly category labels for the Add Panel modal's left rail. The
  *  rail shows these in a fixed order; "All" is rendered separately as a
@@ -85,6 +87,8 @@ export const PANEL_CATEGORIES: ReadonlyArray<PanelCategory> = [
   'tools',
   'amplifiers',
   'controls',
+  'switches',
+  'plugins',
 ];
 export const PANEL_CATEGORY_LABELS: Record<PanelCategory, string> = {
   spectrum: 'Spectrum',
@@ -95,7 +99,11 @@ export const PANEL_CATEGORY_LABELS: Record<PanelCategory, string> = {
   tools: 'Tools',
   amplifiers: 'Amplifiers',
   controls: 'Controls',
+  switches: 'Switches',
+  plugins: 'Plugins',
 };
+
+const VALID_PANEL_CATEGORIES = new Set<string>(PANEL_CATEGORIES);
 
 /** Most panels render with no props — the workspace tile renders them as
  *  `<def.component />`. Multi-instance panels with per-instance config
@@ -291,4 +299,37 @@ export const PANELS: Record<string, PanelDef> = {
     headerless: true,
   },
 };
+
+// Plugin-contributed panels. Loaded at app startup by pluginRuntime; the
+// workspace and AddPanelModal go through these helpers instead of reading
+// PANELS directly so plugin panels show up in both surfaces.
+
+import { listRegisteredPanels } from '../plugins/runtime/pluginRuntime';
+
+function pluginPanelDef(p: import('../plugins/runtime/pluginRuntime').RegisteredPluginPanel): PanelDef {
+  const category = (VALID_PANEL_CATEGORIES.has(p.category)
+    ? p.category
+    : 'plugins') as PanelCategory;
+  return {
+    id: p.panelId,
+    name: p.title,
+    category,
+    tags: ['plugin', p.pluginId],
+    component: p.component as ComponentType<PanelComponentProps>,
+  };
+}
+
+export function getPanelDef(id: string): PanelDef | undefined {
+  const builtIn = PANELS[id];
+  if (builtIn) return builtIn;
+  const plugin = listRegisteredPanels().find((p) => p.panelId === id);
+  return plugin ? pluginPanelDef(plugin) : undefined;
+}
+
+export function getAllPanels(): PanelDef[] {
+  return [
+    ...Object.values(PANELS),
+    ...listRegisteredPanels().map(pluginPanelDef),
+  ];
+}
 
