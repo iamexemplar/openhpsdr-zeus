@@ -56,6 +56,12 @@ import { useConnectionStore } from '../state/connection-store';
 // independently. Anchoring the passband to vfoHz — not centerHz — keeps the
 // filter overlay glued to the operator's tuned signal so clicking the
 // spectrum visibly slides the passband around the (stationary) waterfall.
+//
+// CW fix (issue #429): filter edges are baseband Hz relative to the LO,
+// not the dial. In CW the LO sits ±cw_pitch from the dial, so we anchor
+// at loHz = vfoHz − cwPitch instead of vfoHz. cwPitchHz comes from the
+// server (StateDto.CwPitchHz → CwDefaults.PitchHz). Mirrors Thetis
+// PanDisplay.cs:1213.
 export function PassbandOverlay() {
   const centerHz = useDisplayStore((s) => s.centerHz);
   const hzPerPixel = useDisplayStore((s) => s.hzPerPixel);
@@ -67,6 +73,8 @@ export function PassbandOverlay() {
   const filterLowHz = useConnectionStore((s) => s.filterLowHz);
   const filterHighHz = useConnectionStore((s) => s.filterHighHz);
   const vfoHz = useConnectionStore((s) => s.vfoHz);
+  const mode = useConnectionStore((s) => s.mode);
+  const cwPitchHz = useConnectionStore((s) => s.cwPitchHz);
 
   if (!width || hzPerPixel <= 0) return null;
 
@@ -74,8 +82,14 @@ export function PassbandOverlay() {
   const center = Number(centerHz) + viewportOffsetHz;
   const startHz = center - spanHz / 2;
 
-  const passLowHz = vfoHz + filterLowHz;
-  const passHighHz = vfoHz + filterHighHz;
+  // Anchor the filter overlay at the LO, not at the dial. In CW the LO
+  // sits cw_pitch below (CWU) or above (CWL) the dial; in all other
+  // modes LO == dial. Mirrors Thetis PanDisplay.cs:1213-1214 which
+  // positions filter edges relative to Low (the LO-based display edge).
+  const cwOffset = mode === 'CWU' ? cwPitchHz : mode === 'CWL' ? -cwPitchHz : 0;
+  const loHz = vfoHz - cwOffset;
+  const passLowHz = loHz + filterLowHz;
+  const passHighHz = loHz + filterHighHz;
   const leftPct = ((passLowHz - startHz) / spanHz) * 100;
   const rightPct = ((passHighHz - startHz) / spanHz) * 100;
   const widthPct = rightPct - leftPct;

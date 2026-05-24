@@ -282,7 +282,22 @@ public sealed record StateDto(
     // state hydration; RadioService snaps it to VfoHz at construction so the
     // displayed centre is never zero. Mirrors Thetis CTUN's frozen-NCO model
     // (console.cs:43143-43170), now Zeus's only tuning model.
-    long RadioLoHz = 0);
+    long RadioLoHz = 0,
+
+    // CW sidetone pitch in Hz. Currently a baked-in constant
+    // (CwDefaults.PitchHz); will become a user-settable preference
+    // (Thetis: Setup → DSP → Keyer → CW Pitch). On the wire now so
+    // the frontend already consumes the live value — when the setting
+    // lands, only the server-side source changes.
+    int CwPitchHz = CwDefaults.PitchHz);
+
+/// <summary>Canonical CW constants shared between backend and wire DTOs.
+/// Single source of truth — CwOffset (server-side) and StateDto both
+/// reference these instead of duplicating magic numbers.</summary>
+public static class CwDefaults
+{
+    public const int PitchHz = 600;
+}
 
 public sealed record RadioInfo(
     string MacAddress,
