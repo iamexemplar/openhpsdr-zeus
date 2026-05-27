@@ -40,9 +40,20 @@ public sealed class AudioChainHealthService : BackgroundService
     private readonly RadioService _radio;
     private readonly TxService _tx;
     private readonly DspPipelineService _pipe;
+    private readonly TxMetersService _txMeters;
     private readonly IAudioChainRuleProvider _rules;
     private readonly ILogger<AudioChainHealthService> _log;
     private readonly RuleEvaluator _evaluator = new();
+
+    // Latest values from TxMetersService — published via its TxMetersUpdated
+    // event whenever the 10 Hz MOX loop produces a frame. We subscribe in
+    // the constructor and cache the last reading so each 2 Hz health tick
+    // reads from a coherent snapshot without re-running the watts/SWR
+    // smoothing math.
+    private readonly object _txMetersSync = new();
+    private float _lastFwdW;
+    private float _lastRefW;
+    private float _lastSwr = 1.0f;
 
     // The fixed nine-tile order the factory widget renders left-to-right.
     private static readonly AudioChainStageId[] Stages =
@@ -70,6 +81,7 @@ public sealed class AudioChainHealthService : BackgroundService
         RadioService radio,
         TxService tx,
         DspPipelineService pipe,
+        TxMetersService txMeters,
         IAudioChainRuleProvider rules,
         ILogger<AudioChainHealthService> log)
     {
@@ -77,8 +89,33 @@ public sealed class AudioChainHealthService : BackgroundService
         _radio = radio;
         _tx = tx;
         _pipe = pipe;
+        _txMeters = txMeters;
         _rules = rules;
         _log = log;
+
+        // Mirror the watts / SWR values TxMetersService computes — its
+        // ADC smoothing + per-board calibration is the source of truth
+        // for those readings; we just cache the latest broadcast so the
+        // health tick has a coherent snapshot. The handler runs on the
+        // 10 Hz MOX broadcast thread; cheap field assignments under a
+        // lock keep the read path race-free.
+        _txMeters.TxMetersUpdated += OnTxMetersUpdated;
+    }
+
+    private void OnTxMetersUpdated(float fwdW, float refW, float swr, float alcPk, float alcGr)
+    {
+        lock (_txMetersSync)
+        {
+            _lastFwdW = fwdW;
+            _lastRefW = refW;
+            _lastSwr = swr;
+        }
+    }
+
+    public override void Dispose()
+    {
+        _txMeters.TxMetersUpdated -= OnTxMetersUpdated;
+        base.Dispose();
     }
 
     /// <summary>
@@ -127,22 +164,23 @@ public sealed class AudioChainHealthService : BackgroundService
         var stages = _pipe.CurrentEngine?.GetTxStageMeters() ?? TxStageMeters.Silent;
         bool mox = _tx.IsMoxOn || _tx.IsTunOn;
 
+        float fwdW, refW, swr;
+        lock (_txMetersSync)
+        {
+            fwdW = _lastFwdW;
+            refW = _lastRefW;
+            swr = _lastSwr;
+        }
         var readings = AudioChainReadings.FromTxStageMeters(
             s: stages,
             drivePct: state.DrivePct,
-            // DriveByte not yet on the in-process surface for the
-            // service to read — placeholder until the wire promotion
-            // (zeus-pgn area). 0 is a safe sentinel; the Wire rule
-            // (zeus-1x4) will guard against it.
+            // DriveByte not yet on the in-process surface (TxMetersService
+            // logs it but the value isn't exposed). Placeholder until
+            // wired; the Wire ceiling rule keys off DrivePct for now.
             driveByte: 0,
-            // FWD/REF/SWR live in TxMetersService's local smoothing
-            // state — not exposed yet. Until promoted, fall back to
-            // safe defaults so PA rules with hysteresis don't latch
-            // false-warns. Tracked under the same in-process-state
-            // promotion work as drive byte.
-            fwdWatts: 0f,
-            refWatts: 0f,
-            swr: 1.0f);
+            fwdWatts: fwdW,
+            refWatts: refW,
+            swr: swr);
         var ctx = new RuleContext(
             Mode: state.Mode,
             Board: _radio.ConnectedBoardKind,

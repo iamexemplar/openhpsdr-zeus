@@ -14,6 +14,7 @@ using Zeus.Dsp.Wdsp;
 using Zeus.Plugins.Host;
 using Zeus.Protocol1;
 using Zeus.Protocol1.Discovery;
+using Zeus.Server.AudioChainHealth;
 using Zeus.Server.Tci;
 
 namespace Zeus.Server;
@@ -250,9 +251,9 @@ public static class ZeusHost
         builder.Services.AddHostedService(sp => sp.GetRequiredService<TxMetersService>());
         // Audio Chain Monitor (core diagnostic per ADR-0001). Always-on 2 Hz
         // verdict overlay published on the AudioChainHealth (0x32) WS frame.
-        // Empty rule provider until zeus-1x4 lands the Thetis-seeded base
-        // set; the service still ticks and broadcasts an all-OK frame.
-        builder.Services.AddSingleton<IAudioChainRuleProvider, EmptyAudioChainRuleProvider>();
+        // BaseRules (zeus-1x4) provides the SSB+MOX-gated v1 rule set;
+        // per-(mode, board) overrides land in zeus-y89.
+        builder.Services.AddSingleton<IAudioChainRuleProvider, BaseAudioChainRuleProvider>();
         builder.Services.AddSingleton<AudioChainHealthService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<AudioChainHealthService>());
         // TxTuneDriver pumps silent mic blocks through WDSP TXA while TUN is on so
