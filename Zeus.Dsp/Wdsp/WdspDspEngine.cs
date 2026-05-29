@@ -1254,7 +1254,15 @@ public sealed class WdspDspEngine : IDspEngine
             // chkPSMap = Checked = true).
             NativeMethods.SetPSPinMode(id, 1);
             NativeMethods.SetPSMapMode(id, 1);
-            NativeMethods.SetPSStabilize(id, 0);
+            // calcc rx_scale + coefficient IIR smoothing (alpha 0.9). ON for the
+            // P2 profile so continuous automode converges to a STEADY correction
+            // instead of applying each raw pass-to-pass fit — the latter makes
+            // the predistorted two-tone visibly jump on the TX panadapter and
+            // holds IMD short of its settled depth (#559, G2). DeskHPSDR ships
+            // this on for SATURN/new-protocol. OFF on P1/HL2 to keep the
+            // mi0bot-matched behaviour. _txaCfirRun is the existing P2-profile
+            // discriminator (CFIR runs only on P2; see above).
+            NativeMethods.SetPSStabilize(id, _txaCfirRun ? 1 : 0);
             NativeMethods.SetPSIntsAndSpi(id, _psInts, _psSpi);
             NativeMethods.SetPSMoxDelay(id, _psMoxDelaySec);
             NativeMethods.SetPSLoopDelay(id, _psLoopDelaySec);
