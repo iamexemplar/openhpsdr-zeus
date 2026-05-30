@@ -16,14 +16,20 @@ namespace Zeus.Contracts;
 ///
 /// <code>
 /// [type:1=0x31][wpm:u16 LE][snrDb:f32 LE][confidence:f32 LE]
+/// [envelopeDb:f32 LE][noiseFloorDb:f32 LE]
 /// [textLen:u16 LE][text:UTF-8 textLen bytes]
 /// </code>
 ///
-/// 13-byte fixed header + variable text payload. <see cref="Text"/> is the
+/// 21-byte fixed header + variable text payload. <see cref="Text"/> is the
 /// chunk of characters decoded during one audio tick (usually 0–2 chars,
-/// including ' ' on a word gap); the client appends them in order. Decoding
-/// happens server-side so it works in the desktop/native-audio host and
-/// headless — see CwDecoderService. Text is capped at <see cref="MaxTextBytes"/>.
+/// including ' ' on a word gap); the client appends them in order.
+/// <see cref="EnvelopeDb"/> and <see cref="NoiseFloorDb"/> are the
+/// instantaneous envelope and tracked noise floor in dBFS — consumed by the
+/// frontend threshold scope to display the signal waveform and guide manual
+/// threshold placement. Emitted on every DSP tick (even with empty text) so
+/// the scope updates continuously. Decoding happens server-side so it works
+/// in the desktop/native-audio host and headless — see CwDecoderService.
+/// Text is capped at <see cref="MaxTextBytes"/>.
 ///
 /// Wire-frozen: future additions append-only at the tail.
 /// </summary>
@@ -31,29 +37,32 @@ public readonly record struct CwDecodedTextFrame(
     string Text,
     int Wpm,
     float SnrDb,
-    float Confidence)
+    float Confidence,
+    float EnvelopeDb,
+    float NoiseFloorDb)
 {
     /// <summary>Hard cap on the text payload. One tick decodes a handful of
     /// characters at most, so this is comfortably generous and keeps the
     /// frame well under one MTU.</summary>
     public const int MaxTextBytes = 256;
 
-    public const int HeaderByteLength = 13; // type(1) + wpm(2) + snr(4) + conf(4) + textLen(2)
+    // type(1) + wpm(2) + snr(4) + conf(4) + envelopeDb(4) + noiseFloorDb(4) + textLen(2)
+    public const int HeaderByteLength = 21;
 
     public void Serialize(IBufferWriter<byte> writer)
     {
-        // Encode text first so we know the actual UTF-8 byte count.
         var rawBytes = Encoding.UTF8.GetBytes(Text ?? string.Empty);
         int textBytes = Math.Min(rawBytes.Length, MaxTextBytes);
         int total = HeaderByteLength + textBytes;
         var span = writer.GetSpan(total);
         span[0] = (byte)MsgType.CwDecodedText;
-        // Clamp Wpm to u16 so an upstream logic bug can't silently truncate.
         ushort wpmU16 = (ushort)Math.Clamp(Wpm, 0, ushort.MaxValue);
         BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(1, 2), wpmU16);
         BinaryPrimitives.WriteSingleLittleEndian(span.Slice(3, 4), SnrDb);
         BinaryPrimitives.WriteSingleLittleEndian(span.Slice(7, 4), Confidence);
-        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(11, 2), (ushort)textBytes);
+        BinaryPrimitives.WriteSingleLittleEndian(span.Slice(11, 4), EnvelopeDb);
+        BinaryPrimitives.WriteSingleLittleEndian(span.Slice(15, 4), NoiseFloorDb);
+        BinaryPrimitives.WriteUInt16LittleEndian(span.Slice(19, 2), (ushort)textBytes);
         if (textBytes > 0)
             rawBytes.AsSpan(0, textBytes).CopyTo(span.Slice(HeaderByteLength, textBytes));
         writer.Advance(total);
@@ -67,16 +76,18 @@ public readonly record struct CwDecodedTextFrame(
         if (bytes[0] != (byte)MsgType.CwDecodedText)
             throw new InvalidDataException(
                 $"expected CwDecodedText (0x{(byte)MsgType.CwDecodedText:X2}), got 0x{bytes[0]:X2}");
-        int wpm = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(1, 2));
-        float snr = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(3, 4));
+        int wpm    = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(1, 2));
+        float snr  = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(3, 4));
         float conf = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(7, 4));
-        int textLen = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(11, 2));
+        float env  = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(11, 4));
+        float nf   = BinaryPrimitives.ReadSingleLittleEndian(bytes.Slice(15, 4));
+        int textLen = BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(19, 2));
         if (HeaderByteLength + textLen > bytes.Length)
             throw new InvalidDataException(
                 $"CwDecodedTextFrame textLen {textLen} exceeds payload");
         string text = textLen == 0
             ? string.Empty
             : Encoding.UTF8.GetString(bytes.Slice(HeaderByteLength, textLen));
-        return new CwDecodedTextFrame(text, wpm, snr, conf);
+        return new CwDecodedTextFrame(text, wpm, snr, conf, env, nf);
     }
 }

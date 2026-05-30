@@ -444,6 +444,14 @@ public sealed record CwSettingsSetRequest(
     int? SidetoneHz = null,
     CwKeyerMode? KeyerMode = null);
 
+// PUT /api/cw/decoder/settings — set or clear the manual Schmitt-trigger
+// threshold for the CW receive decoder (zeus-yrq). IsManual=true + a
+// ThresholdDb value pins the detector at that level; IsManual=false resets
+// to the default adaptive mode. ThresholdDb is in dBFS (typically -60..0).
+public sealed record CwDecoderThresholdRequest(
+    bool? IsManual = null,
+    double? ThresholdDb = null);
+
 // Hermes-Lite 2 (and the wider openHPSDR family) on-board CW keyer mode,
 // written to C&C register 0x0B C3[7:6] (gateware rtl/cw_openhpsdr.sv:32).
 // Straight is the default-safe choice: in this mode the gateware passes the

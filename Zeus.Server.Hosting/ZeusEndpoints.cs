@@ -495,6 +495,28 @@ public static class ZeusEndpoints
             return Results.Ok(snapshot);
         });
 
+        // CW decoder threshold settings. GET returns current mode + value;
+        // PUT sets/clears the manual threshold that overrides the adaptive
+        // Schmitt trigger in CwAudioDecoder (zeus-yrq). Not persisted across
+        // restarts (ephemeral) — the operator re-pins it after connecting
+        // (consistent with how squelch / AGC thresholds work). Persisting it
+        // is a follow-up if operators find re-pinning inconvenient.
+        app.MapGet("/api/cw/decoder/settings", (CwDecoderService dec) =>
+        {
+            var (isManual, thresholdDb) = dec.GetThresholdState();
+            return Results.Ok(new { isManual, thresholdDb });
+        });
+
+        app.MapPut("/api/cw/decoder/settings", (CwDecoderThresholdRequest req, CwDecoderService dec) =>
+        {
+            double? thr = req.IsManual == true && req.ThresholdDb.HasValue
+                ? Math.Clamp(req.ThresholdDb.Value, -80.0, 0.0)
+                : null;
+            dec.SetManualThreshold(thr);
+            var (isManual, thresholdDb) = dec.GetThresholdState();
+            return Results.Ok(new { isManual, thresholdDb });
+        });
+
         // Mic-gain: N dB in [-40, +10], scales WDSP TXA panel-gain-1 the same
         // way Thetis does (console.cs:28805 setAudioMicGain → Audio.MicPreamp =
         // 10^(db/20) → cmaster.CMSetTXAPanelGain1). The negative range is the

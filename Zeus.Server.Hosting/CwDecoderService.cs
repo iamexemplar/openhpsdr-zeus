@@ -28,23 +28,50 @@ public sealed class CwDecoderService : BackgroundService
     private readonly DspPipelineService _pipeline;
     private readonly StreamingHub _hub;
     private readonly RadioService _radio;
+    private readonly TxService _tx;
     private readonly ILogger<CwDecoderService> _log;
 
     // Touched only on the DSP pipeline thread (RxAudioAvailable is single-fire
-    // per tick from that thread), so no locking is needed.
+    // per tick from that thread), so no locking is needed for the decoder itself.
     private CwAudioDecoder? _decoder;
     private int _decoderRate;
     private readonly StringBuilder _pending = new();
+
+    // Manual threshold — written from the HTTP handler thread, read on the DSP
+    // thread. Volatile write/read is sufficient for a single nullable double.
+    private double? _manualThresholdDb;
+    private readonly object _thresholdSync = new();
+
+    /// <summary>Set or clear the manual decode threshold. Null restores the
+    /// default adaptive Schmitt trigger. Thread-safe: can be called from any
+    /// thread (e.g. an ASP.NET request handler).</summary>
+    public void SetManualThreshold(double? thresholdDb)
+    {
+        lock (_thresholdSync)
+        {
+            _manualThresholdDb = thresholdDb;
+            _decoder?.SetManualThreshold(thresholdDb);
+        }
+    }
+
+    /// <summary>Current threshold mode + value for GET /api/cw/decoder/settings.</summary>
+    public (bool IsManual, double? ThresholdDb) GetThresholdState()
+    {
+        lock (_thresholdSync)
+            return (_manualThresholdDb.HasValue, _manualThresholdDb);
+    }
 
     public CwDecoderService(
         DspPipelineService pipeline,
         StreamingHub hub,
         RadioService radio,
+        TxService tx,
         ILogger<CwDecoderService> log)
     {
         _pipeline = pipeline;
         _hub = hub;
         _radio = radio;
+        _tx = tx;
         _log = log;
         _pipeline.RxAudioAvailable += OnRxAudio;
     }
@@ -67,6 +94,9 @@ public sealed class CwDecoderService : BackgroundService
         {
             _decoder = new CwAudioDecoder(sampleRateHz);
             _decoderRate = sampleRateHz;
+            // Re-apply manual threshold to the freshly-constructed decoder.
+            lock (_thresholdSync)
+                _decoder.SetManualThreshold(_manualThresholdDb);
         }
 
         _pending.Clear();
@@ -80,14 +110,19 @@ public sealed class CwDecoderService : BackgroundService
             return;
         }
 
-        if (_pending.Length > 0)
-        {
-            _hub.Broadcast(new CwDecodedTextFrame(
-                _pending.ToString(),
-                _decoder.Wpm,
-                (float)_decoder.SnrDb,
-                (float)_decoder.Confidence));
-        }
+        // During TX (MOX active) the sidetone bleeds into the RX audio and the
+        // decoder would echo our own keying as spurious receive text — suppress
+        // the decoded characters while transmitting. The envelope + noise-floor
+        // telemetry is still emitted so the scope scope keeps updating and the
+        // operator can see the sidetone shape in the waveform display.
+        bool txActive = _tx.IsMoxOn;
+        _hub.Broadcast(new CwDecodedTextFrame(
+            txActive ? string.Empty : _pending.ToString(),
+            _decoder.Wpm,
+            (float)_decoder.SnrDb,
+            (float)_decoder.Confidence,
+            _decoder.EnvelopeDb,
+            _decoder.NoiseFloorDb));
     }
 
     public override void Dispose()

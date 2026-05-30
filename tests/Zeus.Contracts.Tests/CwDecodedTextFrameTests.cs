@@ -14,7 +14,7 @@ public class CwDecodedTextFrameTests
     [Fact]
     public void Serialize_EmptyText_ProducesHeaderOnlyFrame()
     {
-        var frame = new CwDecodedTextFrame("", 0, 0f, 0f);
+        var frame = new CwDecodedTextFrame("", 0, 0f, 0f, -60f, -60f);
         var writer = new ArrayBufferWriter<byte>();
         frame.Serialize(writer);
 
@@ -25,7 +25,7 @@ public class CwDecodedTextFrameTests
     [Fact]
     public void Serialize_RoundTripsAllFields()
     {
-        var frame = new CwDecodedTextFrame("CQ DE EA", 22, 9.5f, 0.8f);
+        var frame = new CwDecodedTextFrame("CQ DE EA", 22, 9.5f, 0.8f, -42.1f, -55.3f);
         var writer = new ArrayBufferWriter<byte>();
         frame.Serialize(writer);
         var decoded = CwDecodedTextFrame.Deserialize(writer.WrittenSpan);
@@ -34,13 +34,15 @@ public class CwDecodedTextFrameTests
         Assert.Equal(22, decoded.Wpm);
         Assert.Equal(9.5f, decoded.SnrDb);
         Assert.Equal(0.8f, decoded.Confidence);
+        Assert.Equal(-42.1f, decoded.EnvelopeDb, precision: 4);
+        Assert.Equal(-55.3f, decoded.NoiseFloorDb, precision: 4);
     }
 
     [Fact]
     public void Serialize_OversizedText_TruncatesToMax()
     {
         var huge = new string('X', CwDecodedTextFrame.MaxTextBytes * 2);
-        var frame = new CwDecodedTextFrame(huge, 20, 0f, 0f);
+        var frame = new CwDecodedTextFrame(huge, 20, 0f, 0f, -60f, -60f);
         var writer = new ArrayBufferWriter<byte>();
         frame.Serialize(writer);
 
@@ -67,7 +69,7 @@ public class CwDecodedTextFrameTests
     [Fact]
     public void Deserialize_RejectsTruncatedText()
     {
-        var frame = new CwDecodedTextFrame(new string('A', 50), 20, 0f, 0f);
+        var frame = new CwDecodedTextFrame(new string('A', 50), 20, 0f, 0f, -60f, -60f);
         var writer = new ArrayBufferWriter<byte>();
         frame.Serialize(writer);
         var truncated = writer.WrittenSpan

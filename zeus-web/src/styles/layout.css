@@ -2698,3 +2698,313 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ===========================================================
+   Unified CW Panel (zeus-yrq)
+   =========================================================== */
+
+/* Root layout — three stacked sections separated by hairlines */
+.cw-station {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.cw-station-sep {
+  height: 1px;
+  background: var(--line-soft);
+  flex-shrink: 0;
+}
+
+.cw-station-section {
+  padding: 8px 10px;
+}
+
+.cw-station-section--terminal {
+  /* min-height forces the terminal visible even when the keyer section
+     is long enough to push it out; flex: 1 picks up any extra space. */
+  flex: 1 1 220px;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cw-station-section--scope {
+  flex-shrink: 0;
+  padding-top: 6px;
+}
+
+.cw-station-section--keyer {
+  /* Keyer section scrolls internally so it never crushes the terminal above */
+  flex-shrink: 0;
+  padding-top: 6px;
+  overflow-y: auto;
+}
+
+/* Small uppercase section label — one step dimmer than panel text */
+.cw-station-section-label {
+  font: 600 9px/1 var(--font-sans);
+  letter-spacing: 0.18em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+/* ---- CW Terminal ---- */
+.cw-terminal {
+  display: flex;
+  flex-direction: column;
+  /* height:100% fills the section; min-height 0 allows flex children to shrink */
+  height: 100%;
+  min-height: 0;
+  /* Use --bg-0 (not --bg-inset) so the terminal is readable in light theme:
+     dark=near-black+light-text, light=silver+dark-text. --bg-inset stays dark
+     in both themes and --fg-1 collapses against it in light mode. */
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+/* Header: state LED + label + optional inline stats + action buttons */
+.cw-terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line-strong);
+  flex-shrink: 0;
+  min-height: 36px;
+}
+
+/* State LED — reuses the keyer LED shape; active class applied via JS */
+.cw-stream-led--active {
+  background: var(--accent-bright) !important;
+  box-shadow: 0 0 6px var(--accent-soft);
+  animation: cwLedPulse 1.2s ease-in-out infinite;
+}
+
+/* State text label */
+.cw-terminal-state-label {
+  font: 600 10px/1 var(--font-sans);
+  letter-spacing: 0.14em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  min-width: 44px;
+}
+
+/* Inline stats cluster (WPM / SNR / confidence) shown when active */
+.cw-terminal-stats-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.cw-terminal-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  min-width: 44px;
+}
+
+.cw-terminal-stat.is-active .cw-terminal-stat-value {
+  color: var(--accent-bright);
+}
+
+.cw-terminal-stat-label {
+  font: 500 8px/1 var(--font-sans);
+  letter-spacing: 0.1em;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.cw-terminal-stat-value {
+  font: 700 16px/1 var(--font-mono);
+  color: var(--fg-0);
+  letter-spacing: -0.01em;
+}
+
+/* Action buttons (HOLD / CLEAR / ON-OFF) pushed to the right */
+.cw-terminal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Override .cw-hold / .cw-clear height for the header */
+.cw-terminal-header-actions .cw-hold,
+.cw-terminal-header-actions .cw-clear {
+  height: 28px;
+  min-width: 48px;
+  font-size: 10px;
+}
+
+/* Scrolling decode window — takes all available vertical space */
+.cw-terminal-window {
+  flex: 1 1 100px;
+  min-height: 100px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font: 500 13px/1.7 var(--font-mono);
+  letter-spacing: 0.06em;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--fg-1);
+}
+
+/* RX decoded text — default foreground */
+.cw-terminal-rx {
+  color: var(--fg-1);
+}
+
+/* TX echo — amber (--power) distinguishes from RX without alarm-red.
+   RED-LIGHT: colour choice needs Brian's sign-off. */
+.cw-terminal-tx {
+  color: var(--power);
+  opacity: 0.85;
+}
+
+/* TX free-text input row */
+.cw-terminal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line-strong);
+  flex-shrink: 0;
+  min-height: 38px;
+}
+
+.cw-terminal-prompt {
+  color: var(--fg-3);
+  font: 600 12px/1 var(--font-mono);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.cw-terminal-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-0);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--fg-0);
+  font: 500 12px/1 var(--font-mono);
+  padding: 5px 8px;
+  outline: none;
+  letter-spacing: 0.04em;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.cw-terminal-input::placeholder {
+  color: var(--fg-4);
+  font-style: italic;
+}
+
+.cw-terminal-input:focus {
+  border-color: var(--accent-line);
+}
+
+.cw-terminal-send-btn {
+  width: 30px;
+  height: 26px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 13px/1 var(--font-mono);
+  color: var(--fg-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.cw-terminal-send-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--fg-0);
+}
+
+.cw-terminal-send-btn:active:not(:disabled) { transform: translateY(1px); }
+.cw-terminal-send-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ---- CW Threshold Scope ---- */
+.cw-scope {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-inset);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.cw-scope-canvas {
+  display: block;
+  width: 100%;
+  height: 80px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.cw-scope-canvas.is-manual { cursor: grab; }
+.cw-scope-canvas.is-manual:active { cursor: grabbing; }
+
+.cw-scope-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 5px;
+  font: 500 9px/1 var(--font-mono);
+  color: var(--fg-3);
+  letter-spacing: 0.08em;
+  background: var(--bg-1);
+  border-top: 1px solid var(--line-soft);
+}
+
+.cw-scope-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 3px 7px;
+  letter-spacing: 0.12em;
+}
+
+.cw-scope-mode-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+
+.cw-scope-thr-readout { color: var(--fg-2); min-width: 64px; }
+
+.cw-scope-reset {
+  color: var(--fg-3);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: 500 9px/1 var(--font-mono);
+  letter-spacing: 0.12em;
+  padding: 0;
+  text-transform: uppercase;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.cw-scope-reset:hover { color: var(--tx); }
+.cw-scope-hint { color: var(--fg-4); font-style: italic; }

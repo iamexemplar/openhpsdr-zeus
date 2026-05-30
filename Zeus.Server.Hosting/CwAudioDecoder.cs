@@ -77,6 +77,28 @@ internal sealed class CwAudioDecoder
     public int Wpm => (int)Math.Round(1200.0 / (_ditMs * 2));
     public double SnrDb { get; private set; }
     public double Confidence { get; private set; }
+    /// <summary>Instantaneous envelope level in dBFS (≤ 0). Updated every
+    /// sample; useful as a real-time scope signal for threshold tuning.</summary>
+    public float EnvelopeDb => _env < 1e-10 ? -100f : (float)(20 * Math.Log10(_env));
+    /// <summary>Tracked noise-floor level in dBFS. The adaptive Schmitt
+    /// thresholds sit between this and the signal follower.</summary>
+    public float NoiseFloorDb => _noiseFloor < 1e-10 ? -100f : (float)(20 * Math.Log10(_noiseFloor));
+
+    // Manual threshold override. When non-null the adaptive Schmitt trigger is
+    // bypassed and a fixed hysteresis band is applied around this linear level.
+    // Set via CwDecoderService.SetManualThreshold(); null = adaptive (default).
+    private double? _manualThresholdLinear;
+
+    /// <summary>Pin the key-detect threshold at a fixed level expressed in
+    /// dBFS. The Schmitt hysteresis (±10 %) still applies so fast noise
+    /// transients don't jitter the detector.  Pass null to restore the
+    /// default adaptive behaviour.</summary>
+    public void SetManualThreshold(double? thresholdDb)
+    {
+        _manualThresholdLinear = thresholdDb.HasValue
+            ? Math.Pow(10.0, thresholdDb.Value / 20.0)
+            : null;
+    }
 
     public CwAudioDecoder(int sampleRate)
     {
@@ -152,21 +174,33 @@ internal sealed class CwAudioDecoder
         // Hold off deciding until the followers settle (no cold-start element).
         if (_warmup < _warmupSamples) { _warmup++; return false; }
 
-        // Activity gate: require the tracked signal to stand clearly above the
-        // noise floor before treating the channel as carrying CW at all. Pure
-        // band noise has signal ≈ noiseFloor (no keying structure), so this
-        // suppresses noise-only periods; a genuine CW tone sits well above it.
-        if (_signal < _noiseFloor * ActivityRatio)
+        double hi, lo;
+        if (_manualThresholdLinear.HasValue)
         {
-            _keyedEnv = false;
-            return false;
+            // Manual mode: operator-pinned threshold, tight ±10 % hysteresis.
+            // Bypass the activity gate so the operator's decision is honoured
+            // even in a pure-noise channel (they set it above the noise floor).
+            hi = _manualThresholdLinear.Value * 1.10;
+            lo = _manualThresholdLinear.Value * 0.90;
+        }
+        else
+        {
+            // Adaptive mode: require the signal to stand clearly above the
+            // noise floor. Pure band noise has signal ≈ noiseFloor (no keying
+            // structure) so this gate suppresses noise-only periods.
+            if (_signal < _noiseFloor * ActivityRatio)
+            {
+                _keyedEnv = false;
+                return false;
+            }
+
+            double span = _signal - _noiseFloor;
+            if (span <= 1e-6) { _keyedEnv = false; return false; }
+
+            hi = _noiseFloor + 0.62 * span;
+            lo = _noiseFloor + 0.40 * span;
         }
 
-        double span = _signal - _noiseFloor;
-        if (span <= 1e-6) { _keyedEnv = false; return false; }
-
-        double hi = _noiseFloor + 0.62 * span;
-        double lo = _noiseFloor + 0.4 * span;
         if (!_keyedEnv && _env > hi) _keyedEnv = true;
         else if (_keyedEnv && _env < lo) _keyedEnv = false;
         return _keyedEnv;

@@ -182,10 +182,11 @@ const CW_ENGINE_STATUS_HEADER_BYTES = 9;
 // host and headless. Variable-length frame: 13-byte header + UTF-8 text.
 // Contract: Zeus.Contracts/CwDecodedTextFrame.cs.
 //
-// Wire shape:
-//   [0x31][wpm:u16 LE][snrDb:f32 LE][confidence:f32 LE][textLen:u16 LE][text:utf8…]
+// Wire shape (zeus-yrq extended):
+//   [0x31][wpm:u16 LE][snrDb:f32 LE][confidence:f32 LE]
+//   [envelopeDb:f32 LE][noiseFloorDb:f32 LE][textLen:u16 LE][text:utf8…]
 export const MSG_TYPE_CW_DECODED_TEXT = 0x31;
-const CW_DECODED_TEXT_HEADER_BYTES = 13;
+const CW_DECODED_TEXT_HEADER_BYTES = 21; // was 13; +8 for envelopeDb+noiseFloorDb
 
 // Shared by startRealtime / sendMicPcm. Single WS instance at a time; writes
 // are no-ops when the socket isn't open.
@@ -421,10 +422,12 @@ export function startRealtime(path = '/ws'): () => void {
             return;
           }
           const dv = new DataView(ev.data);
-          const wpm = dv.getUint16(1, true);
-          const snrDb = dv.getFloat32(3, true);
-          const confidence = dv.getFloat32(7, true);
-          const textLen = dv.getUint16(11, true);
+          const wpm          = dv.getUint16(1, true);
+          const snrDb        = dv.getFloat32(3, true);
+          const confidence   = dv.getFloat32(7, true);
+          const envelopeDb   = dv.getFloat32(11, true);
+          const noiseFloorDb = dv.getFloat32(15, true);
+          const textLen      = dv.getUint16(19, true);
           if (ev.data.byteLength < CW_DECODED_TEXT_HEADER_BYTES + textLen) {
             warnOnce(
               'ws-cw-decoded-truncated',
@@ -434,19 +437,22 @@ export function startRealtime(path = '/ws'): () => void {
             );
             return;
           }
-          if (textLen === 0) return;
-          const text = new TextDecoder('utf-8').decode(
-            new Uint8Array(ev.data, CW_DECODED_TEXT_HEADER_BYTES, textLen),
-          );
+          const text = textLen === 0
+            ? ''
+            : new TextDecoder('utf-8').decode(
+                new Uint8Array(ev.data, CW_DECODED_TEXT_HEADER_BYTES, textLen),
+              );
           // Lazy import keeps the cw-decoder-store off the critical path for
           // clients that never open the decoder panel.
           void import('../state/cw-decoder-store').then((m) => {
             const store = m.useCwDecoderStore.getState();
-            // The panel ON/OFF + HOLD are client-side display gates: the
-            // server always decodes in CW mode, but we only surface text
-            // while the operator has the panel actively listening.
-            if (store.state !== 'listening') return;
-            store.appendText(text, wpm, snrDb, confidence);
+            // Always push envelope telemetry so the scope updates even when
+            // the display is held or the decoder is idle.
+            store.pushEnvelope(envelopeDb, noiseFloorDb, snrDb, confidence, wpm);
+            // Text is only surfaced when the operator has the panel listening.
+            if (text && store.state === 'listening') {
+              store.appendText(text, wpm, snrDb, confidence);
+            }
           });
           return;
         }

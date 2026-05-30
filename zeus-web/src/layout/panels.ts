@@ -53,6 +53,7 @@ import { RotatorDialPanel } from './panels/RotatorDialPanel';
 import { DspFlexPanel } from './panels/DspFlexPanel';
 import { CwPanel } from './panels/CwPanel';
 import { CwDecoderPanel } from './panels/CwDecoderPanel';
+import { CwStationPanel } from './panels/CwStationPanel';
 import { LogbookPanel } from './panels/LogbookPanel';
 import { TxMetersPanel } from './panels/TxMetersPanel';
 import { TxPanel } from './panels/TxPanel';
@@ -238,6 +239,19 @@ export const PANELS: Record<string, PanelDef> = {
     // a second default TileChrome on top, producing a duplicated window
     // header — and the panel's own close button goes dead because PanelTile
     // only injects onRemove to headerless panels.
+    headerless: true,
+  },
+  // CW station panel — terminal (RX decode + TX free-text), threshold scope,
+  // and keyer controls in one tile. The legacy 'cw' (keyer) and 'cwdecoder'
+  // (decoder) ids are kept above for backwards-compatibility with saved
+  // layouts (RED-LIGHT: layout migration policy needs maintainer sign-off
+  // before retiring the old ids).
+  'cw-station': {
+    id: 'cw-station',
+    name: 'CW',
+    category: 'tools',
+    tags: ['cw', 'morse', 'keyer', 'decoder', 'terminal'],
+    component: CwStationPanel,
     headerless: true,
   },
   logbook: {
