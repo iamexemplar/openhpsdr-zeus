@@ -117,13 +117,6 @@ cat > "${APPDIR}/AppRun" << 'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 export LD_LIBRARY_PATH="${HERE}/usr/bin/runtimes/linux-x64/native:${HERE}/usr/bin/runtimes/linux-arm64/native:${LD_LIBRARY_PATH}"
-# WebKitGTK GPU acceleration fails over X forwarding (xcb_connection_has_error).
-# Force software rendering so the window opens correctly on both local displays
-# and SSH -X sessions (Raspberry Pi, remote Linux desktops).
-export WEBKIT_DISABLE_DMABUF_RENDERER=1
-export WEBKIT_DISABLE_COMPOSITING_MODE=1
-export LIBGL_ALWAYS_SOFTWARE=1
-export GDK_BACKEND=x11
 cd "${HERE}/usr/bin"
 exec ./OpenhpsdrZeus --desktop "$@"
 EOF
@@ -206,10 +199,6 @@ cat > "${SERVER_APPDIR}/AppRun" << 'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 export LD_LIBRARY_PATH="${HERE}/usr/bin/runtimes/linux-x64/native:${HERE}/usr/bin/runtimes/linux-arm64/native:${LD_LIBRARY_PATH}"
-export WEBKIT_DISABLE_DMABUF_RENDERER=1
-export WEBKIT_DISABLE_COMPOSITING_MODE=1
-export LIBGL_ALWAYS_SOFTWARE=1
-export GDK_BACKEND=x11
 cd "${HERE}/usr/bin"
 exec ./OpenhpsdrZeus --server "$@"
 EOF
