@@ -45,9 +45,11 @@
 import { useEffect, useRef } from 'react';
 import { COLORMAPS } from '../gl/colormap';
 import { createWfRenderer } from '../gl/waterfall';
+import { planForFrame } from '../gl/frame-plan';
 import { cancelDrawBusFrame, requestDrawBusFrame } from '../realtime/draw-bus';
 import { registerFrameConsumer, useDisplayStore } from '../state/display-store';
 import { useDisplaySettingsStore } from '../state/display-settings-store';
+import * as viewCenter from '../state/view-center';
 import { useTxStore } from '../state/tx-store';
 import { usePanTuneGesture } from '../util/use-pan-tune-gesture';
 import { WfDbScale } from './WfDbScale';
@@ -113,7 +115,11 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
       // window so the operator's RX noise-floor view stays put.
       const dbMin = keyed ? wfTxDbMin : wfDbMin;
       const dbMax = keyed ? wfTxDbMax : wfDbMax;
-      renderer.draw(dbMin, dbMax);
+      renderer.draw(
+        dbMin,
+        dbMax,
+        viewCenter.isInitialized() ? viewCenter.getViewCenterHz() : null,
+      );
     };
     const requestRedraw = () => {
       if (!isActive()) return;
@@ -162,17 +168,36 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
     const unsub = useDisplayStore.subscribe((state) => {
       if (state.lastSeq === lastSeqDrawn) return;
       lastSeqDrawn = state.lastSeq;
-      if (state.wfValid && state.wfDb) {
+      // Shared per-frame plan (issue #597): identical decision to the
+      // panadapter's, computed once per seq — and the geometry (shift/reset)
+      // applies even on frames whose wf payload is invalid, so the history
+      // can never drift against the trace.
+      const decision = planForFrame({
+        seq: state.lastSeq,
+        centerHz: state.centerHz,
+        hzPerPixel: state.hzPerPixel,
+        width: state.width,
+      });
+      const wfDb = state.wfValid && state.wfDb ? state.wfDb : null;
+      let skipRowUpload = false;
+      if (wfDb) {
         tickCounter++;
-        const skipRowUpload = tickCounter % WF_PUSH_EVERY_N !== 0;
-        renderer.pushFrame(state.wfDb, state.centerHz, state.hzPerPixel, {
-          skipRowUpload,
-        });
+        skipRowUpload = tickCounter % WF_PUSH_EVERY_N !== 0;
+        // No refill hold here any more (issue #597 Phase 2): rows are
+        // stamped with the LO their data was captured at, so the shared
+        // shift planner places them correctly even mid-retune.
         // Feed the auto-range tracker — it's a no-op when AUTO is off.
-        useDisplaySettingsStore.getState().updateAutoRange(state.wfDb);
+        useDisplaySettingsStore.getState().updateAutoRange(wfDb);
       }
+      renderer.pushFrame(decision, wfDb, state.centerHz, state.hzPerPixel, {
+        skipRowUpload,
+      });
       requestRedraw();
     });
+
+    // View-center motion → redraw at display rate while gliding (the
+    // fractional sampling offset in draw() moves the visible window).
+    const unsubViewCenter = viewCenter.subscribe(requestRedraw);
 
     // Repaint on dB-range or colormap changes so the WfDbScale drag and the
     // colormap swap land without waiting for the next server frame. Re-upload
@@ -211,6 +236,7 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
 
     return () => {
       unsub();
+      unsubViewCenter();
       unsubSettings();
       unsubTx();
       ro.disconnect();

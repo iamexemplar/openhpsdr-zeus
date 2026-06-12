@@ -289,6 +289,49 @@ public class DspPipelineService : BackgroundService,
     // see issue #81. volatile because MoxChanged fires on the caller's thread
     // and Tick reads from the pipeline thread.
     private volatile bool _keyed;
+    // Issue #597 Phase 0: display-EMA fast-attack latch. OnRadioStateChanged
+    // arms it when RadioLoHz moves (the operator is tuning) and Tick restores
+    // the default tau once the LO has been quiet for FastAttackRestoreMs.
+    // Debounced by design: one arm P/Invoke at gesture start, one restore
+    // P/Invoke at gesture end — NOT per wheel notch. Skipped entirely while
+    // _keyed so the TX display path is never touched (PS safety; the engine
+    // method is additionally scoped to the RX analyzer). long.MinValue
+    // sentinel suppresses the arm on the first state callback after connect.
+    // _fastAttackLastLoHz is only touched on the state-handler thread;
+    // _fastAttackLoChangedAt crosses to the RX thread via Interlocked.
+    private long _fastAttackLastLoHz = long.MinValue;
+    private long _fastAttackLoChangedAt;
+    private volatile bool _fastAttackActive;
+    private const int FastAttackRestoreMs = 250;
+    private static readonly long FastAttackRestoreTicks =
+        (long)(FastAttackRestoreMs / 1000.0 * Stopwatch.Frequency);
+    // Issue #597 Phase 2: delay-compensated CenterHz stamp (Thetis pixel_ref
+    // emulation). The display pixels broadcast at tick time were computed
+    // from IQ captured ~D earlier; stamping them with the LO from
+    // LookupAt(now − D) makes frames self-describing — the client renders
+    // data where it actually belongs, killing the mislabeled-frame
+    // snap-back at the root (no wire change: same CenterHz field).
+    // D = ½·FFT-fill + display-EMA lag + per-protocol transport. Override
+    // the transport+EMA constant with ZEUS_CENTER_STAMP_LAG_MS for bench
+    // tuning at 48/96/192/384 kHz on P1 (HL2) and P2 (G2). When the LO is
+    // stable longer than D the stamp equals live RadioLoHz — WWV cal
+    // (#325) and every stable-LO consumer is byte-identical (see
+    // LoHistoryRingTests regression).
+    private readonly LoHistoryRing _loHistory = new();
+    private const int AnalyzerFftSizeForStamp = 16_384; // WdspDspEngine.AnalyzerFftSize
+    private const double CenterStampEmaLagMs = 20.0;    // fast-attack tau during gestures (Phase 0)
+    private const double CenterStampTransportP1Ms = 40.0;
+    private const double CenterStampTransportP2Ms = 15.0;
+    private static readonly double? CenterStampLagOverrideMs = ReadCenterStampLagOverrideMs();
+
+    private static double? ReadCenterStampLagOverrideMs()
+    {
+        var raw = Environment.GetEnvironmentVariable("ZEUS_CENTER_STAMP_LAG_MS");
+        return double.TryParse(raw, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var ms) && ms >= 0
+            ? ms
+            : null;
+    }
     // RX S-meter broadcast throttle. Pipeline ticks at 30 Hz; broadcasting
     // every 6 ticks = 5 Hz gives a smoother meter than Thetis's 4 Hz baseline
     // without spamming the WS (30 Hz dBm readouts add nothing a UI can use).
@@ -644,6 +687,28 @@ public class DspPipelineService : BackgroundService,
         // RadioService.SetRadioLo). See docs/prd/panfall_behavior.md.
         var p2 = _p2Client;
         p2?.SetVfoAHz(s.RadioLoHz);
+
+        // Issue #597 Phase 0: arm the RX display fast-attack when the LO
+        // moves. First callback after construction only records the LO
+        // (sentinel) so connect itself doesn't trigger a pointless arm.
+        if (_fastAttackLastLoHz == long.MinValue)
+        {
+            _fastAttackLastLoHz = s.RadioLoHz;
+        }
+        else if (s.RadioLoHz != _fastAttackLastLoHz)
+        {
+            _fastAttackLastLoHz = s.RadioLoHz;
+            long nowTicks = Stopwatch.GetTimestamp();
+            // Issue #597 Phase 2: the LO history feeding the delay-compensated
+            // CenterHz stamp. O(1) append, LO changes only.
+            _loHistory.Append(nowTicks, s.RadioLoHz);
+            Interlocked.Exchange(ref _fastAttackLoChangedAt, nowTicks);
+            if (!_keyed && !_fastAttackActive)
+            {
+                Volatile.Read(ref _engine)?.SetRxDisplayFastAttack(Volatile.Read(ref _channelId), fast: true);
+                _fastAttackActive = true;
+            }
+        }
 
         // iter5 pass-2: lock-free engine pointer read. The lock previously
         // here only provided pointer atomicity (the engine.* calls below
@@ -1614,6 +1679,18 @@ public class DspPipelineService : BackgroundService,
         // real-radio data, so suppressing it unconditionally is correct.
         if (engine is SyntheticDspEngine) return;
 
+        // Issue #597 Phase 0: restore the default display tau once the LO has
+        // been quiet for FastAttackRestoreMs. Runs on the RX/pipeline thread;
+        // the engine call is idempotent and channel-guarded, so a race with a
+        // simultaneous re-arm on the state thread is harmless (the re-arm
+        // refreshes _fastAttackLoChangedAt and the restore simply fires later).
+        if (_fastAttackActive &&
+            Stopwatch.GetTimestamp() - Interlocked.Read(ref _fastAttackLoChangedAt) >= FastAttackRestoreTicks)
+        {
+            engine.SetRxDisplayFastAttack(channel, fast: false);
+            _fastAttackActive = false;
+        }
+
         engine.SetVfoHz(channel, state.VfoHz);
 
         // perf3 iter4: skip the entire display pipeline when no client is
@@ -1707,12 +1784,24 @@ public class DspPipelineService : BackgroundService,
             // extra contract field needed, per task #7 scope note.
             int zoomLevel = Math.Max(1, state.ZoomLevel);
             float hzPerPixel = (float)((double)sampleRate / zoomLevel / Width);
-            // Panadapter centre = the radio's actual NCO. The hardware is
-            // always frozen at RadioLoHz while the dial roams, so the
-            // pan/waterfall stay anchored to RadioLoHz and don't slide under
-            // the operator when only VfoHz moves.
-            // See docs/prd/panfall_behavior.md.
-            long centerHz = state.RadioLoHz;
+            // Panadapter centre: the LO the pixels were actually computed
+            // at (issue #597 Phase 2). The analyzer output broadcast this
+            // tick reflects IQ captured ~stampLag earlier; LookupAt rewinds
+            // the LO history by that much so mid-retune frames carry the
+            // frequency their data belongs to instead of the live NCO.
+            // Stable LO (≥ stampLag with no tune) ⇒ identical to the old
+            // `state.RadioLoHz` stamp, byte for byte.
+            double fftFillMs = sampleRate > 0
+                ? AnalyzerFftSizeForStamp / (double)sampleRate * 1000.0
+                : 0.0;
+            double stampLagMs = 0.5 * fftFillMs
+                + (CenterStampLagOverrideMs
+                   ?? (CenterStampEmaLagMs
+                       + (_p2Client is not null ? CenterStampTransportP2Ms : CenterStampTransportP1Ms)));
+            long stampLagTicks = (long)(stampLagMs / 1000.0 * Stopwatch.Frequency);
+            long centerHz = _loHistory.LookupAt(
+                Stopwatch.GetTimestamp() - stampLagTicks,
+                fallbackLoHz: state.RadioLoHz);
 
             // Cache for the frequency-calibration service (issue #325). The
             // cal reads from this cache to avoid racing for WDSP's "fresh
