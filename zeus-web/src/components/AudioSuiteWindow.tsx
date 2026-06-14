@@ -13,9 +13,11 @@
 // All chrome is in Zeus tokens — no raw hex per the design rules in
 // docs/lessons/dev-conventions.md.
 
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 import type { RegisteredPluginPanel } from '../plugins/runtime/pluginRuntime';
+import { AudioChainMeters } from './AudioChainMeters';
 import {
   AUDIO_SUITE_WINDOW_MIN_WIDTH,
   AUDIO_SUITE_WINDOW_MIN_HEIGHT,
@@ -215,7 +217,497 @@ function sortChainPanels(
   });
 }
 
-export function AudioSuiteWindow() {
+/** Six-dot drag-handle glyph — the universal "grab to reorder" cue. */
+function DragHandleIcon() {
+  return (
+    <svg width="8" height="14" viewBox="0 0 8 14" aria-hidden focusable="false">
+      <g fill="currentColor">
+        <circle cx="2" cy="2" r="1.2" />
+        <circle cx="6" cy="2" r="1.2" />
+        <circle cx="2" cy="7" r="1.2" />
+        <circle cx="6" cy="7" r="1.2" />
+        <circle cx="2" cy="12" r="1.2" />
+        <circle cx="6" cy="12" r="1.2" />
+      </g>
+    </svg>
+  );
+}
+
+/** Chevron that rotates to point down (expanded) or right (collapsed). */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      aria-hidden
+      focusable="false"
+      style={{
+        transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+        transition: 'transform var(--dur-fast, 120ms) var(--ease-out, ease)',
+      }}
+    >
+      <path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+interface ChainSlotCardProps {
+  panel: RegisteredPluginPanel;
+  index: number;
+  collapsed: boolean;
+  isDragTarget: boolean;
+  isDragSource: boolean;
+  onToggle(): void;
+  onRemove(): void;
+  onHandleDown(): void;
+  onDragStart(e: React.DragEvent): void;
+  onDragOver(e: React.DragEvent): void;
+  onDragLeave(): void;
+  onDrop(e: React.DragEvent): void;
+  onDragEnd(): void;
+  children: ReactNode;
+}
+
+/**
+ * One rack slot — a collapsible card wrapping a plugin's own panel.
+ * Header shows a drag handle (reorder), the slot index, the plugin
+ * name, and a chevron toggle. Collapsing keeps the slot in the chain
+ * (audio still flows); it only folds the UI away, like racking a unit
+ * with its front panel hidden. Drag is gated to start from the handle
+ * so the operator can still interact with sliders inside the body
+ * without accidentally tearing the slot out of the rack.
+ */
+function ChainSlotCard({
+  panel,
+  index,
+  collapsed,
+  isDragTarget,
+  isDragSource,
+  onToggle,
+  onRemove,
+  onHandleDown,
+  onDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onDragEnd,
+  children,
+}: ChainSlotCardProps) {
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      data-plugin-id={panel.pluginId}
+      style={{
+        borderRadius: 6,
+        border: '1px solid ' + (isDragTarget ? 'var(--accent)' : 'var(--line-1)'),
+        borderLeft: '3px solid ' + (isDragTarget ? 'var(--accent)' : 'var(--accent)'),
+        background: 'var(--bg-1)',
+        opacity: isDragSource ? 0.4 : 1,
+        overflow: 'hidden',
+        boxShadow: isDragTarget
+          ? '0 0 0 1px var(--accent)'
+          : 'inset 0 1px 0 rgba(255, 255, 255, 0.03)',
+      }}
+    >
+      {/* Header row — click anywhere (except the handle) to toggle. */}
+      <div
+        onClick={onToggle}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 10px',
+          background: 'linear-gradient(180deg, var(--panel-top), var(--panel-bot))',
+          borderBottom: collapsed ? 'none' : '1px solid var(--line-1)',
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        {/* Drag handle — the only place a reorder drag may start. */}
+        <span
+          onMouseDown={onHandleDown}
+          onClick={(e) => e.stopPropagation()}
+          title="Drag to reorder"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            color: 'var(--fg-3)',
+            cursor: 'grab',
+            padding: '2px 1px',
+          }}
+        >
+          <DragHandleIcon />
+        </span>
+
+        <span
+          style={{
+            fontSize: 10,
+            fontFamily: 'var(--font-mono, JetBrains Mono, monospace)',
+            color: 'var(--fg-3)',
+            width: 16,
+          }}
+        >
+          {String(index + 1).padStart(2, '0')}
+        </span>
+
+        <span
+          style={{
+            flex: 1,
+            minWidth: 0,
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--fg-1)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {panel.title || shortLabelFor(panel.pluginId, panel.title)}
+        </span>
+
+        <span style={{ display: 'inline-flex', color: 'var(--fg-2)' }}>
+          <Chevron open={!collapsed} />
+        </span>
+
+        {/* Remove from rack = park (non-destructive). Stops it
+            processing and moves it to the sidebar's Available list;
+            the plugin stays installed. */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          aria-label={`Remove ${panel.title} from chain`}
+          title="Remove from chain (keeps it installed)"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 18,
+            height: 18,
+            borderRadius: 3,
+            border: '1px solid var(--line-1)',
+            background: 'var(--bg-2)',
+            color: 'var(--fg-2)',
+            cursor: 'pointer',
+            fontSize: 12,
+            lineHeight: 1,
+            fontFamily: 'inherit',
+            padding: 0,
+          }}
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Body — the plugin's own panel. Unmounting on collapse would
+          tear down each plugin's meter polling and local UI state, so
+          we keep it mounted and just hide it; audio is unaffected
+          either way (collapse is presentation-only). */}
+      <div style={{ display: collapsed ? 'none' : 'block', padding: 10 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Custom DnD MIME so a sidebar "add" drag is distinct from a
+ *  rack-card reorder drag (which carries text/plain index). */
+const PARK_DRAG_MIME = 'application/x-zeus-park-id';
+
+interface PluginSidebarProps {
+  collapsed: boolean;
+  onToggle(): void;
+  active: RegisteredPluginPanel[];
+  parked: RegisteredPluginPanel[];
+  onAdd(pluginId: string): void;
+  onRemove(pluginId: string): void;
+  onParkedDragStart(pluginId: string): (e: React.DragEvent) => void;
+  onParkedDragEnd(): void;
+  onScanDirectory(): void;
+  scanning: boolean;
+}
+
+/**
+ * Plugin browser sidebar — lists every TX-chain plugin split into
+ * "In chain" (active) and "Available" (parked) groups. Add (+) on an
+ * available plugin slots it into the rack; remove (−) on an active one
+ * parks it. Available plugins are also draggable onto the rack to add
+ * them. Collapses to a thin labelled strip to reclaim width.
+ */
+function PluginSidebar({
+  collapsed,
+  onToggle,
+  active,
+  parked,
+  onAdd,
+  onRemove,
+  onParkedDragStart,
+  onParkedDragEnd,
+  onScanDirectory,
+  scanning,
+}: PluginSidebarProps) {
+  if (collapsed) {
+    return (
+      <div
+        style={{
+          width: 26,
+          flex: '0 0 26px',
+          background: 'var(--bg-1)',
+          borderRight: '1px solid var(--line-1)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          paddingTop: 6,
+          gap: 8,
+        }}
+      >
+        <button
+          type="button"
+          onClick={onToggle}
+          title="Show plugin browser"
+          aria-label="Show plugin browser"
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 3,
+            border: '1px solid var(--line-1)',
+            background: 'var(--bg-2)',
+            color: 'var(--fg-2)',
+            cursor: 'pointer',
+            fontSize: 11,
+            lineHeight: 1,
+            padding: 0,
+          }}
+        >
+          ›
+        </button>
+        <span
+          style={{
+            writingMode: 'vertical-rl',
+            transform: 'rotate(180deg)',
+            color: 'var(--fg-3)',
+            fontSize: 9,
+            letterSpacing: 1.4,
+            textTransform: 'uppercase',
+            userSelect: 'none',
+          }}
+        >
+          Plugins
+        </span>
+      </div>
+    );
+  }
+
+  const row = (panel: RegisteredPluginPanel, inChain: boolean) => (
+    <div
+      key={panel.pluginId}
+      draggable={!inChain}
+      onDragStart={!inChain ? onParkedDragStart(panel.pluginId) : undefined}
+      onDragEnd={!inChain ? onParkedDragEnd : undefined}
+      title={
+        inChain
+          ? `${panel.pluginId} — in chain`
+          : `${panel.pluginId} — drag into the rack or click + to add`
+      }
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 6px',
+        borderRadius: 3,
+        background: 'var(--bg-2)',
+        border: '1px solid var(--line-1)',
+        cursor: inChain ? 'default' : 'grab',
+      }}
+    >
+      <span
+        style={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: 11,
+          color: 'var(--fg-1)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {panel.title || shortLabelFor(panel.pluginId, panel.title)}
+      </span>
+      <button
+        type="button"
+        onClick={() => (inChain ? onRemove(panel.pluginId) : onAdd(panel.pluginId))}
+        aria-label={
+          inChain ? `Remove ${panel.title}` : `Add ${panel.title} to chain`
+        }
+        title={inChain ? 'Remove from chain' : 'Add to chain'}
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: 3,
+          border: '1px solid ' + (inChain ? 'var(--line-1)' : 'var(--accent)'),
+          background: inChain ? 'var(--bg-1)' : 'var(--accent)',
+          color: inChain ? 'var(--fg-2)' : 'var(--fg-0)',
+          cursor: 'pointer',
+          fontSize: 12,
+          lineHeight: 1,
+          padding: 0,
+          flex: '0 0 auto',
+        }}
+      >
+        {inChain ? '−' : '+'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div
+      style={{
+        width: 184,
+        flex: '0 0 184px',
+        background: 'var(--bg-1)',
+        borderRight: '1px solid var(--line-1)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '7px 8px',
+          borderBottom: '1px solid var(--line-1)',
+        }}
+      >
+        <span
+          style={{
+            flex: 1,
+            color: 'var(--fg-3)',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 1.2,
+            textTransform: 'uppercase',
+          }}
+        >
+          Plugins
+        </span>
+        <button
+          type="button"
+          onClick={onToggle}
+          title="Hide plugin browser"
+          aria-label="Hide plugin browser"
+          style={{
+            width: 18,
+            height: 18,
+            borderRadius: 3,
+            border: '1px solid var(--line-1)',
+            background: 'var(--bg-2)',
+            color: 'var(--fg-2)',
+            cursor: 'pointer',
+            fontSize: 11,
+            lineHeight: 1,
+            padding: 0,
+          }}
+        >
+          ‹
+        </button>
+      </div>
+
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: 8,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={groupLabelStyle}>In chain · {active.length}</span>
+          {active.length === 0 && <span style={emptyHintStyle}>None</span>}
+          {active.map((p) => row(p, true))}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span style={groupLabelStyle}>Available · {parked.length}</span>
+          {parked.length === 0 && (
+            <span style={emptyHintStyle}>All installed plugins are in the chain.</span>
+          )}
+          {parked.map((p) => row(p, false))}
+        </div>
+      </div>
+
+      {/* Footer — register VST3 plugins from a folder. */}
+      <div style={{ padding: 8, borderTop: '1px solid var(--line-1)' }}>
+        <button
+          type="button"
+          onClick={onScanDirectory}
+          disabled={scanning}
+          title="Scan a folder for VST3 plugins and add them to the rack"
+          style={{
+            width: '100%',
+            padding: '5px 8px',
+            borderRadius: 3,
+            border: '1px solid var(--accent)',
+            background: 'var(--bg-2)',
+            color: 'var(--fg-0)',
+            cursor: scanning ? 'progress' : 'pointer',
+            opacity: scanning ? 0.6 : 1,
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+            fontFamily: 'inherit',
+          }}
+        >
+          {scanning ? 'Scanning…' : '+ Add VST folder'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const groupLabelStyle: React.CSSProperties = {
+  color: 'var(--fg-3)',
+  fontSize: 9,
+  fontWeight: 600,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+  padding: '0 2px',
+};
+
+const emptyHintStyle: React.CSSProperties = {
+  color: 'var(--fg-3)',
+  fontSize: 10,
+  fontStyle: 'italic',
+  padding: '0 2px',
+};
+
+function profileBtnStyle(disabled: boolean): React.CSSProperties {
+  return {
+    padding: '3px 10px',
+    borderRadius: 3,
+    border: '1px solid var(--line-1)',
+    background: 'var(--bg-2)',
+    color: 'var(--fg-2)',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontFamily: 'inherit',
+    flex: '0 0 auto',
+  };
+}
+
+export function AudioSuiteWindow({ embedded = false }: { embedded?: boolean } = {}) {
   const isOpen = useAudioSuiteStore((s) => s.isOpen);
   const close = useAudioSuiteStore((s) => s.close);
   const x = useAudioSuiteStore((s) => s.x);
@@ -226,6 +718,18 @@ export function AudioSuiteWindow() {
   const setDragging = useAudioSuiteStore((s) => s.setDragging);
   const chainOrder = useAudioSuiteStore((s) => s.chainOrder);
   const reorderChain = useAudioSuiteStore((s) => s.reorderChain);
+  const collapsed = useAudioSuiteStore((s) => s.collapsed);
+  const toggleCollapsed = useAudioSuiteStore((s) => s.toggleCollapsed);
+  const setAllCollapsed = useAudioSuiteStore((s) => s.setAllCollapsed);
+  const sidebarCollapsed = useAudioSuiteStore((s) => s.sidebarCollapsed);
+  const toggleSidebar = useAudioSuiteStore((s) => s.toggleSidebar);
+  const setChainMembership = useAudioSuiteStore((s) => s.setChainMembership);
+  const profiles = useAudioSuiteStore((s) => s.profiles);
+  const loadProfiles = useAudioSuiteStore((s) => s.loadProfiles);
+  const saveProfile = useAudioSuiteStore((s) => s.saveProfile);
+  const applyProfile = useAudioSuiteStore((s) => s.applyProfile);
+  const deleteProfile = useAudioSuiteStore((s) => s.deleteProfile);
+  const scanVstDirectory = useAudioSuiteStore((s) => s.scanVstDirectory);
   const loadChainOrderFromServer = useAudioSuiteStore(
     (s) => s.loadChainOrderFromServer,
   );
@@ -238,27 +742,50 @@ export function AudioSuiteWindow() {
   );
 
   const allPanels = usePluginPanels();
+  // Every plugin that targets the TX audio chain — installed, whether
+  // or not it's currently in the active chain.
+  const chainSlotPanels = useMemo(
+    () => allPanels.filter((p) => p.slot === CHAIN_SLOT),
+    [allPanels],
+  );
+  // Active rack = the panels whose plugin ID is in the server's active
+  // order, sorted by it. Parking removes an ID from chainOrder, so a
+  // parked plugin simply falls out of here and into the sidebar.
+  const chainOrderSet = useMemo(() => new Set(chainOrder), [chainOrder]);
   const chainPanels = useMemo(
-    () => sortChainPanels(
-      allPanels.filter((p) => p.slot === CHAIN_SLOT),
-      chainOrder,
-    ),
-    [allPanels, chainOrder],
+    () =>
+      sortChainPanels(
+        chainSlotPanels.filter((p) => chainOrderSet.has(p.pluginId)),
+        chainOrder,
+      ),
+    [chainSlotPanels, chainOrderSet, chainOrder],
+  );
+  // Available (parked) = chain-slot plugins NOT in the active order.
+  // These show in the sidebar's "Available" group, ready to add back.
+  const parkedPanels = useMemo(
+    () =>
+      chainSlotPanels
+        .filter((p) => !chainOrderSet.has(p.pluginId))
+        .sort((a, b) => a.title.localeCompare(b.title)),
+    [chainSlotPanels, chainOrderSet],
   );
 
   // Fetch server-side state on first open. Subsequent updates arrive
   // via the AudioChainOrder + AudioMasterBypass WS broadcast handlers
   // in ws-client.ts.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!embedded && !isOpen) return;
     loadChainOrderFromServer();
     loadAuditionState();
     loadMasterBypassFromServer();
+    loadProfiles();
   }, [
+    embedded,
     isOpen,
     loadChainOrderFromServer,
     loadAuditionState,
     loadMasterBypassFromServer,
+    loadProfiles,
   ]);
 
   // Escape closes the window — standard modal/popup keyboard
@@ -356,57 +883,188 @@ export function AudioSuiteWindow() {
     [setDragging],
   );
 
-  // --- Tile drag-and-drop (HTML5 d&d) -----------------------------
-  // Two pieces of drag state:
-  //   - draggedFromRef: synchronous source-index access in the drop
-  //     handler (set in dragStart, cleared in drop/dragEnd).
-  //   - draggedFromIdx (state): triggers re-render so the SOURCE
-  //     tile dims to opacity 0.4 during drag, giving the operator
-  //     a visible "I'm moving this one" cue alongside the target
-  //     highlight.
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [draggedFromIdx, setDraggedFromIdx] = useState<number | null>(null);
-  const draggedFromRef = useRef<number | null>(null);
+  // --- Rack-card drag-and-drop -------------------------------------
+  // Same chain-reorder as the tile strip, but applied to the stacked
+  // slot cards. Drag is gated to begin only from each card's handle
+  // (cardHandleRef) so dragging a slider inside a plugin body never
+  // tears the slot out of the rack. Separate drag state from the tile
+  // strip so the two never cross-highlight.
+  const [cardDragOver, setCardDragOver] = useState<number | null>(null);
+  const [cardDragFrom, setCardDragFrom] = useState<number | null>(null);
+  const cardDragFromRef = useRef<number | null>(null);
+  const cardHandleRef = useRef<boolean>(false);
 
-  const onTileDragStart = (idx: number) => (e: React.DragEvent) => {
-    draggedFromRef.current = idx;
-    setDraggedFromIdx(idx);
+  const onCardHandleDown = () => {
+    cardHandleRef.current = true;
+  };
+
+  const onCardDragStart = (idx: number) => (e: React.DragEvent) => {
+    if (!cardHandleRef.current) {
+      // Drag did not originate on the handle — cancel it so the
+      // operator can still select text / drag sliders in the body.
+      e.preventDefault();
+      return;
+    }
+    cardDragFromRef.current = idx;
+    setCardDragFrom(idx);
     e.dataTransfer.effectAllowed = 'move';
-    // Some browsers require a payload to start a drag.
     e.dataTransfer.setData('text/plain', String(idx));
   };
 
-  const onTileDragOver = (idx: number) => (e: React.DragEvent) => {
+  const onCardDragOver = (idx: number) => (e: React.DragEvent) => {
+    if (cardDragFromRef.current === null) return; // ignore foreign drags
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (dragOverIndex !== idx) setDragOverIndex(idx);
+    if (cardDragOver !== idx) setCardDragOver(idx);
   };
 
-  const onTileDragLeave = () => setDragOverIndex(null);
+  const onCardDragLeave = () => setCardDragOver(null);
 
-  const onTileDrop = (idx: number) => (e: React.DragEvent) => {
+  const onCardDrop = (idx: number) => (e: React.DragEvent) => {
     e.preventDefault();
-    const from = draggedFromRef.current;
-    setDragOverIndex(null);
-    setDraggedFromIdx(null);
-    draggedFromRef.current = null;
+    const from = cardDragFromRef.current;
+    setCardDragOver(null);
+    setCardDragFrom(null);
+    cardDragFromRef.current = null;
+    cardHandleRef.current = false;
     if (from === null || from === idx) return;
     void reorderChain(from, idx);
   };
 
-  const onTileDragEnd = () => {
-    setDragOverIndex(null);
-    setDraggedFromIdx(null);
-    draggedFromRef.current = null;
+  const onCardDragEnd = () => {
+    setCardDragOver(null);
+    setCardDragFrom(null);
+    cardDragFromRef.current = null;
+    cardHandleRef.current = false;
   };
 
-  if (!isOpen) return null;
+  // --- Profiles ----------------------------------------------------
+  const [selectedProfile, setSelectedProfile] = useState('');
+  // Drop a stale selection if the profile was deleted elsewhere.
+  useEffect(() => {
+    if (selectedProfile && !profiles.some((p) => p.name === selectedProfile)) {
+      setSelectedProfile('');
+    }
+  }, [profiles, selectedProfile]);
 
-  return (
-    <div
-      role="dialog"
-      aria-label="Audio Suite"
-      style={{
+  const onSelectProfile = (name: string) => {
+    setSelectedProfile(name);
+    if (name) void applyProfile(name);
+  };
+  const onSaveProfile = () => {
+    const suggested = selectedProfile || '';
+    const name = window.prompt(
+      'Save current chain as profile (name):',
+      suggested,
+    );
+    if (name && name.trim()) {
+      const trimmed = name.trim();
+      setSelectedProfile(trimmed);
+      void saveProfile(trimmed);
+    }
+  };
+  const onDeleteProfile = () => {
+    if (!selectedProfile) return;
+    if (window.confirm(`Delete profile "${selectedProfile}"?`)) {
+      void deleteProfile(selectedProfile);
+      setSelectedProfile('');
+    }
+  };
+
+  // --- Add VST directory (scan) ------------------------------------
+  const [scanning, setScanning] = useState(false);
+  const onScanVstDirectory = async () => {
+    const dir = window.prompt(
+      'Scan a folder for VST3 plugins — each .vst3 is registered into the rack:',
+      'C:\\VST PLUGINS',
+    );
+    if (!dir || !dir.trim()) return;
+    setScanning(true);
+    const result = await scanVstDirectory(dir.trim());
+    setScanning(false);
+    if (!result.ok) {
+      window.alert(`VST scan failed:\n${result.error ?? 'unknown error'}`);
+      return;
+    }
+    const lines = [
+      `Scanned: ${result.directory}`,
+      `Registered: ${result.registered.length}`,
+      `Already present: ${result.skipped.length}`,
+      `Failed: ${result.errors.length}`,
+    ];
+    if (result.errors.length > 0) {
+      lines.push('', ...result.errors.slice(0, 6).map((e) => `• ${e.message}`));
+    }
+    window.alert(lines.join('\n'));
+  };
+
+  // --- Sidebar → rack drag (add a parked plugin) -------------------
+  const [rackDropActive, setRackDropActive] = useState(false);
+
+  const onParkedDragStart = (pluginId: string) => (e: React.DragEvent) => {
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData(PARK_DRAG_MIME, pluginId);
+  };
+  const onParkedDragEnd = () => setRackDropActive(false);
+
+  const onRackDragOver = (e: React.DragEvent) => {
+    // Only react to sidebar "add" drags, not card reorder drags.
+    if (!e.dataTransfer.types.includes(PARK_DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!rackDropActive) setRackDropActive(true);
+  };
+  const onRackDragLeave = () => setRackDropActive(false);
+  const onRackDrop = (e: React.DragEvent) => {
+    const id = e.dataTransfer.getData(PARK_DRAG_MIME);
+    setRackDropActive(false);
+    if (!id) return;
+    e.preventDefault();
+    void setChainMembership(id, true); // un-park → add to chain
+  };
+
+  // Collapse-all / expand-all act on the plugins currently in the
+  // chain. "All collapsed" only when every slot is folded, so the
+  // single toggle flips to "expand all" once the rack is fully closed.
+  const chainPluginIds = useMemo(
+    () => chainPanels.map((p) => p.pluginId),
+    [chainPanels],
+  );
+  // Slots default to collapsed (folded, rack-overview style) until the
+  // operator opens them — an unseen plugin has no entry in the map, so
+  // absence reads as collapsed.
+  const isCollapsed = useCallback(
+    (id: string) => collapsed[id] ?? true,
+    [collapsed],
+  );
+  const allCollapsed =
+    chainPluginIds.length > 0 &&
+    chainPluginIds.every((id) => isCollapsed(id));
+
+  // Embedded mode (rendered inline inside TX Audio Tools) is always
+  // visible; the floating window only renders when opened.
+  if (!embedded && !isOpen) return null;
+
+  // Outer container differs by mode: a fixed, draggable, resizable
+  // floating window vs. a normal-flow block that fills the host panel's
+  // width (so plugin GUIs get real room instead of being clipped).
+  const containerStyle: React.CSSProperties = embedded
+    ? {
+        position: 'relative',
+        width: '100%',
+        height: '76vh',
+        minHeight: 480,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'linear-gradient(180deg, var(--panel-top), var(--panel-bot))',
+        border: '1px solid var(--line-1)',
+        borderRadius: 8,
+        boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.04)',
+        color: 'var(--fg-0)',
+        fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)',
+        overflow: 'hidden',
+      }
+    : {
         position: 'fixed',
         left: x,
         // Render-time clamp on top so a persisted y < 64 (e.g. from a
@@ -431,21 +1089,21 @@ export function AudioSuiteWindow() {
         color: 'var(--fg-0)',
         fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)',
         overflow: 'hidden',
-      }}
-    >
-      {/* Resize handles — 4 edges + 4 corners. Each is a 6px invisible
-          grab region absolutely positioned on its edge; cursor changes
-          on hover so the grab area is discoverable. zIndex:1 so they
-          sit above the content but below dialogs / dropdowns. */}
-      {RESIZE_EDGES.map((e) => <ResizeHandle key={e} edge={e} />)}
+      };
+
+  return (
+    <div role={embedded ? 'group' : 'dialog'} aria-label="Audio Suite" style={containerStyle}>
+      {/* Resize handles — floating mode only (the embedded host resizes
+          with its container). */}
+      {!embedded && RESIZE_EDGES.map((e) => <ResizeHandle key={e} edge={e} />)}
 
       {/* Header — drag handle. Brass-plate styling per the v3 Lifted
           Dark spec ([[project_audio_chain_visual_direction]]). */}
       <div
-        onPointerDown={onHeaderPointerDown}
-        onPointerMove={onHeaderPointerMove}
-        onPointerUp={onHeaderPointerUp}
-        onPointerCancel={onHeaderPointerUp}
+        onPointerDown={embedded ? undefined : onHeaderPointerDown}
+        onPointerMove={embedded ? undefined : onHeaderPointerMove}
+        onPointerUp={embedded ? undefined : onHeaderPointerUp}
+        onPointerCancel={embedded ? undefined : onHeaderPointerUp}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -454,7 +1112,7 @@ export function AudioSuiteWindow() {
           background: 'linear-gradient(180deg, var(--panel-top), var(--panel-bot))',
           borderBottom: '1px solid var(--line-1)',
           boxShadow: 'inset 0 2px 0 var(--power), inset 0 3px 8px rgba(255, 201, 58, 0.08)',
-          cursor: 'grab',
+          cursor: embedded ? 'default' : 'grab',
           userSelect: 'none',
         }}
       >
@@ -503,112 +1161,230 @@ export function AudioSuiteWindow() {
           Audition {auditionEnabled ? 'ON' : 'OFF'}
         </button>
 
-        <button
-          type="button"
-          data-no-drag
-          onClick={close}
-          aria-label="Close Audio Suite window"
-          title="Close"
-          style={{
-            padding: '2px 10px',
-            borderRadius: 4,
-            border: '1px solid var(--line-1)',
-            background: 'var(--bg-2)',
-            color: 'var(--fg-2)',
-            cursor: 'pointer',
-            fontSize: 14,
-            fontWeight: 600,
-            fontFamily: 'inherit',
-            lineHeight: 1,
-          }}
-        >
-          ×
-        </button>
+        {!embedded && (
+          <button
+            type="button"
+            data-no-drag
+            onClick={close}
+            aria-label="Close Audio Suite window"
+            title="Close"
+            style={{
+              padding: '2px 10px',
+              borderRadius: 4,
+              border: '1px solid var(--line-1)',
+              background: 'var(--bg-2)',
+              color: 'var(--fg-2)',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: 600,
+              fontFamily: 'inherit',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        )}
       </div>
 
-      {/* Tile strip — drag to reorder. Vanilla HTML5 d&d. */}
+      {/* Profiles bar — named snapshots of the chain config. Choosing
+          one applies it; Save snapshots the current chain. */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          padding: '8px 12px',
+          padding: '6px 12px',
           background: 'var(--bg-1)',
           borderBottom: '1px solid var(--line-1)',
-          flexWrap: 'wrap',
+        }}
+      >
+        <span
+          style={{
+            color: 'var(--fg-3)',
+            fontSize: 10,
+            fontWeight: 600,
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+          }}
+        >
+          Profile
+        </span>
+        <select
+          value={selectedProfile}
+          onChange={(e) => onSelectProfile(e.target.value)}
+          title="Apply a saved profile"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '3px 6px',
+            borderRadius: 3,
+            border: '1px solid var(--line-1)',
+            background: 'var(--bg-2)',
+            color: 'var(--fg-1)',
+            fontSize: 11,
+            fontFamily: 'inherit',
+          }}
+        >
+          <option value="">
+            {profiles.length ? 'Select profile…' : 'No profiles saved'}
+          </option>
+          {profiles.map((p) => (
+            <option key={p.name} value={p.name}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={onSaveProfile}
+          title="Save the current chain as a profile"
+          style={profileBtnStyle(false)}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          onClick={onDeleteProfile}
+          disabled={!selectedProfile}
+          title="Delete the selected profile"
+          style={profileBtnStyle(!selectedProfile)}
+        >
+          Delete
+        </button>
+      </div>
+
+      {/* Body — plugin browser sidebar + main rack column. */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <PluginSidebar
+          collapsed={sidebarCollapsed}
+          onToggle={toggleSidebar}
+          active={chainPanels}
+          parked={parkedPanels}
+          onAdd={(id) => void setChainMembership(id, true)}
+          onRemove={(id) => void setChainMembership(id, false)}
+          onParkedDragStart={onParkedDragStart}
+          onParkedDragEnd={onParkedDragEnd}
+          onScanDirectory={() => void onScanVstDirectory()}
+          scanning={scanning}
+        />
+
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
+      {/* Chain IN / OUT signal meters (poll while window open). */}
+      <AudioChainMeters />
+
+      {/* Rack toolbar — label + collapse-all. The slot order in the
+          rack below IS the signal chain; reorder by dragging a slot's
+          handle. (The old duplicate tile strip was removed — the rack
+          is now the single source of chain order.) */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '7px 12px',
+          background: 'var(--bg-1)',
+          borderBottom: '1px solid var(--line-1)',
           fontSize: 10,
           letterSpacing: 1.2,
           textTransform: 'uppercase',
         }}
       >
-        <span style={{ color: 'var(--fg-3)', marginRight: 4, fontWeight: 500 }}>
-          Chain
-        </span>
-        {chainPanels.length === 0 && (
-          <span style={{ color: 'var(--fg-3)', fontStyle: 'italic', textTransform: 'none' }}>
-            No audio plugins installed — use Download Audio Suite on the TX Audio Tools panel.
+        <span style={{ color: 'var(--fg-3)', fontWeight: 500 }}>Chain</span>
+        {chainPanels.length > 0 && (
+          <span style={{ color: 'var(--fg-3)', fontWeight: 500 }}>
+            · {chainPanels.length} slot{chainPanels.length === 1 ? '' : 's'}
           </span>
         )}
-        {chainPanels.map((panel, idx) => {
-          const label = shortLabelFor(panel.pluginId, panel.title);
-          const isDragTarget = dragOverIndex === idx;
-          const isDragSource = draggedFromIdx === idx;
-          return (
-            <div key={panel.pluginId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              {idx > 0 && (
-                <span aria-hidden style={{ color: 'var(--fg-3)' }}>›</span>
-              )}
-              <div
-                draggable
-                onDragStart={onTileDragStart(idx)}
-                onDragOver={onTileDragOver(idx)}
-                onDragLeave={onTileDragLeave}
-                onDrop={onTileDrop(idx)}
-                onDragEnd={onTileDragEnd}
-                title={`${panel.pluginId} — drag to reorder`}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: 3,
-                  background: isDragTarget ? 'var(--accent)' : 'var(--bg-2)',
-                  border: '1px dashed ' + (isDragTarget ? 'var(--accent)' : 'var(--line-1)'),
-                  borderStyle: isDragSource ? 'dashed' : 'solid',
-                  color: isDragTarget ? 'var(--fg-0)' : 'var(--fg-1)',
-                  cursor: 'grab',
-                  opacity: isDragSource ? 0.4 : 1,
-                  fontSize: 10,
-                  fontWeight: 500,
-                  userSelect: 'none',
-                }}
-              >
-                {label}
-              </div>
-            </div>
-          );
-        })}
+        {chainPanels.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setAllCollapsed(!allCollapsed, chainPluginIds)}
+            title={allCollapsed ? 'Expand all slots' : 'Collapse all slots'}
+            style={{
+              marginLeft: 'auto',
+              padding: '3px 9px',
+              borderRadius: 3,
+              border: '1px solid var(--line-1)',
+              background: 'var(--bg-2)',
+              color: 'var(--fg-2)',
+              cursor: 'pointer',
+              fontSize: 9.5,
+              fontWeight: 600,
+              letterSpacing: 1,
+              textTransform: 'uppercase',
+              fontFamily: 'inherit',
+            }}
+          >
+            {allCollapsed ? 'Expand all' : 'Collapse all'}
+          </button>
+        )}
       </div>
 
-      {/* Plugin panels stacked vertically in chain order. */}
+      {/* Rack — collapsible slot cards stacked in chain order. Also a
+          drop zone: dragging a plugin from the sidebar's Available
+          list here un-parks (adds) it. */}
       <div
+        onDragOver={onRackDragOver}
+        onDragLeave={onRackDragLeave}
+        onDrop={onRackDrop}
         style={{
           flex: 1,
           overflowY: 'auto',
           padding: 12,
           display: 'flex',
           flexDirection: 'column',
-          gap: 12,
+          gap: 8,
+          outline: rackDropActive ? '2px dashed var(--accent)' : 'none',
+          outlineOffset: -4,
+          background: rackDropActive ? 'rgba(74, 158, 255, 0.06)' : 'transparent',
         }}
       >
-        {chainPanels.map((panel) => {
+        {chainPanels.length === 0 && (
+          <span
+            style={{
+              color: 'var(--fg-3)',
+              fontSize: 12,
+              fontStyle: 'italic',
+              padding: 8,
+            }}
+          >
+            {parkedPanels.length > 0
+              ? 'No plugins in the chain — add one from the Available list, or drag it here.'
+              : 'No audio plugins installed — use Download Audio Suite on the TX Audio Tools panel.'}
+          </span>
+        )}
+        {chainPanels.map((panel, idx) => {
           const Component = panel.component;
           return (
-            <div
+            <ChainSlotCard
               key={`${panel.pluginId}::${panel.panelId}`}
-              data-plugin-id={panel.pluginId}
+              panel={panel}
+              index={idx}
+              collapsed={isCollapsed(panel.pluginId)}
+              isDragTarget={cardDragOver === idx}
+              isDragSource={cardDragFrom === idx}
+              onToggle={() => toggleCollapsed(panel.pluginId)}
+              onRemove={() => void setChainMembership(panel.pluginId, false)}
+              onHandleDown={onCardHandleDown}
+              onDragStart={onCardDragStart(idx)}
+              onDragOver={onCardDragOver(idx)}
+              onDragLeave={onCardDragLeave}
+              onDrop={onCardDrop(idx)}
+              onDragEnd={onCardDragEnd}
             >
               <Component />
-            </div>
+            </ChainSlotCard>
           );
         })}
+      </div>
+        </div>
       </div>
     </div>
   );

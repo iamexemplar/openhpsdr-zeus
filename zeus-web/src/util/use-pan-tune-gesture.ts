@@ -64,7 +64,10 @@ const PAN_STEP_HZ = 500;
 // deltas to one discrete tick per this many pixels of deltaY.
 const WHEEL_NOTCH_PX = 40;
 
-function snapHz(hz: number): number {
+// Exported so the hover filter-cursor preview (FilterCursorOverlay) resolves
+// the exact frequency a click will commit — the readout can't lie about where
+// you'll land if it runs the same snap the gesture does.
+export function snapHz(hz: number): number {
   if (!Number.isFinite(hz)) return 0;
   const snapped = Math.round(hz / PAN_STEP_HZ) * PAN_STEP_HZ;
   return Math.min(MAX_HZ, Math.max(0, snapped));

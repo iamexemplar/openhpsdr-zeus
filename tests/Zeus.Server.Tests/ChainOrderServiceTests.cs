@@ -350,6 +350,133 @@ public class ChainOrderServiceTests
         finally { store.Dispose(); File.Delete(dbPath); }
     }
 
+    [Fact]
+    public void Parking_Removes_From_Runtime_But_Keeps_Canonical_Position()
+    {
+        var (svc, store, _, dbPath) = MakeService();
+        try
+        {
+            var eq = ChainOrderService.DefaultOrder[3];
+            var comp = ChainOrderService.DefaultOrder[4];
+            var exc = ChainOrderService.DefaultOrder[5];
+            svc.OnPluginAttached(eq, new[] { eq });
+            svc.OnPluginAttached(comp, new[] { eq, comp });
+            svc.OnPluginAttached(exc, new[] { eq, comp, exc });
+            Assert.Equal(new[] { eq, comp, exc }, svc.CurrentOrder);
+
+            int orderChangedCount = 0;
+            svc.OrderChanged += _ => orderChangedCount++;
+
+            // Park the middle plugin — it drops from the runtime order
+            // but stays in canonical so un-park restores its slot.
+            var ok = svc.TrySetParked(comp, parked: true, out var err);
+            Assert.True(ok, err);
+            Assert.Equal(new[] { eq, exc }, svc.CurrentOrder);
+            Assert.Contains(comp, svc.CanonicalOrderForTest);
+            Assert.Contains(comp, svc.ParkedForTest);
+            Assert.Equal(1, orderChangedCount);
+
+            // Un-park — restored at its canonical position (between eq and exc).
+            ok = svc.TrySetParked(comp, parked: false, out err);
+            Assert.True(ok, err);
+            Assert.Equal(new[] { eq, comp, exc }, svc.CurrentOrder);
+            Assert.DoesNotContain(comp, svc.ParkedForTest);
+            Assert.Equal(2, orderChangedCount);
+        }
+        finally { store.Dispose(); File.Delete(dbPath); }
+    }
+
+    [Fact]
+    public void Parking_Is_Idempotent_No_Event_When_Already_In_State()
+    {
+        var (svc, store, _, dbPath) = MakeService();
+        try
+        {
+            var eq = ChainOrderService.DefaultOrder[3];
+            svc.OnPluginAttached(eq, new[] { eq });
+
+            int orderChangedCount = 0;
+            svc.OrderChanged += _ => orderChangedCount++;
+
+            Assert.True(svc.TrySetParked(eq, parked: true, out _));
+            Assert.True(svc.TrySetParked(eq, parked: true, out _)); // no-op
+            Assert.Equal(1, orderChangedCount);
+        }
+        finally { store.Dispose(); File.Delete(dbPath); }
+    }
+
+    [Fact]
+    public void TrySetParked_Rejects_Unattached_Plugin()
+    {
+        var (svc, store, _, dbPath) = MakeService();
+        try
+        {
+            var ok = svc.TrySetParked("com.example.not-installed", parked: true, out var err);
+            Assert.False(ok);
+            Assert.NotNull(err);
+        }
+        finally { store.Dispose(); File.Delete(dbPath); }
+    }
+
+    [Fact]
+    public void TrySetOrder_Validates_Against_Active_Set_When_Something_Parked()
+    {
+        var (svc, store, _, dbPath) = MakeService();
+        try
+        {
+            var eq = ChainOrderService.DefaultOrder[3];
+            var comp = ChainOrderService.DefaultOrder[4];
+            var exc = ChainOrderService.DefaultOrder[5];
+            svc.OnPluginAttached(eq, new[] { eq });
+            svc.OnPluginAttached(comp, new[] { eq, comp });
+            svc.OnPluginAttached(exc, new[] { eq, comp, exc });
+            svc.TrySetParked(comp, parked: true, out _);
+
+            // PUT must be exactly the active set [eq, exc] — reordering
+            // those two is accepted even though comp is parked.
+            var ok = svc.TrySetOrder(new[] { exc, eq }, out var err);
+            Assert.True(ok, err);
+            Assert.Equal(new[] { exc, eq }, svc.CurrentOrder);
+
+            // Including the parked plugin in the PUT is a set mismatch.
+            ok = svc.TrySetOrder(new[] { eq, comp, exc }, out err);
+            Assert.False(ok);
+            Assert.NotNull(err);
+        }
+        finally { store.Dispose(); File.Delete(dbPath); }
+    }
+
+    [Fact]
+    public void Parked_Set_Survives_Service_Restart()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), $"chain-parked-restart-{Guid.NewGuid():N}.db");
+        try
+        {
+            var eq = ChainOrderService.DefaultOrder[3];
+            var comp = ChainOrderService.DefaultOrder[4];
+            {
+                var store = new ChainOrderStore(NullLogger<ChainOrderStore>.Instance, dbPath);
+                var svc = new ChainOrderService(store, new StreamingHub(NullLogger<StreamingHub>.Instance), NullLogger<ChainOrderService>.Instance);
+                svc.OnPluginAttached(eq, new[] { eq });
+                svc.OnPluginAttached(comp, new[] { eq, comp });
+                svc.TrySetParked(comp, parked: true, out _);
+                store.Dispose();
+            }
+            {
+                var store = new ChainOrderStore(NullLogger<ChainOrderStore>.Instance, dbPath);
+                var svc = new ChainOrderService(store, new StreamingHub(NullLogger<StreamingHub>.Instance), NullLogger<ChainOrderService>.Instance);
+                // comp stays parked across restart; re-attach both and
+                // confirm only eq is active.
+                svc.OnPluginAttached(eq, new[] { eq });
+                svc.OnPluginAttached(comp, new[] { eq, comp });
+                Assert.Equal(new[] { eq }, svc.CurrentOrder);
+                Assert.Contains(comp, svc.ParkedForTest);
+                store.Dispose();
+            }
+        }
+        finally { if (File.Exists(dbPath)) File.Delete(dbPath); }
+    }
+
     private sealed class AddOnePlugin : IAudioPlugin
     {
         public string DisplayName => "add+1";

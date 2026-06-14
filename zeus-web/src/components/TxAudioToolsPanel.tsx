@@ -16,6 +16,7 @@
 import { useEffect, useMemo } from 'react';
 import { CfcSettingsPanel } from './CfcSettingsPanel';
 import { DownloadAudioSuiteButton } from './DownloadAudioSuiteButton';
+import { AudioSuiteWindow } from './AudioSuiteWindow';
 import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 import type { RegisteredPluginPanel } from '../plugins/runtime/pluginRuntime';
 import { useAudioSuiteStore } from '../state/audio-suite-store';
@@ -220,6 +221,12 @@ export function TxAudioToolsPanel() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <ChainFlow chainPanels={chainPanels} />
+
+      {/* Full plugin host, inline. The TX Audio Tools settings pane is
+          much wider than the floating window, so VST/plugin GUIs get
+          real room here. The floating "Audio Suite" window renders the
+          same rack for operators who want a detachable copy. */}
+      <AudioSuiteWindow embedded />
 
       {/* CFC — WDSP-driven, always available, always last in the chain. */}
       <CfcSettingsPanel />

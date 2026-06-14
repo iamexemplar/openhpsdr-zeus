@@ -7,6 +7,7 @@
 
 using System.Net;
 using Zeus.Contracts;
+using Zeus.Plugins.Host;
 using Zeus.Dsp;
 using Zeus.Dsp.Wdsp;
 using Zeus.Protocol1;
@@ -122,6 +123,128 @@ public static class ZeusEndpoints
             if (chainOrder.TrySetOrder(body.PluginIds, out var err))
                 return Results.Ok(new { pluginIds = chainOrder.CurrentOrder });
             return Results.BadRequest(new { error = err });
+        });
+
+        // Audio plugin chain membership — "park" / "un-park". An
+        // installed audio plugin is by default IN the active chain;
+        // the operator can pull it OUT (active=false) so it stops
+        // processing audio and drops from the rack, WITHOUT
+        // uninstalling — it stays in the sidebar's available list and
+        // can be slotted back in (active=true) anytime. Parking removes
+        // the ID from the runtime CurrentOrder; un-parking restores it
+        // at its canonical position. The bridge re-slots via
+        // ChainOrderService.OrderChanged and an AudioChainOrderFrame
+        // (0x1E) broadcast refreshes other clients. Returns the new
+        // active order.
+        app.MapPut("/api/plugins/{id}/chain-membership",
+            (string id, ChainMembershipSetRequest body, ChainOrderService chainOrder) =>
+        {
+            if (body is null)
+                return Results.BadRequest(new { error = "active is required" });
+            if (chainOrder.TrySetParked(id, parked: !body.Active, out var err))
+                return Results.Ok(new { pluginIds = chainOrder.CurrentOrder });
+            return Results.BadRequest(new { error = err });
+        });
+
+        // Audio Suite profiles — named snapshots of the chain config
+        // (active plugin order + parked set + master bypass). Lets the
+        // operator save a whole rack layout and recall it in one click.
+        // Chain-level only in v1: per-plugin knob positions are NOT
+        // captured (a running plugin reads its settings only at init, so
+        // there's no live-reload path to apply them yet).
+        app.MapGet("/api/audio-suite/profiles", (AudioProfileService profiles) =>
+        {
+            var list = profiles.List().Select(p => new
+            {
+                name = p.Name,
+                order = p.Order,
+                parked = p.Parked,
+                masterBypass = p.MasterBypass,
+                createdUtc = p.CreatedUtc,
+                updatedUtc = p.UpdatedUtc,
+            });
+            return Results.Ok(new { profiles = list });
+        });
+        // PUT saves (or overwrites) the named profile from the CURRENT
+        // live chain config.
+        app.MapPut("/api/audio-suite/profiles/{name}", (string name, AudioProfileService profiles) =>
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return Results.BadRequest(new { error = "profile name is required" });
+            var entry = profiles.SaveCurrent(name.Trim());
+            return Results.Ok(new
+            {
+                name = entry.Name,
+                order = entry.Order,
+                parked = entry.Parked,
+                masterBypass = entry.MasterBypass,
+                createdUtc = entry.CreatedUtc,
+                updatedUtc = entry.UpdatedUtc,
+            });
+        });
+        // POST applies the named profile to the live chain.
+        app.MapPost("/api/audio-suite/profiles/{name}/apply", (string name, AudioProfileService profiles, ChainOrderService chainOrder) =>
+        {
+            if (profiles.Apply(name))
+                return Results.Ok(new { pluginIds = chainOrder.CurrentOrder });
+            return Results.NotFound(new { error = $"no audio profile named '{name}'" });
+        });
+        app.MapDelete("/api/audio-suite/profiles/{name}", (string name, AudioProfileService profiles) =>
+        {
+            return profiles.Delete(name)
+                ? Results.Ok(new { deleted = name })
+                : Results.NotFound(new { error = $"no audio profile named '{name}'" });
+        });
+
+        // Scan a directory for VST3 plugins and register each as an
+        // installed Zeus plugin so it flows into the Audio Suite chain.
+        // Each .vst3 becomes a generated plugin package (stub assembly +
+        // synthesized manifest); already-registered VSTs are skipped.
+        // Returns what was registered / skipped / failed.
+        app.MapPost("/api/audio-suite/scan-vst-directory",
+            async (ScanVstDirectoryRequest body, VstDirectoryScanService scanner, CancellationToken ct) =>
+        {
+            if (body is null || string.IsNullOrWhiteSpace(body.Directory))
+                return Results.BadRequest(new { error = "directory is required" });
+            try
+            {
+                var result = await scanner.ScanAsync(body.Directory, ct);
+                return Results.Ok(new
+                {
+                    directory = result.Directory,
+                    registered = result.Registered.Select(r => new { id = r.Id, name = r.Name }),
+                    skipped = result.Skipped.Select(r => new { id = r.Id, name = r.Name }),
+                    errors = result.Errors.Select(e => new { source = e.Vst3Source, message = e.Message }),
+                });
+            }
+            catch (DirectoryNotFoundException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
+        });
+
+        // Audio Suite chain-level IN/OUT signal meters. Linear peak of
+        // the block entering / leaving the TX insert chain, plus dBFS.
+        // Reads 0 until the chain processes audio — which only happens
+        // during MOX/TX or desktop-mode audition (mic preview). The
+        // Audio Suite window polls this ~15 Hz while open, mirroring the
+        // per-plugin /meters polling (no new WS frame / wire-format
+        // change).
+        app.MapGet("/api/audio-suite/chain/meters", (AudioPluginBridge bridge) =>
+        {
+            var (inPk, outPk) = bridge.ChainMeters;
+            static double ToDb(float lin) => lin <= 1e-6f ? -120.0 : 20.0 * Math.Log10(lin);
+            return Results.Ok(new
+            {
+                inputPeak = inPk,
+                outputPeak = outPk,
+                inputDb = ToDb(inPk),
+                outputDb = ToDb(outPk),
+            });
         });
 
         // WAV recorder / player. Records RX or processed-TX audio to float32
@@ -1517,6 +1640,8 @@ public static class ZeusEndpoints
 internal sealed record NativeMuteRequest(bool Muted);
 internal sealed record AuditionSetRequest(bool Enabled);
 internal sealed record ChainOrderSetRequest(List<string> PluginIds);
+internal sealed record ChainMembershipSetRequest(bool Active);
+internal sealed record ScanVstDirectoryRequest(string Directory);
 internal sealed record MasterBypassSetRequest(bool Bypassed);
 internal sealed record WavRecordStartRequest(string? Source);
 internal sealed record WavPlayRequest(string? File);

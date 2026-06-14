@@ -151,6 +151,15 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
     public bool IsMasterBypassed => _chain.MasterBypassed;
 
     /// <summary>
+    /// Chain-level signal meters (linear peak) for the Audio Suite IN /
+    /// OUT bars: the level entering the TX insert chain and the level
+    /// leaving it. Both read 0 until the chain processes audio — which
+    /// only happens during MOX/TX or desktop-mode audition (mic
+    /// preview). Surfaced via GET /api/audio-suite/chain/meters.
+    /// </summary>
+    public (float In, float Out) ChainMeters => _chain.Meters;
+
+    /// <summary>
     /// True if the TX insert plugin chain (Audio Suite) is currently being
     /// bypassed because the active TX audio source is remote (e.g. TCI client).
     /// This is independent of the operator's master bypass toggle.
@@ -688,9 +697,13 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
             slotIndex++;
         }
         // Append orphans (attached but not in canonical order) at the
-        // end, sorted for determinism.
+        // end, sorted for determinism. PARKED plugins are deliberately
+        // absent from CurrentOrder (and thus canonicalSet); they must
+        // NOT be re-slotted here, or parking wouldn't actually pull
+        // them out of the live processing chain.
         foreach (var kvp in _idToPlugin
-                     .Where(k => !canonicalSet.Contains(k.Key))
+                     .Where(k => !canonicalSet.Contains(k.Key)
+                                 && !(_chainOrder?.IsParked(k.Key) ?? false))
                      .OrderBy(k => k.Key, StringComparer.Ordinal))
         {
             if (slotIndex >= _chain.SlotCount)

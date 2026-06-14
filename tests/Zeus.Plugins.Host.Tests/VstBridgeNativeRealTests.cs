@@ -93,6 +93,50 @@ public class VstBridgeNativeRealTests
         }
     }
 
+    /// <summary>
+    /// Integration test: load an ACTUAL .vst3, run a block through it, and
+    /// unload — the path the host takes when an operator adds a scanned
+    /// VST. Opt-in via ZEUS_VST_TEST_PATH (a real .vst3 file or bundle) so
+    /// it stays green on machines without one. This is the regression
+    /// guard for the null-IPtr queryInterface crash that segfaulted the
+    /// host on the first real load.
+    /// </summary>
+    [SkippableFact]
+    public void LoadVst3_RealPlugin_LoadsProcessesUnloads()
+    {
+        Skip.If(SkipBecauseNoNative, SkipReason);
+        var vstPath = Environment.GetEnvironmentVariable("ZEUS_VST_TEST_PATH");
+        Skip.If(
+            string.IsNullOrWhiteSpace(vstPath)
+                || (!File.Exists(vstPath) && !Directory.Exists(vstPath)),
+            "Set ZEUS_VST_TEST_PATH to a real .vst3 to run this integration test.");
+
+        var bridge = new VstBridgeNative();
+        Assert.Equal(VstBridgeStatus.Ok, bridge.Init(VstBridgeAbi.Current));
+        try
+        {
+            const int channels = 2, frames = 256;
+            var status = bridge.LoadVst3(
+                vstPath!, channels, sampleRate: 48000, blockSize: frames, out var handle);
+            Assert.Equal(VstBridgeStatus.Ok, status);
+            Assert.NotEqual(IntPtr.Zero, handle);
+
+            // One block of silence through the processor — must not crash.
+            var input = new float[channels * frames];
+            var output = new float[channels * frames];
+            var pstatus = bridge.Process(handle, input, output, frames);
+            Assert.True(
+                pstatus == VstBridgeStatus.Ok || pstatus == VstBridgeStatus.Other,
+                $"unexpected process status {pstatus}");
+
+            Assert.Equal(VstBridgeStatus.Ok, bridge.Unload(handle));
+        }
+        finally
+        {
+            bridge.Shutdown();
+        }
+    }
+
     [SkippableFact]
     public void Unload_OnNullHandle_IsNoOp()
     {

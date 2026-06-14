@@ -147,6 +147,16 @@ export interface PanelDef {
   /** Height cap in grid rows. Optional ceiling on vertical growth.
    *  Omit for freely-sizable panels. */
   maxH?: number;
+  /** Width floor in 12-col grid units. Below this the panel's content stops
+   *  being legible, so RGL refuses to let the operator drag it narrower and
+   *  the responsive auto-fit treats it as the minimum span. Omit to fall
+   *  back to the workspace-global WORKSPACE_TILE_MIN_W. */
+  minW?: number;
+  /** Height floor in grid rows. Same contract as minW on the vertical axis —
+   *  dense panels (TX meters, DSP, logbook) set this so the viewport auto-fit
+   *  can't crush them below the height their content needs to read. Omit to
+   *  fall back to WORKSPACE_TILE_MIN_H. */
+  minH?: number;
 }
 
 // Panel registry: maps component-id strings (used in the flexlayout JSON model)
@@ -164,6 +174,11 @@ export const PANELS: Record<string, PanelDef> = {
     // ⌥ map-mode hint, and HZ/PX readout — instead of stacking those on
     // top of the default TileChrome (the old "double header").
     headerless: true,
+    // The panadapter/waterfall needs real estate to be useful — a sliver of
+    // spectrum reads as noise. Floor it at a third of the width and a
+    // comfortable height.
+    minW: 4,
+    minH: 6,
   },
   vfo: {
     id: 'vfo',
@@ -172,6 +187,8 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['frequency', 'vfo', 'tuning'],
     component: VfoPanel,
     maxW: 3,
+    minW: 2,
+    minH: 3,
   },
   smeter: {
     id: 'smeter',
@@ -180,6 +197,8 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['signal', 'meter', 'rx', 'smeter'],
     component: SMeterPanel,
     maxW: 3,
+    minW: 2,
+    minH: 2,
   },
   qrz: {
     id: 'qrz',
@@ -187,6 +206,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'tools',
     tags: ['qrz', 'callsign', 'lookup', 'station'],
     component: QrzPanel,
+    minW: 3,
+    minH: 4,
   },
   azimuth: {
     id: 'azimuth',
@@ -195,6 +216,8 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['azimuth', 'map', 'bearing', 'great-circle'],
     component: AzimuthPanel,
     maxW: 3,
+    minW: 2,
+    minH: 5,
   },
   rotatorcompass: {
     id: 'rotatorcompass',
@@ -220,6 +243,8 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['dsp', 'noise', 'filter', 'nr', 'anf'],
     component: DspFlexPanel,
     maxW: 3,
+    minW: 2,
+    minH: 3,
   },
   cw: {
     id: 'cw',
@@ -227,6 +252,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'tools',
     tags: ['cw', 'morse', 'keyer', 'wpm'],
     component: CwPanel,
+    minW: 3,
+    minH: 3,
   },
   cwdecoder: {
     id: 'cwdecoder',
@@ -240,6 +267,8 @@ export const PANELS: Record<string, PanelDef> = {
     // header — and the panel's own close button goes dead because PanelTile
     // only injects onRemove to headerless panels.
     headerless: true,
+    minW: 3,
+    minH: 3,
   },
   logbook: {
     id: 'logbook',
@@ -247,6 +276,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'log',
     tags: ['log', 'qso', 'logbook', 'adif'],
     component: LogbookPanel,
+    minW: 3,
+    minH: 4,
   },
   txmeters: {
     id: 'txmeters',
@@ -255,6 +286,10 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['tx', 'power', 'swr', 'alc', 'meters'],
     component: TxMetersPanel,
     maxW: 3,
+    // The immersive cluster stacks three gauge sections + a footer; below
+    // ~6 rows the lower sections clip behind the tile's inner scrollbar.
+    minW: 3,
+    minH: 6,
   },
   tx: {
     id: 'tx',
@@ -263,6 +298,8 @@ export const PANELS: Record<string, PanelDef> = {
     tags: ['tx', 'drive', 'tune', 'mic', 'mic-gain', 'power', 'filter', 'bandpass'],
     component: TxPanel,
     maxW: 3,
+    minW: 2,
+    minH: 4,
   },
   filter: {
     id: 'filter',
@@ -270,6 +307,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'dsp',
     tags: ['filter', 'bandwidth', 'passband', 'ribbon'],
     component: FilterRibbonPanel,
+    minW: 3,
+    minH: 2,
   },
   ps: {
     id: 'ps',
@@ -277,6 +316,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'tools',
     tags: ['puresignal', 'ps', 'tx', 'predistortion', 'linearization', 'twotone'],
     component: PsFlexPanel,
+    minW: 3,
+    minH: 4,
   },
   band: {
     id: 'band',
@@ -284,6 +325,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'controls',
     tags: ['band', 'frequency', 'hf', 'tuning'],
     component: BandPanel,
+    minW: 3,
+    minH: 2,
   },
   mode: {
     id: 'mode',
@@ -291,6 +334,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'controls',
     tags: ['mode', 'modulation', 'ssb', 'cw', 'am', 'fm'],
     component: ModePanel,
+    minW: 2,
+    minH: 2,
   },
   step: {
     id: 'step',
@@ -298,6 +343,8 @@ export const PANELS: Record<string, PanelDef> = {
     category: 'controls',
     tags: ['step', 'tuning', 'frequency', 'increment'],
     component: StepPanel,
+    minW: 2,
+    minH: 2,
   },
   metergroup: {
     id: 'metergroup',
