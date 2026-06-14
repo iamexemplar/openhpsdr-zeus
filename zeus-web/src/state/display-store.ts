@@ -44,6 +44,7 @@
 
 import { create } from 'zustand';
 import type { DecodedFrame } from '../realtime/frame';
+import { maybeUpdateEstimator } from '../dsp/signal-estimator';
 
 export type DisplayState = {
   connected: boolean;
@@ -70,7 +71,11 @@ export const useDisplayStore = create<DisplayState>((set) => ({
   wfValid: false,
   lastSeq: 0,
   setConnected: (connected) => set({ connected }),
-  pushFrame: (f) =>
+  pushFrame: (f) => {
+    // Advance the shared noise-floor tracker BEFORE notifying subscribers, so
+    // the panadapter/waterfall enhance this frame against this frame's floor.
+    // No-op (zero cost) unless Signal Pop or Snap is enabled.
+    maybeUpdateEstimator(f);
     set({
       width: f.width,
       centerHz: f.centerHz,
@@ -80,7 +85,8 @@ export const useDisplayStore = create<DisplayState>((set) => ({
       panValid: f.panValid,
       wfValid: f.wfValid,
       lastSeq: f.seq,
-    }),
+    });
+  },
 }));
 
 export function subscribeFrames(cb: (s: DisplayState) => void): () => void {
