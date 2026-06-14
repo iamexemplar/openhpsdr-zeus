@@ -48,6 +48,7 @@ import { planForFrame } from '../gl/frame-plan';
 import { cancelDrawBusFrame, requestDrawBusFrame } from '../realtime/draw-bus';
 import { registerFrameConsumer, useDisplayStore } from '../state/display-store';
 import { useDisplaySettingsStore } from '../state/display-settings-store';
+import { enhanceInto, useSignalEnhanceStore } from '../dsp/signal-estimator';
 import * as viewCenter from '../state/view-center';
 import { useTxStore } from '../state/tx-store';
 import { usePanTuneGesture } from '../util/use-pan-tune-gesture';
@@ -57,6 +58,7 @@ import { PassbandOverlay } from './PassbandOverlay';
 import { ImdReadings } from './ImdReadings';
 import { DbScale } from './DbScale';
 import { SpotOverlay } from './SpotOverlay';
+import { PeakMarkerOverlay } from './PeakMarkerOverlay';
 
 export function Panadapter() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -89,6 +91,32 @@ export function Panadapter() {
     let anchorPan: Float32Array | null = null;
     let anchorCenterHz = 0;
     let anchorHzPerPixel = 0;
+    // Signal Pop (issue: AI-enhance display). The adopted anchor is the raw
+    // server trace UNLESS Pop is on, in which case it's the per-bin
+    // floor-subtracted trace. We keep the last RAW trace around so a Pop toggle
+    // (or a parameter change) can rebuild the anchor without waiting for the
+    // next frame. Enhanced output is double-buffered so each adoption presents
+    // a NEW Float32Array reference — the renderer's dataDirty check (issue #597)
+    // keys on reference identity, so mutating one buffer in place would be
+    // silently dropped during a glide.
+    let lastRawPan: Float32Array | null = null;
+    const enhScratch: Array<Float32Array | null> = [null, null];
+    let enhSlot = 0;
+    const buildAnchor = (raw: Float32Array): Float32Array => {
+      const { popEnabled } = useSignalEnhanceStore.getState();
+      const { moxOn, tunOn } = useTxStore.getState();
+      // Pop is an RX weak-signal aid; the TX trace lives in a different dB
+      // domain (speech against a calibrated scale), so leave it raw while keyed.
+      if (!popEnabled || moxOn || tunOn) return raw;
+      let buf = enhScratch[enhSlot];
+      if (!buf || buf.length !== raw.length) {
+        buf = new Float32Array(raw.length);
+        enhScratch[enhSlot] = buf;
+      }
+      enhanceInto(raw, buf);
+      enhSlot ^= 1;
+      return buf;
+    };
     // Visibility gating: don't burn rAF cycles when the tile is scrolled
     // off-screen, the tab is hidden, or the operator switched to a layout
     // where the panadapter isn't mounted-but-visible. Both signals are
@@ -106,8 +134,13 @@ export function Panadapter() {
       // TX_FIXED_DB_MIN/MAX in display-settings-store.
       const { moxOn, tunOn } = useTxStore.getState();
       const keyed = moxOn || tunOn;
-      const dbMin = keyed ? s.txDbMin : s.dbMin;
-      const dbMax = keyed ? s.txDbMax : s.dbMax;
+      const pop = useSignalEnhanceStore.getState();
+      // Signal Pop (RX only): the anchor now holds dB-above-floor values, so
+      // map the colormap window relative to the floor — noise sits near the
+      // dark end and carriers a few dB up bloom. Keyed/TX keeps absolute dB.
+      const popOn = pop.popEnabled && !keyed;
+      const dbMin = popOn ? pop.popFloorDb : keyed ? s.txDbMin : s.dbMin;
+      const dbMax = popOn ? pop.popFloorDb + pop.popSpanDb : keyed ? s.txDbMax : s.dbMax;
       const { r, g, b } = hexToRgbFloats(s.rxTraceColor);
       renderer.setTraceColor(r, g, b);
       // Fractional offset — the shaders take a float uOffsetPx, so the
@@ -190,7 +223,8 @@ export function Panadapter() {
         // immediately; the refill hold doesn't apply across a reset.
         viewCenter.snapTo(frameCenter, state.hzPerPixel);
         if (state.panValid && state.panDb) {
-          anchorPan = state.panDb;
+          lastRawPan = state.panDb;
+          anchorPan = buildAnchor(state.panDb);
           anchorCenterHz = frameCenter;
           anchorHzPerPixel = state.hzPerPixel;
         }
@@ -206,13 +240,27 @@ export function Panadapter() {
         // self-describing — the anchor model draws them where their data
         // belongs and the old refill-hold heuristic is unnecessary.
         if (state.panValid && state.panDb) {
-          anchorPan = state.panDb;
+          lastRawPan = state.panDb;
+          anchorPan = buildAnchor(state.panDb);
           anchorCenterHz = frameCenter;
           anchorHzPerPixel = state.hzPerPixel;
         }
       }
 
       requestRedraw();
+    });
+
+    // Signal Pop toggle / tuning change: rebuild the anchor from the last raw
+    // trace and repaint now, instead of waiting for the next server frame.
+    const unsubEnhance = useSignalEnhanceStore.subscribe((state, prev) => {
+      if (
+        state.popEnabled !== prev.popEnabled ||
+        state.popFloorDb !== prev.popFloorDb ||
+        state.popSpanDb !== prev.popSpanDb
+      ) {
+        if (lastRawPan) anchorPan = buildAnchor(lastRawPan);
+        requestRedraw();
+      }
     });
 
     // View-center motion → redraw at display rate while gliding. The
@@ -244,6 +292,10 @@ export function Panadapter() {
     // raises the floor on the redraw rate above the spectrum-tick rate.
     const unsubTx = useTxStore.subscribe((state, prev) => {
       if (state.moxOn !== prev.moxOn || state.tunOn !== prev.tunOn) {
+        // buildAnchor gates Pop off while keyed, so rebuild from the last raw
+        // trace on the MOX/TUN edge to avoid a one-frame enhanced-vs-TX-range
+        // mismap before the first TX frame adopts.
+        if (lastRawPan) anchorPan = buildAnchor(lastRawPan);
         requestRedraw();
       }
     });
@@ -253,6 +305,7 @@ export function Panadapter() {
       unsubViewCenter();
       unsubSettings();
       unsubTx();
+      unsubEnhance();
       ro.disconnect();
       io.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -280,6 +333,7 @@ export function Panadapter() {
       <PassbandOverlay />
       <FilterCursorOverlay containerRef={containerRef} />
       <SpotOverlay />
+      <PeakMarkerOverlay />
       <ImdReadings />
       <FreqAxis />
       <DbScale />
