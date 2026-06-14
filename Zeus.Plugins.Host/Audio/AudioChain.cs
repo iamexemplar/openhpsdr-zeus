@@ -30,6 +30,13 @@ public sealed class AudioChain : IAsyncDisposable
     private readonly ChainSlot[] _slots = new ChainSlot[MaxSlots];
     private readonly float[] _scratch;
     private volatile bool _masterBypassed;
+    // Chain-level signal meters — peak |sample| of the block entering
+    // slot 0 (_inPeak) and leaving the last active slot (_outPeak).
+    // Written on the realtime thread in Process, read (lock-free) by
+    // the control thread for the /api/audio-suite/chain/meters poll.
+    // Linear 0..1-ish (can exceed 1 on overshoot); the UI maps to dBFS.
+    private volatile float _inPeak;
+    private volatile float _outPeak;
 
     public AudioChain(int maxFrames = 4096, int maxChannels = 2)
     {
@@ -50,6 +57,26 @@ public sealed class AudioChain : IAsyncDisposable
     {
         get => _masterBypassed;
         set => _masterBypassed = value;
+    }
+
+    /// <summary>
+    /// Most-recent chain-level signal meters: peak |sample| entering
+    /// the chain (In) and leaving it (Out), linear. Lock-free snapshot
+    /// for the control thread; the UI converts to dBFS. Both read 0
+    /// until the chain has processed at least one block (idle / no MOX).
+    /// </summary>
+    public (float In, float Out) Meters => (_inPeak, _outPeak);
+
+    private static float BlockPeak(ReadOnlySpan<float> block)
+    {
+        float peak = 0f;
+        for (int i = 0; i < block.Length; i++)
+        {
+            float a = block[i];
+            if (a < 0f) a = -a;
+            if (a > peak) peak = a;
+        }
+        return peak;
     }
 
     public IAudioPlugin? GetSlot(int index)
@@ -141,9 +168,16 @@ public sealed class AudioChain : IAsyncDisposable
         if (output.Length < input.Length)
             throw new ArgumentException("output too small", nameof(output));
 
+        // Input meter tap (before slot 0). Cheap O(n) max-|sample|,
+        // same shape as the WDSP TX stage meters.
+        float inPk = BlockPeak(input);
+
         if (_masterBypassed)
         {
+            // Inert chain: output IS input, so both meters read the same.
             input.CopyTo(output);
+            _inPeak = inPk;
+            _outPeak = inPk;
             return;
         }
 
@@ -153,6 +187,8 @@ public sealed class AudioChain : IAsyncDisposable
             // Caller-supplied scratch too small — pass through rather
             // than corrupt unrelated memory.
             input.CopyTo(output);
+            _inPeak = inPk;
+            _outPeak = inPk;
             return;
         }
 
@@ -183,6 +219,10 @@ public sealed class AudioChain : IAsyncDisposable
         {
             scratch[..needed].CopyTo(output);
         }
+
+        // Output meter tap (after the last active slot).
+        _inPeak = inPk;
+        _outPeak = BlockPeak(output[..needed]);
     }
 
     private static void ValidateIndex(int index)

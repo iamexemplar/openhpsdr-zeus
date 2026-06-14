@@ -42,6 +42,7 @@
 // Zeus is distributed WITHOUT ANY WARRANTY; see the GNU General Public
 // License for details.
 
+import { useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { GripVertical, X } from 'lucide-react';
 import { Panadapter } from '../../components/Panadapter';
@@ -52,6 +53,37 @@ import { LeafletMapErrorBoundary } from '../../components/design/LeafletMapError
 import { useConnectionStore } from '../../state/connection-store';
 import { useRotatorStore } from '../../state/rotator-store';
 import { useWorkspace } from '../WorkspaceContext';
+
+// Persisted spectrum/waterfall split: fraction of the stack height given to
+// the panadapter (the waterfall gets the remainder). Default 0.4 so the
+// waterfall is the larger of the two out of the box; the operator can drag
+// the divider to rebalance and the choice survives reloads via localStorage.
+const SPLIT_STORAGE_KEY = 'zeus.layout.spectrumSplit';
+const DEFAULT_SPLIT = 0.4;
+const MIN_SPLIT = 0.15;
+const MAX_SPLIT = 0.85;
+
+function readSplit(): number {
+  try {
+    if (typeof localStorage === 'undefined') return DEFAULT_SPLIT;
+    const raw = localStorage.getItem(SPLIT_STORAGE_KEY);
+    if (raw === null) return DEFAULT_SPLIT;
+    const v = Number.parseFloat(raw);
+    if (!Number.isFinite(v) || v < MIN_SPLIT || v > MAX_SPLIT) return DEFAULT_SPLIT;
+    return v;
+  } catch {
+    return DEFAULT_SPLIT;
+  }
+}
+
+function writeSplit(v: number): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(SPLIT_STORAGE_KEY, String(v));
+  } catch {
+    // quota exceeded / private mode — in-memory state still holds for this session.
+  }
+}
 
 // Hero panel: Panadapter + Waterfall with optional Leaflet world-map overlay.
 // Registered as headerless in panels.ts — this component owns the single
@@ -85,6 +117,39 @@ export function HeroPanel({ onRemove }: { onRemove?: () => void } = {}) {
     submitBeam,
   } = useWorkspace();
   const connected = useConnectionStore((s) => s.status === 'Connected');
+
+  const stackRef = useRef<HTMLDivElement | null>(null);
+  const [split, setSplit] = useState(readSplit);
+  const [splitDragging, setSplitDragging] = useState(false);
+
+  // Drag the divider to rebalance the panadapter/waterfall split. We attach
+  // window-level move/up listeners (rather than relying on the divider's own
+  // pointer events) so the drag keeps tracking even when the cursor outruns
+  // the slim hit area. stopPropagation keeps RGL from treating it as a tile
+  // drag; preventDefault suppresses text selection during the gesture.
+  const onSplitterPointerDown = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const stack = stackRef.current;
+    if (!stack) return;
+    const rect = stack.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    setSplitDragging(true);
+    let latest = split;
+    const onMove = (ev: PointerEvent) => {
+      const frac = (ev.clientY - rect.top) / rect.height;
+      latest = Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, frac));
+      setSplit(latest);
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      setSplitDragging(false);
+      writeSplit(latest);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
 
   const handleRotateToBearing = (brg: number) => {
     const rot = useRotatorStore.getState();
@@ -240,16 +305,25 @@ export function HeroPanel({ onRemove }: { onRemove?: () => void } = {}) {
           </LeafletMapErrorBoundary>
         </div>
         <div
+          ref={stackRef}
           data-spectrum-stack
           style={{
             position: 'absolute',
             inset: 0,
             display: 'grid',
-            gridTemplateRows: '1fr 1fr',
+            gridTemplateRows: `${split}fr 8px ${1 - split}fr`,
             zIndex: 1,
           }}
         >
           {connected && <Panadapter />}
+          <div
+            className={`spectrum-splitter ${splitDragging ? 'dragging' : ''}`}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize panadapter and waterfall"
+            title="Drag to resize panadapter / waterfall"
+            onPointerDown={onSplitterPointerDown}
+          />
           {connected && <Waterfall transparent={bgActive} />}
         </div>
       </div>

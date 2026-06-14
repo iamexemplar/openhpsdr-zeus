@@ -41,8 +41,34 @@ public sealed class VstHostAudioPlugin : IAudioPlugin, IAsyncDisposable
     public string DisplayName { get; }
     public AudioPluginRequirements Requirements { get; }
 
+    /// <summary>
+    /// Safety gate: actually loading a real .vst3 through the native
+    /// bridge currently risks a hard crash (the bridge has only ever
+    /// been exercised against non-existent test paths; real plugins can
+    /// segfault on load). Until the native bridge is hardened, the load
+    /// is OFF by default — a hosted VST registers and sits in the chain
+    /// but passes audio through bit-identical (Process short-circuits on
+    /// a zero handle). Set ZEUS_ENABLE_VST_LOAD=1 to opt in (e.g. while
+    /// developing the native side). See native/zeus-vst-bridge.
+    /// </summary>
+    /// <summary>Test override for <see cref="NativeLoadEnabled"/>; null = use the env var.</summary>
+    internal static bool? NativeLoadEnabledOverride;
+
+    private static bool NativeLoadEnabled =>
+        NativeLoadEnabledOverride
+        ?? Environment.GetEnvironmentVariable("ZEUS_ENABLE_VST_LOAD") == "1";
+
     public Task InitializeAudioAsync(IAudioHost host, CancellationToken ct)
     {
+        if (!NativeLoadEnabled)
+        {
+            _log?.LogInformation(
+                "VST host '{Name}' registered but native load is disabled "
+                + "(ZEUS_ENABLE_VST_LOAD!=1); passing audio through until the "
+                + "native bridge is hardened.", DisplayName);
+            return Task.CompletedTask; // _handle stays 0 → Process passes through
+        }
+
         // Bridge init is idempotent — the native side ref-counts.
         var initStatus = _bridge.Init(VstBridgeAbi.Current);
         if (initStatus != VstBridgeStatus.Ok)

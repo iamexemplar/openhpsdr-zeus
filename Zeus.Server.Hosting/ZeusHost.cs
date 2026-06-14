@@ -390,6 +390,13 @@ public static class ZeusHost
         builder.Services.AddSingleton<ChainOrderStore>();
         builder.Services.AddSingleton<ChainOrderService>();
 
+        // AudioProfileService — named snapshots of the chain config
+        // (active order + parked set + master bypass). Persists to
+        // zeus-prefs.db via AudioProfileStore. Lets the operator recall
+        // a whole rack layout ("Contest" / "Ragchew") in one click.
+        builder.Services.AddSingleton<AudioProfileStore>();
+        builder.Services.AddSingleton<AudioProfileService>();
+
         // AudioPluginBridge wires PluginManager's audio-bearing plugins
         // into WdspDspEngine's realtime TX seam. No-op when no plugins
         // declare an audio component; subscribes to engine swaps so it

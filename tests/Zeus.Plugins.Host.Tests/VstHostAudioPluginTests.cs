@@ -4,8 +4,14 @@ using Zeus.Plugins.Host.Audio;
 
 namespace Zeus.Plugins.Host.Tests;
 
-public class VstHostAudioPluginTests
+public class VstHostAudioPluginTests : IDisposable
 {
+    // Native load is gated OFF by default (real .vst3 loads can crash the
+    // bridge until it's hardened). These tests exercise the load path with
+    // a fake bridge, so opt in for the class lifetime, then reset.
+    public VstHostAudioPluginTests() => VstHostAudioPlugin.NativeLoadEnabledOverride = true;
+    public void Dispose() => VstHostAudioPlugin.NativeLoadEnabledOverride = null;
+
     private static AudioBlock AudioManifest(string vst3Path = "vst3/Fake.vst3")
         => new() { Vst3Path = vst3Path, Slot = "tx.post-leveler", Channels = 1, SampleRate = 48000 };
 

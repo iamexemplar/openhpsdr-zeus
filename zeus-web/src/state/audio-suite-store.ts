@@ -39,6 +39,30 @@ import { persist } from 'zustand/middleware';
 export const AUDIO_SUITE_WINDOW_MIN_WIDTH = 480;
 export const AUDIO_SUITE_WINDOW_MIN_HEIGHT = 360;
 
+/**
+ * A saved Audio Suite profile — a named snapshot of the chain config
+ * (active order + parked set + master bypass). Mirrors the server
+ * AudioProfileEntry. Chain-level only in v1 (no per-plugin knob state).
+ */
+export interface AudioProfileSummary {
+  name: string;
+  order: string[];
+  parked: string[];
+  masterBypass: boolean;
+  createdUtc: string;
+  updatedUtc: string;
+}
+
+/** Result of a VST directory scan (POST /api/audio-suite/scan-vst-directory). */
+export interface VstScanResult {
+  ok: boolean;
+  error?: string;
+  directory?: string;
+  registered: Array<{ id: string; name: string }>;
+  skipped: Array<{ id: string; name: string }>;
+  errors: Array<{ source: string; message: string }>;
+}
+
 interface AudioSuiteState {
   // Window placement
   isOpen: boolean;
@@ -68,6 +92,23 @@ interface AudioSuiteState {
   // Drag state — transient, not persisted.
   isDragging: boolean;
 
+  // Per-slot collapse state for the rack view. Keyed by plugin ID;
+  // a true value means the slot is collapsed (header only). Absent /
+  // false means expanded (full plugin panel visible). Persisted to
+  // localStorage so the operator's "I keep the EQ folded away" choice
+  // survives a reload — purely a presentation preference, never sent
+  // to the server.
+  collapsed: Record<string, boolean>;
+
+  // Whether the plugin-browser sidebar is folded to a thin strip.
+  // Presentation-only, persisted to localStorage.
+  sidebarCollapsed: boolean;
+
+  // Saved profiles (chain-config snapshots). Server-authoritative;
+  // loaded on window open, refreshed after save / delete. Not persisted
+  // to localStorage.
+  profiles: AudioProfileSummary[];
+
   // Actions
   open(): void;
   close(): void;
@@ -75,6 +116,28 @@ interface AudioSuiteState {
   setPosition(x: number, y: number): void;
   setSize(width: number, height: number): void;
   setDragging(on: boolean): void;
+
+  // Rack collapse plumbing.
+  toggleCollapsed(pluginId: string): void;
+  setAllCollapsed(collapsed: boolean, pluginIds: string[]): void;
+  toggleSidebar(): void;
+
+  // Chain membership — park (active=false) / un-park (active=true) an
+  // installed plugin. Parking pulls it out of the active chain (stops
+  // processing, drops from the rack) without uninstalling; un-parking
+  // slots it back in at its canonical position. Server returns the new
+  // active order, which becomes chainOrder.
+  setChainMembership(pluginId: string, active: boolean): Promise<void>;
+
+  // Profile plumbing.
+  loadProfiles(): Promise<void>;
+  saveProfile(name: string): Promise<void>;
+  applyProfile(name: string): Promise<void>;
+  deleteProfile(name: string): Promise<void>;
+
+  // Scan a directory for VST3 plugins, register each, and refresh the
+  // rack. Returns a summary (or an error string on failure).
+  scanVstDirectory(directory: string): Promise<VstScanResult>;
 
   // Chain order plumbing.
   setChainOrderFromServer(ids: string[]): void;
@@ -94,8 +157,8 @@ interface AudioSuiteState {
 // Default window placement — top-left quadrant, room for plugin panels.
 const DEFAULT_X = 80;
 const DEFAULT_Y = 80;
-const DEFAULT_WIDTH = 640;
-const DEFAULT_HEIGHT = 720;
+const DEFAULT_WIDTH = 860;
+const DEFAULT_HEIGHT = 760;
 
 export const useAudioSuiteStore = create<AudioSuiteState>()(
   persist(
@@ -114,6 +177,9 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
       // value (if any) and any WS broadcast keeps it in sync after.
       masterBypassed: true,
       isDragging: false,
+      collapsed: {},
+      sidebarCollapsed: false,
+      profiles: [],
 
       open: () => set({ isOpen: true }),
       close: () => set({ isOpen: false }),
@@ -126,6 +192,169 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
           height: Math.max(AUDIO_SUITE_WINDOW_MIN_HEIGHT, height),
         }),
       setDragging: (on) => set({ isDragging: on }),
+
+      // Slots default to collapsed (absent === collapsed), so the
+      // toggle flips relative to that default: an untouched slot opens
+      // on first click instead of needing two.
+      toggleCollapsed: (pluginId) =>
+        set((s) => ({
+          collapsed: {
+            ...s.collapsed,
+            [pluginId]: !(s.collapsed[pluginId] ?? true),
+          },
+        })),
+
+      setAllCollapsed: (collapsed, pluginIds) =>
+        set((s) => {
+          const next = { ...s.collapsed };
+          for (const id of pluginIds) next[id] = collapsed;
+          return { collapsed: next };
+        }),
+
+      toggleSidebar: () =>
+        set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+
+      setChainMembership: async (pluginId, active) => {
+        const prev = get().chainOrder;
+        // Optimistic only for park (we know the result: drop the ID).
+        // Un-park's position is server-decided, so we wait for the
+        // response and adopt the returned active order.
+        if (!active) {
+          set({ chainOrder: prev.filter((id) => id !== pluginId) });
+        }
+        try {
+          const res = await fetch(
+            `/api/plugins/${encodeURIComponent(pluginId)}/chain-membership`,
+            {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ active }),
+            },
+          );
+          if (!res.ok) {
+            set({ chainOrder: prev });
+            // eslint-disable-next-line no-console
+            console.warn(
+              `audio-suite chain-membership PUT rejected: ${res.status} ${res.statusText}`,
+            );
+            return;
+          }
+          const body = (await res.json()) as { pluginIds?: string[] };
+          if (Array.isArray(body.pluginIds)) {
+            set({ chainOrder: body.pluginIds });
+          }
+        } catch (err) {
+          set({ chainOrder: prev });
+          // eslint-disable-next-line no-console
+          console.warn('audio-suite chain-membership PUT threw', err);
+        }
+      },
+
+      loadProfiles: async () => {
+        try {
+          const res = await fetch('/api/audio-suite/profiles');
+          if (!res.ok) return;
+          const body = (await res.json()) as { profiles?: AudioProfileSummary[] };
+          if (Array.isArray(body.profiles)) set({ profiles: body.profiles });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('audio-suite profiles GET threw', err);
+        }
+      },
+
+      saveProfile: async (name) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        try {
+          const res = await fetch(
+            `/api/audio-suite/profiles/${encodeURIComponent(trimmed)}`,
+            { method: 'PUT' },
+          );
+          if (!res.ok) {
+            // eslint-disable-next-line no-console
+            console.warn(`audio-suite profile save rejected: ${res.status}`);
+            return;
+          }
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('audio-suite profile save threw', err);
+        }
+        await get().loadProfiles();
+      },
+
+      applyProfile: async (name) => {
+        try {
+          const res = await fetch(
+            `/api/audio-suite/profiles/${encodeURIComponent(name)}/apply`,
+            { method: 'POST' },
+          );
+          if (!res.ok) {
+            // eslint-disable-next-line no-console
+            console.warn(`audio-suite profile apply rejected: ${res.status}`);
+            return;
+          }
+          // Server returns the new active order; master-bypass + order
+          // also arrive via WS broadcast, but adopt the response so the
+          // rack updates instantly.
+          const body = (await res.json()) as { pluginIds?: string[] };
+          if (Array.isArray(body.pluginIds)) set({ chainOrder: body.pluginIds });
+          // Master bypass may have changed; refresh it from the server.
+          await get().loadMasterBypassFromServer();
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('audio-suite profile apply threw', err);
+        }
+      },
+
+      deleteProfile: async (name) => {
+        try {
+          await fetch(`/api/audio-suite/profiles/${encodeURIComponent(name)}`, {
+            method: 'DELETE',
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('audio-suite profile delete threw', err);
+        }
+        await get().loadProfiles();
+      },
+
+      scanVstDirectory: async (directory) => {
+        const empty: VstScanResult = {
+          ok: false,
+          registered: [],
+          skipped: [],
+          errors: [],
+        };
+        try {
+          const res = await fetch('/api/audio-suite/scan-vst-directory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ directory }),
+          });
+          const body = await res.json();
+          if (!res.ok) {
+            return { ...empty, error: body?.error ?? `scan failed (${res.status})` };
+          }
+          // New plugins were installed + activated server-side. Re-register
+          // their UI panels and refresh the chain order so the rack updates.
+          const { reloadInstalledPluginUis } = await import(
+            '../plugins/runtime/pluginRuntime'
+          );
+          await reloadInstalledPluginUis();
+          await get().loadChainOrderFromServer();
+          return {
+            ok: true,
+            directory: body.directory,
+            registered: body.registered ?? [],
+            skipped: body.skipped ?? [],
+            errors: body.errors ?? [],
+          };
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn('audio-suite scan-vst-directory threw', err);
+          return { ...empty, error: String(err) };
+        }
+      },
 
       setChainOrderFromServer: (ids) => set({ chainOrder: ids }),
 
@@ -281,6 +510,8 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
         y: s.y,
         width: s.width,
         height: s.height,
+        collapsed: s.collapsed,
+        sidebarCollapsed: s.sidebarCollapsed,
       }),
     },
   ),

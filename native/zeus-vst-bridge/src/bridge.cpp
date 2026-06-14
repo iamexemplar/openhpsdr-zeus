@@ -113,9 +113,11 @@ bool wire_buses_and_activate(LoadedPlugin& p, int32_t* status_out) {
         return false;
     }
 
-    p.component->queryInterface(vst::IAudioProcessor::iid,
-        reinterpret_cast<void**>(p.processor.get()));
-    // queryInterface above won't work with IPtr; do it correctly:
+    // Query the audio-processor interface from the component. A previous
+    // revision ALSO called queryInterface through p.processor.get() here —
+    // but p.processor is a default-constructed (null) IPtr, so that wrote
+    // the result through a null void** and segfaulted the host on the first
+    // real plugin load. Query into a raw pointer, then adopt it.
     vst::IAudioProcessor* raw_proc = nullptr;
     if (p.component->queryInterface(vst::IAudioProcessor::iid,
             reinterpret_cast<void**>(&raw_proc)) != kResultOk || !raw_proc) {

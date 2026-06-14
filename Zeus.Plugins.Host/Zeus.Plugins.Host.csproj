@@ -17,6 +17,24 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zeus.Plugins.Contracts\Zeus.Plugins.Contracts.csproj" />
+    <!-- Build the no-op managed stub but DON'T reference its types — its
+         compiled DLL is embedded below and written into each scanned-VST
+         plugin dir at runtime. ReferenceOutputAssembly=false keeps it out
+         of the host's reference set; the dependency just enforces build
+         order so the embedded DLL exists when this project compiles. -->
+    <ProjectReference Include="..\Zeus.Plugins.VstHostStub\Zeus.Plugins.VstHostStub.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Embed the freshly-built stub DLL as a manifest resource so
+       VstDirectoryScanService can write it next to a generated plugin.json
+       without hunting the filesystem. Path tracks the stub's build output;
+       the ProjectReference above guarantees it's produced first. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\Zeus.Plugins.VstHostStub\bin\$(Configuration)\net10.0\Zeus.Plugins.VstHostStub.dll">
+      <LogicalName>Zeus.Plugins.VstHostStub.dll</LogicalName>
+      <Visible>false</Visible>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

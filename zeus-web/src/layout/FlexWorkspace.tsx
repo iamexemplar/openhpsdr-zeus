@@ -157,6 +157,26 @@ function WorkspaceCanvas({
     ro.observe(el);
     return () => ro.disconnect();
   }, [containerRef]);
+  // The actual vertical extent of the current layout, in grid rows. The
+  // default layout is authored to be exactly WORKSPACE_TARGET_ROWS tall, but
+  // the operator adds/rearranges panels freely — once the layout is taller
+  // than the target, dividing the viewport by a fixed target would render the
+  // grid taller than the container and force an outer scrollbar. Tracking the
+  // real extent keeps the workspace fitting the viewport no matter how many
+  // panels are docked.
+  const layoutRows = useMemo(
+    () => tiles.reduce((max, t) => Math.max(max, t.y + t.h), 0),
+    [tiles],
+  );
+  // Fit-to-viewport divisor: never smaller than the default target (so a
+  // sparse layout doesn't balloon its tiles to fill the screen — it just
+  // leaves empty space at the bottom, matching the prior behaviour), and
+  // grows to the layout's real height when the operator stacks panels past
+  // the default fold (so the whole grid scales down to fit instead of
+  // scrolling). The readability floor below is the only thing that can
+  // re-introduce a scrollbar, and only when tiles would otherwise be crushed.
+  const targetRows = Math.max(layoutRows, WORKSPACE_TARGET_ROWS);
+
   // Responsive rowHeight: solve containerHeight ≈ rowHeight*N + margin*(N-1)
   // + 2*containerPadding. Margin and containerPadding here mirror the props
   // passed to ResponsiveGridLayout below — keep them in sync if those change.
@@ -165,10 +185,10 @@ function WorkspaceCanvas({
     const margin = 6;
     const containerPadding = 0;
     const inner =
-      containerHeight - 2 * containerPadding - margin * (WORKSPACE_TARGET_ROWS - 1);
-    const computed = Math.floor(inner / WORKSPACE_TARGET_ROWS);
+      containerHeight - 2 * containerPadding - margin * (targetRows - 1);
+    const computed = Math.floor(inner / targetRows);
     return Math.max(WORKSPACE_ROW_HEIGHT_MIN_PX, computed);
-  }, [containerHeight]);
+  }, [containerHeight, targetRows]);
 
   // RGL needs a stable per-render layouts.lg array. Memoise against the
   // tile list identity so we don't push a new prop on every parent render.
@@ -185,8 +205,12 @@ function WorkspaceCanvas({
           y: t.y,
           w: t.w,
           h: t.h,
-          minW: WORKSPACE_TILE_MIN_W,
-          minH: WORKSPACE_TILE_MIN_H,
+          // Per-panel legibility floor when the panel declares one, else the
+          // workspace-global minimum. RGL clamps drag-resize to these and
+          // refuses to compact a tile below them, so the viewport auto-fit
+          // can shrink the grid only until a dense panel hits its floor.
+          minW: def?.minW ?? WORKSPACE_TILE_MIN_W,
+          minH: def?.minH ?? WORKSPACE_TILE_MIN_H,
           ...(def?.maxW !== undefined ? { maxW: def.maxW } : {}),
           ...(def?.maxH !== undefined ? { maxH: def.maxH } : {}),
         };

@@ -84,7 +84,7 @@ function fmtHz(hz: number): string {
   return String(hz);
 }
 
-const xFor = (hz: number) => PAD_L + logX(hz) * INNER_W;
+const xFor = (hz: number, innerW = INNER_W) => PAD_L + logX(hz) * innerW;
 const yComp = (db: number) =>
   PAD_T + clamp(db, 0, VIS_COMP_MAX) / VIS_COMP_MAX * INNER_H;
 const yPost = (db: number) =>
@@ -104,18 +104,18 @@ function smoothPath(pts: ReadonlyArray<readonly [number, number]>): string {
   return d;
 }
 
-function compPath(bands: CfcBandDto[]): string {
+function compPath(bands: CfcBandDto[], innerW = INNER_W): string {
   if (!bands.length) return '';
-  const pts = bands.map((b) => [xFor(b.freqHz), yComp(b.compLevelDb)] as const);
+  const pts = bands.map((b) => [xFor(b.freqHz, innerW), yComp(b.compLevelDb)] as const);
   const first = pts[0]!;
   return `M ${PAD_L} ${yComp(0)} L ${first[0]} ${first[1]}` +
     smoothPath(pts).slice(`M ${first[0]} ${first[1]}`.length) +
-    ` L ${PAD_L + INNER_W} ${yComp(0)}`;
+    ` L ${PAD_L + innerW} ${yComp(0)}`;
 }
 
-function postPath(bands: CfcBandDto[]): string {
+function postPath(bands: CfcBandDto[], innerW = INNER_W): string {
   if (!bands.length) return '';
-  const pts = bands.map((b) => [xFor(b.freqHz), yPost(b.postGainDb)] as const);
+  const pts = bands.map((b) => [xFor(b.freqHz, innerW), yPost(b.postGainDb)] as const);
   return smoothPath(pts);
 }
 
@@ -169,6 +169,27 @@ export function CfcSettingsPanel() {
   const [activeIdx, setActiveIdx] = useState(4);
   const dragRef = useRef<DragState | null>(null);
   const dragMovedRef = useRef(false);
+
+  // Track the SVG's rendered pixel width and feed it back into the viewBox so
+  // the curve scales 1:1 on both axes. With a fixed 760-unit viewBox and
+  // preserveAspectRatio="none", any container width ≠ 760 stretches x relative
+  // to y — turning the knot circles into ellipses and distorting strokes/text.
+  // Matching the viewBox width to the measured width keeps the y-axis pinned to
+  // the 280px canvas (so the drag math below stays 1 client-px ≈ 1 viewBox-px)
+  // while x stays undistorted at any size.
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [vbW, setVbW] = useState(W);
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w && w > 0) setVbW(Math.round(w));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const innerW = vbW - PAD_L - PAD_R;
 
   // Optimistic-update gate (used outside of drag). Drag updates local state
   // every mousemove and only POSTs once on mouseup — POSTing per-pixel
@@ -380,7 +401,7 @@ export function CfcSettingsPanel() {
 
       <div className={`cfc-curve cfc-body ${cfc.enabled ? '' : 'is-bypass'}`}>
         <div className="canvas">
-          <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+          <svg ref={svgRef} viewBox={`0 0 ${vbW} ${H}`} preserveAspectRatio="none">
             <defs>
               <linearGradient id="cfc-curve-fill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.45" />
@@ -393,7 +414,7 @@ export function CfcSettingsPanel() {
                 <line
                   className="gridline"
                   x1={PAD_L}
-                  x2={PAD_L + INNER_W}
+                  x2={PAD_L + innerW}
                   y1={yComp(d)}
                   y2={yComp(d)}
                 />
@@ -411,7 +432,7 @@ export function CfcSettingsPanel() {
             <line
               className="gridmid"
               x1={PAD_L}
-              x2={PAD_L + INNER_W}
+              x2={PAD_L + innerW}
               y1={PAD_T + INNER_H / 2}
               y2={PAD_T + INNER_H / 2}
             />
@@ -420,14 +441,14 @@ export function CfcSettingsPanel() {
               <g key={`f${f}`}>
                 <line
                   className="freq-tick"
-                  x1={xFor(f)}
-                  x2={xFor(f)}
+                  x1={xFor(f, innerW)}
+                  x2={xFor(f, innerW)}
                   y1={PAD_T + INNER_H}
                   y2={PAD_T + INNER_H + 4}
                 />
                 <text
                   className="axis-text"
-                  x={xFor(f)}
+                  x={xFor(f, innerW)}
                   y={PAD_T + INNER_H + 16}
                   textAnchor="middle"
                 >
@@ -437,36 +458,36 @@ export function CfcSettingsPanel() {
             ))}
             <text
               className="axis-text"
-              x={PAD_L + INNER_W}
+              x={PAD_L + innerW}
               y={PAD_T + INNER_H + 16}
               textAnchor="end"
             >
               Hz
             </text>
 
-            <path className="band-area" d={compPath(cfc.bands) + ` L ${PAD_L} ${yComp(0)} Z`} />
-            <path className="band-line" d={compPath(cfc.bands)} />
-            <path className="post-line" d={postPath(cfc.bands)} />
+            <path className="band-area" d={compPath(cfc.bands, innerW) + ` L ${PAD_L} ${yComp(0)} Z`} />
+            <path className="band-line" d={compPath(cfc.bands, innerW)} />
+            <path className="post-line" d={postPath(cfc.bands, innerW)} />
 
             {cfc.bands.map((b, i) => (
               <g key={`k${i}`}>
                 <text
                   className="band-label"
-                  x={xFor(b.freqHz)}
+                  x={xFor(b.freqHz, innerW)}
                   y={PAD_T - 4}
                 >
                   {i + 1}
                 </text>
                 <circle
                   className={`knot ${activeIdx === i ? 'is-active' : ''}`}
-                  cx={xFor(b.freqHz)}
+                  cx={xFor(b.freqHz, innerW)}
                   cy={yComp(b.compLevelDb)}
                   r={5.5}
                   onMouseDown={(e) => onKnotDown(i, 'comp', e)}
                 />
                 <circle
                   className={`knot post ${activeIdx === i ? 'is-active' : ''}`}
-                  cx={xFor(b.freqHz)}
+                  cx={xFor(b.freqHz, innerW)}
                   cy={yPost(b.postGainDb)}
                   r={4}
                   onMouseDown={(e) => onKnotDown(i, 'post', e)}

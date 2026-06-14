@@ -266,6 +266,7 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     // got R32F storage, texWidth stayed 0, draw() bailed to a transparent
     // clear, and the waterfall was permanently black. Seeding here (and on any
     // width change) makes it order- and platform-independent.
+    if (wfDb.length === 0) return;
     if (texWidth !== wfDb.length) resetTextures(wfDb.length);
     writeRow = (writeRow + 1) % HISTORY_ROWS;
     gl.bindTexture(gl.TEXTURE_2D, textures[active]);
@@ -334,6 +335,12 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
           // lastCenterHz unchanged so sub-pixel retunes accumulate.
           break;
         case 'shift':
+          // A shift on an unseeded renderer (texWidth === 0, e.g. the first
+          // frame this surface observes after a remount happens to be a
+          // retune) has no history to rebase and would bind a level-0 store
+          // that texImage2D never allocated. Skip it; the next valid frame
+          // seeds via uploadRow.
+          if (texWidth === 0) break;
           // Shift always runs — throttling it would let the history drift
           // out of sync with the panadapter's anchor offset. This is a
           // REBASE of the texture in integer pixels; the fractional

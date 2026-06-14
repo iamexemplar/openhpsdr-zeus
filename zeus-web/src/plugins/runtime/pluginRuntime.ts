@@ -6,8 +6,14 @@
 // surface (registerPanel + callBackend), and capture every panel the
 // plugin registers so it can show up in the workspace Add Panel modal.
 
-import type { ComponentType } from 'react';
+import { createElement, type ComponentType } from 'react';
 import { fetchInstalledPlugins, type PluginDto, type PluginPanelDto } from '../api/plugins';
+import { GenericVstPanel } from '../../components/GenericVstPanel';
+
+// UI slot the Audio Suite rack + sidebar render. A plugin that targets
+// the TX audio chain but ships no UI module of its own (a scanned VST)
+// gets a synthetic panel on this slot so it still appears in the rack.
+const CHAIN_UI_SLOT = 'tx-audio-tools.chain';
 
 export interface ZeusPluginApi {
   registerPanel(spec: { id: string; component: ComponentType }): void;
@@ -56,8 +62,37 @@ function makeApi(plugin: PluginDto, registerPanel: (spec: { id: string; componen
   };
 }
 
+/**
+ * Register a synthetic generic panel for an audio plugin that ships no
+ * UI module — i.e. a VST registered via "Add VST directory". Only
+ * TX-chain audio plugins (audio.slot starting "tx") get a rack panel.
+ * Idempotent: overwrites any prior synthetic entry for the same id.
+ */
+function maybeRegisterGenericAudioPanel(plugin: PluginDto): void {
+  const audio = plugin.audio;
+  if (!audio) return;
+  if (!(audio.slot ?? '').startsWith('tx')) return; // RX / non-chain → skip
+  const name = plugin.name;
+  const id = plugin.id;
+  registered.set(`${id}::generic`, {
+    panelId: 'generic',
+    pluginId: id,
+    title: name,
+    icon: '',
+    category: 'audio',
+    slot: CHAIN_UI_SLOT,
+    component: () => createElement(GenericVstPanel, { pluginId: id, name }),
+  });
+}
+
 async function loadOne(plugin: PluginDto): Promise<void> {
-  if (!plugin.ui || plugin.ui.modules.length === 0) return;
+  if (!plugin.ui || plugin.ui.modules.length === 0) {
+    // No managed UI module. If it's a TX-chain audio plugin (a scanned
+    // VST), give it a synthetic generic panel so it still shows in the
+    // Audio Suite rack and can be reordered / parked.
+    maybeRegisterGenericAudioPanel(plugin);
+    return;
+  }
 
   const panelMetaById = new Map<string, PluginPanelDto>();
   for (const p of plugin.ui.panels) panelMetaById.set(p.id, p);
@@ -109,6 +144,20 @@ export async function loadInstalledPluginUis(): Promise<void> {
     emit();
   })();
   return loading;
+}
+
+/**
+ * Re-fetch the installed-plugin list and (re)register panels — used
+ * after "Add VST directory" installs new plugins so the rack updates
+ * without a full page reload. loadOne is idempotent (registered.set
+ * overwrites), and dynamic imports are browser-cached, so re-running is
+ * cheap and safe.
+ */
+export async function reloadInstalledPluginUis(): Promise<void> {
+  const list = await fetchInstalledPlugins();
+  await Promise.all(list.plugins.map(loadOne));
+  loaded = true;
+  emit();
 }
 
 export function listRegisteredPanels(): RegisteredPluginPanel[] {

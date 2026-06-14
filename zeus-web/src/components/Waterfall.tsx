@@ -52,6 +52,7 @@ import { useDisplaySettingsStore } from '../state/display-settings-store';
 import * as viewCenter from '../state/view-center';
 import { useTxStore } from '../state/tx-store';
 import { usePanTuneGesture } from '../util/use-pan-tune-gesture';
+import { FilterCursorOverlay } from './FilterCursorOverlay';
 import { WfDbScale } from './WfDbScale';
 
 // Throttle row uploads so the waterfall scrolls at ~(server tick / N).
@@ -401,6 +402,7 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
         className="tuning-cursor"
         style={{ left: '50%', pointerEvents: 'none' }}
       />
+      <FilterCursorOverlay containerRef={containerRef} />
       <div style={{ position: 'absolute', top: 6, right: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
         <div role="radiogroup" aria-label="Colormap" className="btn-row">
           {COLORMAPS.map((cm) => {

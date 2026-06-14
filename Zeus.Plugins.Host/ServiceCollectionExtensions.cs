@@ -55,6 +55,14 @@ public static class ServiceCollectionExtensions
             pluginRoot: options?.PluginRoot ?? PluginRoot.Get(),
             log: sp.GetService<ILogger<PluginInstaller>>()));
 
+        // VST directory scanner — registers each .vst3 in an operator-
+        // chosen folder as a generated plugin package (stub assembly +
+        // synthesized manifest), so VSTs flow into the Audio Suite chain.
+        services.AddSingleton(sp => new VstDirectoryScanService(
+            manager: sp.GetRequiredService<PluginManager>(),
+            pluginRoot: options?.PluginRoot ?? PluginRoot.Get(),
+            log: sp.GetRequiredService<ILogger<VstDirectoryScanService>>()));
+
         return services;
     }
 }
