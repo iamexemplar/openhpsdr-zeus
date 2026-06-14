@@ -46,6 +46,7 @@ import { createContext, useContext, useEffect, type RefObject } from 'react';
 import { setVfo, setZoom, ZOOM_MAX, ZOOM_MIN, type ZoomLevel } from '../api/client';
 import { useConnectionStore } from '../state/connection-store';
 import { useDisplayStore } from '../state/display-store';
+import { findPeakHz, useSignalEnhanceStore } from '../dsp/signal-estimator';
 import * as viewCenter from '../state/view-center';
 import { useToolbarFavoritesStore } from '../state/toolbar-favorites-store';
 
@@ -184,8 +185,10 @@ export function usePanTuneGesture(
       if (pendingRaf === 0) pendingRaf = requestAnimationFrame(flushPending);
     };
 
-    const commitFinal = (hz: number) => {
-      const snapped = snapHz(hz);
+    // `exact` skips the PAN_STEP_HZ grid — used by snap-to-signal so the dial
+    // lands on the measured carrier, not the nearest round 500 Hz.
+    const commitFinal = (hz: number, exact = false) => {
+      const snapped = exact ? clampHz(hz) : snapHz(hz);
       // CTUN: tune the dial off-centre without moving the view. The hardware
       // NCO stays frozen on the backend, so the frame center doesn't move and
       // the dial marker (vfo − targetCenter) roams off the zero line. We stamp
@@ -423,7 +426,21 @@ export function usePanTuneGesture(
         const view = readView();
         if (!view) return;
         const frac = (e.clientX - rect.left) / rect.width;
-        commitFinal(view.centerHz + (frac - 0.5) * view.spanHz);
+        const clickHz = view.centerHz + (frac - 0.5) * view.spanHz;
+        // Snap-to-signal: if enabled and a carrier sits near the click, tune
+        // exactly onto its peak (bypassing the 500 Hz grid). Falls through to
+        // the normal snapped tune when the click is over bare noise.
+        if (useSignalEnhanceStore.getState().snapEnabled) {
+          const ds = useDisplayStore.getState();
+          if (ds.panDb && ds.hzPerPixel > 0) {
+            const peakHz = findPeakHz(ds.panDb, Number(ds.centerHz), ds.hzPerPixel, clickHz);
+            if (peakHz != null) {
+              commitFinal(peakHz, true);
+              return;
+            }
+          }
+        }
+        commitFinal(clickHz);
       }
     };
 

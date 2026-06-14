@@ -50,6 +50,7 @@ import { cancelDrawBusFrame, requestDrawBusFrame } from '../realtime/draw-bus';
 import { useConnectionStore } from '../state/connection-store';
 import { registerFrameConsumer, useDisplayStore } from '../state/display-store';
 import { useDisplaySettingsStore } from '../state/display-settings-store';
+import { enhanceInto, useSignalEnhanceStore } from '../dsp/signal-estimator';
 import * as viewCenter from '../state/view-center';
 import { useTxStore } from '../state/tx-store';
 import { usePanTuneGesture } from '../util/use-pan-tune-gesture';
@@ -84,6 +85,10 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
   const setAutoRange = useDisplaySettingsStore((s) => s.setAutoRange);
   const colormap = useDisplaySettingsStore((s) => s.colormap);
   const setColormap = useDisplaySettingsStore((s) => s.setColormap);
+  const popEnabled = useSignalEnhanceStore((s) => s.popEnabled);
+  const togglePop = useSignalEnhanceStore((s) => s.togglePop);
+  const snapEnabled = useSignalEnhanceStore((s) => s.snapEnabled);
+  const toggleSnap = useSignalEnhanceStore((s) => s.toggleSnap);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -136,6 +141,10 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
     // Waterfall frame tallies for the one-shot backend diagnostic below (#629).
     let wfFrames = 0;
     let wfValidFrames = 0;
+    // Scratch buffer for Signal Pop. uploadRow() copies immediately
+    // (texSubImage2D), so unlike the panadapter texture a single reused buffer
+    // is safe — there's no deferred reference-identity dirty check here.
+    let enhBuf: Float32Array | null = null;
     // Visibility gating: skip the rAF redraw when the waterfall tile is
     // scrolled offscreen or the tab is hidden. We still push frames into
     // the history texture so when visibility resumes the operator sees a
@@ -149,10 +158,14 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
       const { wfDbMin, wfDbMax, wfTxDbMin, wfTxDbMax } = useDisplaySettingsStore.getState();
       const { moxOn, tunOn } = useTxStore.getState();
       const keyed = moxOn || tunOn;
+      const pop = useSignalEnhanceStore.getState();
+      // Signal Pop (RX only): history rows hold dB-above-floor values, so map
+      // the colormap window relative to the floor. Keyed/TX keeps absolute dB.
+      const popOn = pop.popEnabled && !keyed;
       // Mirror DbScale.tsx — keyed (MOX/TUN) renders the TX waterfall
       // window so the operator's RX noise-floor view stays put.
-      const dbMin = keyed ? wfTxDbMin : wfDbMin;
-      const dbMax = keyed ? wfTxDbMax : wfDbMax;
+      const dbMin = popOn ? pop.popFloorDb : keyed ? wfTxDbMin : wfDbMin;
+      const dbMax = popOn ? pop.popFloorDb + pop.popSpanDb : keyed ? wfTxDbMax : wfDbMax;
       renderer.draw(
         dbMin,
         dbMax,
@@ -280,7 +293,19 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
         // Feed the auto-range tracker — it's a no-op when AUTO is off.
         useDisplaySettingsStore.getState().updateAutoRange(wfDb);
       }
-      renderer.pushFrame(decision, wfDb, state.centerHz, state.hzPerPixel, {
+      // Signal Pop (RX only): substitute the per-bin floor-subtracted row so
+      // weak carriers leap off a flattened baseline. Gated off while keyed —
+      // TX pixels are a different dB domain.
+      let wfForPush = wfDb;
+      if (wfDb) {
+        const { moxOn, tunOn } = useTxStore.getState();
+        if (useSignalEnhanceStore.getState().popEnabled && !moxOn && !tunOn) {
+          if (!enhBuf || enhBuf.length !== wfDb.length) enhBuf = new Float32Array(wfDb.length);
+          enhanceInto(wfDb, enhBuf);
+          wfForPush = enhBuf;
+        }
+      }
+      renderer.pushFrame(decision, wfForPush, state.centerHz, state.hzPerPixel, {
         skipRowUpload,
       });
       requestRedraw();
@@ -326,11 +351,24 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
       }
     });
 
+    // Signal Pop toggle: the value scale flips wholesale (absolute dB ↔
+    // dB-above-floor). Re-seed the history so pre-toggle rows don't render as a
+    // clipped band against the new range. New rows fill in from the top.
+    const unsubEnhance = useSignalEnhanceStore.subscribe((state, prev) => {
+      if (state.popEnabled !== prev.popEnabled) {
+        renderer.clearHistory();
+        requestRedraw();
+      } else if (state.popFloorDb !== prev.popFloorDb || state.popSpanDb !== prev.popSpanDb) {
+        requestRedraw();
+      }
+    });
+
     return () => {
       unsub();
       unsubViewCenter();
       unsubSettings();
       unsubTx();
+      unsubEnhance();
       ro.disconnect();
       io.disconnect();
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -475,6 +513,32 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
           className={`btn sm ${autoRange ? 'active' : ''}`}
         >
           {autoRange ? 'dB: AUTO' : 'dB: FIXED'}
+        </button>
+        <button
+          type="button"
+          onClick={togglePop}
+          aria-pressed={popEnabled}
+          title={
+            popEnabled
+              ? 'Signal Pop ON: per-bin noise-floor subtraction (weak signals brightened)'
+              : 'Signal Pop: subtract the adaptive noise floor so weak signals pop'
+          }
+          className={`btn sm ${popEnabled ? 'active' : ''}`}
+        >
+          POP
+        </button>
+        <button
+          type="button"
+          onClick={toggleSnap}
+          aria-pressed={snapEnabled}
+          title={
+            snapEnabled
+              ? 'Snap-to-signal ON: clicks tune to the nearest carrier peak'
+              : 'Snap-to-signal: click near a signal to tune exactly onto it'
+          }
+          className={`btn sm ${snapEnabled ? 'active' : ''}`}
+        >
+          SNAP
         </button>
       </div>
     </div>

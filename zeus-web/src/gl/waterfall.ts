@@ -116,6 +116,11 @@ export type WfRenderer = {
     lastViewOffsetUv: number;
     contextLost: boolean;
   };
+  /** Re-seed the history to the noise-floor colour. Used when the value scale
+   *  changes wholesale (Signal Pop toggle) so pre-toggle rows in the old dB
+   *  domain don't render as a clipped band against the new range. No-op before
+   *  the first frame (nothing allocated yet). */
+  clearHistory: () => void;
   dispose: () => void;
 };
 
@@ -357,6 +362,9 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     },
     setTransparent(transparent) {
       bgAlpha = transparent ? 0 : 1;
+    },
+    clearHistory() {
+      if (texWidth > 0) resetTextures(texWidth);
     },
     draw(dbMin, dbMax, viewCenterHz = null) {
       gl.viewport(0, 0, canvasW, canvasH);
