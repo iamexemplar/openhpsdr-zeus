@@ -794,6 +794,38 @@ export type HardwareDspFilterOptionCatalogDto = {
   source: string;
 };
 
+export type HardwareDspDdcSlotDto = {
+  slot: number;
+  purpose: string;
+  status: string;
+  notes: string;
+};
+
+export type HardwareDspReceiverBandwidthDto = {
+  schemaVersion: number;
+  status: string;
+  tone: string;
+  connected: boolean;
+  protocol2Active: boolean;
+  p2WidebandCapable: boolean;
+  widebandActive: boolean;
+  activeSampleRateHz: number;
+  maxSampleRateHz: number;
+  activeNyquistHz: number;
+  maxNyquistHz: number;
+  utilizationPct: number;
+  unusedSampleRateHz: number;
+  unusedNyquistHz: number;
+  activeSoftwareReceivers: number;
+  manualReceiverCapacity: number;
+  unexposedReceiverCount: number;
+  activeUserDdcIndex: number | null;
+  activeSlots: HardwareDspDdcSlotDto[];
+  reservedSlots: HardwareDspDdcSlotDto[];
+  source: string;
+  diagnosticRecommendation: string;
+};
+
 export type HardwareDspFilterGeometryDto = {
   schemaVersion: number;
   status: string;
@@ -802,6 +834,7 @@ export type HardwareDspFilterGeometryDto = {
   optionCatalog: HardwareDspFilterOptionCatalogDto;
   activeRx: HardwareDspFilterActiveDto;
   activeTx: HardwareDspFilterActiveDto;
+  receiverBandwidth: HardwareDspReceiverBandwidthDto;
   thetisMatrix: HardwareDspFilterMatrixRowDto[];
   impulseCache: HardwareDspFilterImpulseCacheDto;
   highResolutionFilterDisplay: HardwareDspHighResolutionFilterDisplayDto;
@@ -2605,6 +2638,48 @@ function normalizeDspFilterOptionCatalog(raw: unknown): HardwareDspFilterOptionC
   };
 }
 
+function normalizeDspDdcSlots(raw: unknown): HardwareDspDdcSlotDto[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((entry) => {
+    const r = asDiagRecord(entry);
+    return {
+      slot: diagNumber(r.slot) ?? 0,
+      purpose: diagString(r.purpose) ?? '',
+      status: diagString(r.status) ?? '',
+      notes: diagString(r.notes) ?? '',
+    };
+  });
+}
+
+function normalizeDspReceiverBandwidth(raw: unknown): HardwareDspReceiverBandwidthDto {
+  const r = asDiagRecord(raw);
+  return {
+    schemaVersion: diagNumber(r.schemaVersion) ?? 0,
+    status: diagString(r.status) ?? 'unavailable',
+    tone: diagString(r.tone) ?? 'verify',
+    connected: Boolean(r.connected),
+    protocol2Active: Boolean(r.protocol2Active),
+    p2WidebandCapable: Boolean(r.p2WidebandCapable),
+    widebandActive: Boolean(r.widebandActive),
+    activeSampleRateHz: diagNumber(r.activeSampleRateHz) ?? 0,
+    maxSampleRateHz: diagNumber(r.maxSampleRateHz) ?? 384_000,
+    activeNyquistHz: diagNumber(r.activeNyquistHz) ?? 0,
+    maxNyquistHz: diagNumber(r.maxNyquistHz) ?? 192_000,
+    utilizationPct: diagNumber(r.utilizationPct) ?? 0,
+    unusedSampleRateHz: diagNumber(r.unusedSampleRateHz) ?? 0,
+    unusedNyquistHz: diagNumber(r.unusedNyquistHz) ?? 0,
+    activeSoftwareReceivers: diagNumber(r.activeSoftwareReceivers) ?? 0,
+    manualReceiverCapacity: diagNumber(r.manualReceiverCapacity) ?? 1,
+    unexposedReceiverCount: diagNumber(r.unexposedReceiverCount) ?? 0,
+    activeUserDdcIndex: diagNumber(r.activeUserDdcIndex),
+    activeSlots: normalizeDspDdcSlots(r.activeSlots),
+    reservedSlots: normalizeDspDdcSlots(r.reservedSlots),
+    source: diagString(r.source) ?? '',
+    diagnosticRecommendation: diagString(r.diagnosticRecommendation)
+      ?? 'Receiver bandwidth utilization diagnostics are not available from this backend yet.',
+  };
+}
+
 function normalizeDspFilterGeometry(raw: unknown): HardwareDspFilterGeometryDto {
   const r = asDiagRecord(raw);
   const impulse = asDiagRecord(r.impulseCache);
@@ -2617,6 +2692,7 @@ function normalizeDspFilterGeometry(raw: unknown): HardwareDspFilterGeometryDto 
     optionCatalog: normalizeDspFilterOptionCatalog(r.optionCatalog),
     activeRx: normalizeDspFilterActive(r.activeRx),
     activeTx: normalizeDspFilterActive(r.activeTx),
+    receiverBandwidth: normalizeDspReceiverBandwidth(r.receiverBandwidth),
     thetisMatrix: normalizeDspFilterMatrix(r.thetisMatrix),
     impulseCache: {
       fftwWisdomPhase: diagString(impulse.fftwWisdomPhase) ?? 'Unknown',

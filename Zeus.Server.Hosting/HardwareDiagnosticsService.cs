@@ -2573,7 +2573,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
         {
             field = "WDSP filter buffers, taps, type, window, and impulse cache",
             status = "diagnostics-ready",
-            notes = "Settings > DSP now lists the full Thetis filter matrix, full selectable size catalogs, board-supported DDC sample-rate ladder, and Zeus's active fixed WDSP profile. Runtime tap/type/window/cache controls remain separate follow-up work because changing OpenChannel/DSP buffer geometry is a shared RX/TX engine contract.",
+            notes = "Settings > DSP now lists the full Thetis filter matrix, full selectable size catalogs, board-supported DDC sample-rate ladder, receiver bandwidth/DDC-slot utilization, and Zeus's active fixed WDSP profile. Runtime tap/type/window/cache controls remain separate follow-up work because changing OpenChannel/DSP buffer geometry is a shared RX/TX engine contract.",
         },
         new
         {
@@ -2657,6 +2657,10 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
                 "p2.adc1MaxMagnitude",
                 "p2.adc0MaxMagnitudeAtOverload",
                 "p2.adc1MaxMagnitudeAtOverload",
+                "dsp.filterGeometry.receiverBandwidth.status",
+                "dsp.filterGeometry.receiverBandwidth.utilizationPct",
+                "dsp.filterGeometry.receiverBandwidth.activeUserDdcIndex",
+                "dsp.filterGeometry.receiverBandwidth.unexposedReceiverCount",
             },
             candidateControls = new[]
             {
@@ -2666,7 +2670,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
                 "Settings > Hardware > Receiver Topology",
             },
             safetyClass = "rx-safe",
-            notes = "The G2/Saturn manual topology is now visible as safe diagnostics: dual phase-synchronous ADCs, independent MKII/preselector filter-bank paths, RX2 stepped attenuation, 116 dB RMDR at 2 kHz, 90 dB image rejection target, and the 48 kHz..1.536 MHz P2 DDC ceiling. Automatic ground-on-TX protection is wired for ADC2 ground-on-TX behavior; the manual's 10 independent DDC receivers, operator override, and dither/random writes remain explicitly marked as read-only until protocol mapping and live marker captures prove the safe control surface.",
+            notes = "The G2/Saturn manual topology is now visible as safe diagnostics: dual phase-synchronous ADCs, independent MKII/preselector filter-bank paths, RX2 stepped attenuation, 116 dB RMDR at 2 kHz, 90 dB image rejection target, and the 48 kHz..1.536 MHz P2 DDC ceiling. Settings > DSP also reports active/max bandwidth utilization and the P2 DDC slot map. Automatic ground-on-TX protection is wired for ADC2 ground-on-TX behavior; the manual's 10 independent DDC receivers, operator override, and dither/random writes remain explicitly marked as read-only until protocol mapping and live marker captures prove the safe control surface.",
         },
         new
         {
@@ -2974,6 +2978,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
             {
                 "dsp.filterGeometry.activeRx",
                 "dsp.filterGeometry.activeTx",
+                "dsp.filterGeometry.receiverBandwidth",
                 "dsp.filterGeometry.thetisMatrix",
                 "dsp.filterGeometry.impulseCache",
             },

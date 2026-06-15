@@ -866,6 +866,50 @@ describe('POST helpers', () => {
                 { sampleRateHz: 1536000, label: '1536 kHz', boardSupported: true, protocol2Required: true, active: false, status: 'hardware-supported-p2-only' },
               ],
             },
+            receiverBandwidth: {
+              schemaVersion: 1,
+              status: 'wideband-underused',
+              tone: 'ready',
+              connected: true,
+              protocol2Active: true,
+              p2WidebandCapable: true,
+              widebandActive: false,
+              activeSampleRateHz: 192000,
+              maxSampleRateHz: 1536000,
+              activeNyquistHz: 96000,
+              maxNyquistHz: 768000,
+              utilizationPct: 12.5,
+              unusedSampleRateHz: 1344000,
+              unusedNyquistHz: 672000,
+              activeSoftwareReceivers: 1,
+              manualReceiverCapacity: 10,
+              unexposedReceiverCount: 9,
+              activeUserDdcIndex: 2,
+              activeSlots: [
+                {
+                  slot: 2,
+                  purpose: 'RX1',
+                  status: 'active',
+                  notes: 'Primary operator receive DDC.',
+                },
+              ],
+              reservedSlots: [
+                {
+                  slot: 0,
+                  purpose: 'PureSignal RX feedback',
+                  status: 'reserved',
+                  notes: 'Post-PA feedback.',
+                },
+                {
+                  slot: 1,
+                  purpose: 'PureSignal TX reference',
+                  status: 'reserved',
+                  notes: 'TX-DAC reference.',
+                },
+              ],
+              source: 'ANAN G2 manual receiver architecture + Protocol2Client DDC map + BoardCapabilities',
+              diagnosticRecommendation: 'Receiver hardware has unused DDC bandwidth.',
+            },
             optionCatalog: {
               iqBufferSizes: [64, 128, 256, 512, 1024],
               filterTapSizes: [1024, 2048, 4096, 8192, 16384],
@@ -1255,6 +1299,12 @@ describe('POST helpers', () => {
     expect(diag.dsp.filterGeometry.hardwareLimits.maxRxSampleRateHz).toBe(1536000);
     expect(diag.dsp.filterGeometry.hardwareLimits.sampleRates.find((r) => r.sampleRateHz === 1536000)?.boardSupported)
       .toBe(true);
+    expect(diag.dsp.filterGeometry.receiverBandwidth.status).toBe('wideband-underused');
+    expect(diag.dsp.filterGeometry.receiverBandwidth.utilizationPct).toBe(12.5);
+    expect(diag.dsp.filterGeometry.receiverBandwidth.activeUserDdcIndex).toBe(2);
+    expect(diag.dsp.filterGeometry.receiverBandwidth.manualReceiverCapacity).toBe(10);
+    expect(diag.dsp.filterGeometry.receiverBandwidth.unexposedReceiverCount).toBe(9);
+    expect(diag.dsp.filterGeometry.receiverBandwidth.reservedSlots[1]?.slot).toBe(1);
     expect(diag.dsp.filterGeometry.optionCatalog.iqBufferSizes).toEqual([64, 128, 256, 512, 1024]);
     expect(diag.dsp.filterGeometry.optionCatalog.filterTapSizes).toContain(16384);
     expect(diag.dsp.filterGeometry.optionCatalog.filterWindows[1]?.label).toBe('BH-7');

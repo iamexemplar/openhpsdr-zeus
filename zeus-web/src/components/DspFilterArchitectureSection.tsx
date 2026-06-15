@@ -27,6 +27,11 @@ function hz(v: number | null | undefined): string {
   return `${v} Hz`;
 }
 
+function pct(v: number | null | undefined): string {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '-';
+  return `${v.toFixed(1)}%`;
+}
+
 function time(v: string | null | undefined): string {
   if (!v) return '-';
   const d = new Date(v);
@@ -161,6 +166,49 @@ export function DspFilterArchitectureSection() {
         ]}
       />
 
+      <FieldGrid
+        fields={[
+          { label: 'Bandwidth Status', value: diag.receiverBandwidth.status },
+          { label: 'Tone', value: diag.receiverBandwidth.tone },
+          { label: 'P2 Active', value: boolLabel(diag.receiverBandwidth.protocol2Active) },
+          { label: 'Wideband Active', value: boolLabel(diag.receiverBandwidth.widebandActive) },
+          { label: 'Active Nyquist', value: hz(diag.receiverBandwidth.activeNyquistHz) },
+          { label: 'Max Nyquist', value: hz(diag.receiverBandwidth.maxNyquistHz) },
+          { label: 'Utilization', value: pct(diag.receiverBandwidth.utilizationPct) },
+          { label: 'Unused DDC Rate', value: hz(diag.receiverBandwidth.unusedSampleRateHz) },
+          { label: 'Unused Span', value: hz(diag.receiverBandwidth.unusedNyquistHz) },
+          { label: 'Active RX', value: diag.receiverBandwidth.activeSoftwareReceivers },
+          { label: 'Manual Capacity', value: diag.receiverBandwidth.manualReceiverCapacity },
+          { label: 'Unexposed RX', value: diag.receiverBandwidth.unexposedReceiverCount },
+          { label: 'User DDC', value: diag.receiverBandwidth.activeUserDdcIndex },
+        ]}
+      />
+
+      {(diag.receiverBandwidth.activeSlots.length > 0 || diag.receiverBandwidth.reservedSlots.length > 0) && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={thStyle}>DDC Slot</th>
+                <th style={thStyle}>Purpose</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...diag.receiverBandwidth.activeSlots, ...diag.receiverBandwidth.reservedSlots].map((slot) => (
+                <tr key={`${slot.slot}-${slot.purpose}`}>
+                  <td style={tdStyle} className="mono">{slot.slot}</td>
+                  <td style={tdStyle}>{slot.purpose}</td>
+                  <td style={tdStyle} className="mono">{slot.status}</td>
+                  <td style={tdStyle}>{slot.notes}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table style={tableStyle}>
           <thead>
@@ -255,6 +303,8 @@ export function DspFilterArchitectureSection() {
       )}
 
       <div style={noteStyle}>{diag.optionCatalog.slowModeChangeWarning}</div>
+      <div style={noteStyle}>{diag.receiverBandwidth.diagnosticRecommendation}</div>
+      <div className="mono" style={{ ...noteStyle, color: 'var(--fg-3)' }}>{diag.receiverBandwidth.source}</div>
       <div className="mono" style={{ ...noteStyle, color: 'var(--fg-3)' }}>{diag.optionCatalog.source}</div>
       <div style={noteStyle}>{diag.impulseCache.notes}</div>
       <div style={noteStyle}>{diag.highResolutionFilterDisplay.notes}</div>
