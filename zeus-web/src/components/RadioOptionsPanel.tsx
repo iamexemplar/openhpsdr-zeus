@@ -26,11 +26,15 @@ export function RadioOptionsPanel() {
   const setBandVolts = useRadioOptionsStore((s) => s.setBandVolts);
   const setG2Dither = useRadioOptionsStore((s) => s.setG2Dither);
   const setG2Random = useRadioOptionsStore((s) => s.setG2Random);
+  const setG2Rx1Attenuator = useRadioOptionsStore((s) => s.setG2Rx1Attenuator);
   const hasHl2OptionalToggles = useRadioStore(
     (s) => s.capabilities.hasHl2OptionalToggles,
   );
   const supportsG2AdcOptions = useRadioStore(
     (s) => s.capabilities.supportsG2AdcOptions,
+  );
+  const hasSteppedAttenuationRx2 = useRadioStore(
+    (s) => s.capabilities.hasSteppedAttenuationRx2,
   );
 
   useEffect(() => {
@@ -149,6 +153,45 @@ export function RadioOptionsPanel() {
             </div>
             <span className="mono">{g2Options.maxRxFreqMHz.toFixed(2)} MHz</span>
           </div>
+
+          {g2Options.rx1AttenuatorSupported || hasSteppedAttenuationRx2 ? (
+            <div className="ps-field">
+              <div className="ps-name">
+                ADC1 / RX2 Step Attenuator
+                <em>
+                  Sets the independent Protocol-2 Attenuator1 byte for the
+                  second G2 ADC/RX2 path. Use it to protect RX2/diversity
+                  headroom without changing the main S-ATT path.
+                </em>
+              </div>
+              <select
+                className="mono"
+                value={g2Options.rx1AttenuatorDb}
+                disabled={inflight || !g2Options.rx1AttenuatorSupported}
+                title={
+                  g2Options.rx1AttenuatorSupported
+                    ? 'ADC1 / RX2 step attenuator'
+                    : 'Connect or select a verified G2-class radio to enable'
+                }
+                onChange={(e) => {
+                  setG2Rx1Attenuator(Number(e.target.value));
+                }}
+              >
+                {Array.from(
+                  {
+                    length: g2Options.rx1AttenuatorMaxDb
+                      - g2Options.rx1AttenuatorMinDb
+                      + 1,
+                  },
+                  (_, i) => g2Options.rx1AttenuatorMinDb + i,
+                ).map((db) => (
+                  <option key={db} value={db}>
+                    {db} dB
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

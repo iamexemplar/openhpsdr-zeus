@@ -1016,6 +1016,9 @@ describe('POST helpers', () => {
           g2Class: true,
           maxRxFrequencyMhz: 60,
           maxRxFrequencyStatus: 'wired-vfo-clamp',
+          rx1AttenuatorDb: 11,
+          rx1AttenuatorStatus: 'mapped-live',
+          rx1AttenuatorSupported: true,
           options: [
             {
               id: 'adc-dither',
@@ -1182,6 +1185,8 @@ describe('POST helpers', () => {
     expect(diag.g2Sensors.diagnosticRecommendation).toContain('Mapping Capture');
     expect(diag.g2FirmwareOptions.options[0]?.id).toBe('adc-dither');
     expect(diag.g2FirmwareOptions.maxRxFrequencyMhz).toBe(60);
+    expect(diag.g2FirmwareOptions.rx1AttenuatorDb).toBe(11);
+    expect(diag.g2FirmwareOptions.rx1AttenuatorSupported).toBe(true);
     expect(diag.g2FirmwareOptions.options[1]?.status).toBe('mapped-live');
     expect(diag.mapping.schemaVersion).toBe(2);
     expect(diag.mapping.markers[0]?.label).toBe('RX2 on');

@@ -129,6 +129,9 @@ public sealed class G2SensorMappingDiagnosticsEndpointTests
         Assert.True(diag.G2Class);
         Assert.Equal(60.0, diag.MaxRxFrequencyMhz);
         Assert.Equal("wired-vfo-clamp", diag.MaxRxFrequencyStatus);
+        Assert.True(diag.Rx1AttenuatorSupported);
+        Assert.Equal(0, diag.Rx1AttenuatorDb);
+        Assert.Equal("mapped-live", diag.Rx1AttenuatorStatus);
         Assert.Contains(diag.Options, option =>
             option.Id == "adc-dither"
             && option.Status == "mapped-live"
@@ -140,6 +143,7 @@ public sealed class G2SensorMappingDiagnosticsEndpointTests
             && option.Enabled == true
             && option.ThetisDefaultEnabled);
         Assert.Contains("/api/radio/g2-options", diag.MissingControlSurface);
+        Assert.Contains("ADC1/RX2", diag.MissingControlSurface);
         Assert.Contains("Keep dither/random enabled", diag.DiagnosticRecommendation);
     }
 
@@ -155,9 +159,14 @@ public sealed class G2SensorMappingDiagnosticsEndpointTests
                 DitherEnabled: false,
                 RandomEnabled: true,
                 MaxRxFreqMHz: 60.0,
-                Supported: true));
+                Supported: true,
+                Rx1AttenuatorDb: 9,
+                Rx1AttenuatorSupported: true));
 
         Assert.True(diag.G2Class);
+        Assert.True(diag.Rx1AttenuatorSupported);
+        Assert.Equal(9, diag.Rx1AttenuatorDb);
+        Assert.Equal("mapped-ready", diag.Rx1AttenuatorStatus);
         Assert.Contains(diag.Options, option =>
             option.Id == "adc-dither"
             && option.Status == "mapped-ready"
@@ -216,7 +225,7 @@ public sealed class G2SensorMappingDiagnosticsEndpointTests
         Assert.Contains("Driver Current / PA Current", reference.GetProperty("notes").GetString());
         var adcReference = root.GetProperty("referenceMap")
             .EnumerateArray()
-            .Single(item => item.GetProperty("field").GetString() == "G2 ADC dither/random and MaxRXFreq");
+            .Single(item => item.GetProperty("field").GetString() == "G2 ADC dither/random, MaxRXFreq, and ADC1/RX2 attenuation");
         Assert.Equal("decoded", adcReference.GetProperty("status").GetString());
         var dynamicRangeReference = root.GetProperty("referenceMap")
             .EnumerateArray()

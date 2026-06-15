@@ -281,11 +281,26 @@ public sealed class PreferredRadioStore : IDisposable
         }
     }
 
-    public void SetG2AdcOptions(bool? ditherEnabled = null, bool? randomEnabled = null)
+    public int GetG2Rx1AttenuatorDb()
+    {
+        lock (_sync)
+        {
+            var e = _entries.FindAll().FirstOrDefault();
+            return Math.Clamp(e?.G2Rx1AttenuatorDb ?? 0, 0, 31);
+        }
+    }
+
+    public void SetG2AdcOptions(
+        bool? ditherEnabled = null,
+        bool? randomEnabled = null,
+        int? rx1AttenuatorDb = null)
     {
         lock (_sync)
         {
             var existing = _entries.FindAll().FirstOrDefault();
+            int? clampedRx1Atten = rx1AttenuatorDb.HasValue
+                ? Math.Clamp(rx1AttenuatorDb.Value, 0, 31)
+                : null;
             if (existing is null)
             {
                 _entries.Insert(new PreferredRadioEntry
@@ -294,6 +309,7 @@ public sealed class PreferredRadioStore : IDisposable
                     OverrideDetection = false,
                     G2AdcDitherEnabled = ditherEnabled ?? true,
                     G2AdcRandomEnabled = randomEnabled ?? true,
+                    G2Rx1AttenuatorDb = clampedRx1Atten ?? 0,
                     UpdatedUtc = DateTime.UtcNow,
                 });
             }
@@ -303,6 +319,8 @@ public sealed class PreferredRadioStore : IDisposable
                     existing.G2AdcDitherEnabled = ditherEnabled.Value;
                 if (randomEnabled.HasValue)
                     existing.G2AdcRandomEnabled = randomEnabled.Value;
+                if (clampedRx1Atten.HasValue)
+                    existing.G2Rx1AttenuatorDb = clampedRx1Atten.Value;
                 existing.UpdatedUtc = DateTime.UtcNow;
                 _entries.Update(existing);
             }
@@ -392,6 +410,9 @@ public sealed class PreferredRadioEntry
     /// the same upgrade-default reason as <see cref="G2AdcDitherEnabled"/>.
     /// </summary>
     public bool? G2AdcRandomEnabled { get; set; }
+    /// <summary>ANAN-G2/Saturn second-ADC RX step attenuator in dB. Nullable
+    /// so upgraded rows inherit the hardware power-on default of 0 dB.</summary>
+    public int? G2Rx1AttenuatorDb { get; set; }
     /// <summary>Per-radio frequency-correction factor (issue #325).
     /// Dimensionless multiplier near 1.0; 1.0 = uncalibrated. LiteDB
     /// hydrates as 0.0 for older rows that pre-date this field; the

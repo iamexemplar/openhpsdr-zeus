@@ -1648,6 +1648,9 @@ export type G2FirmwareOptionsDiagnosticsDto = {
   g2Class: boolean;
   maxRxFrequencyMhz: number;
   maxRxFrequencyStatus: string;
+  rx1AttenuatorDb: number;
+  rx1AttenuatorStatus: string;
+  rx1AttenuatorSupported: boolean;
   options: G2FirmwareOptionDto[];
   missingControlSurface: string;
   manualReference: string;
@@ -3937,6 +3940,9 @@ function normalizeG2FirmwareOptions(raw: unknown): G2FirmwareOptionsDiagnosticsD
     g2Class: Boolean(r.g2Class),
     maxRxFrequencyMhz: diagNumber(r.maxRxFrequencyMhz) ?? 60,
     maxRxFrequencyStatus: diagString(r.maxRxFrequencyStatus) ?? 'unknown',
+    rx1AttenuatorDb: diagNumber(r.rx1AttenuatorDb) ?? 0,
+    rx1AttenuatorStatus: diagString(r.rx1AttenuatorStatus) ?? 'unknown',
+    rx1AttenuatorSupported: Boolean(r.rx1AttenuatorSupported),
     options,
     missingControlSurface: diagString(r.missingControlSurface) ?? '',
     manualReference:

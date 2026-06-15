@@ -1833,17 +1833,24 @@ public sealed class RadioService : IDisposable
     private bool SupportsG2AdcOptions(HpsdrBoardKind board, OrionMkIIVariant variant) =>
         BoardCapabilitiesTable.For(board, variant).SupportsG2AdcOptions;
 
-    private (bool Supported, bool DitherEnabled, bool RandomEnabled) ResolveG2AdcOptionsFor(
+    private (bool Supported, bool DitherEnabled, bool RandomEnabled, bool Rx1AttenuatorSupported, int Rx1AttenuatorDb)
+        ResolveG2AdcOptionsFor(
         HpsdrBoardKind board,
         OrionMkIIVariant variant)
     {
-        bool supported = SupportsG2AdcOptions(board, variant);
+        var caps = BoardCapabilitiesTable.For(board, variant);
+        bool supported = caps.SupportsG2AdcOptions;
         bool dither = supported && (_preferredRadioStore?.GetG2AdcDitherEnabled() ?? true);
         bool random = supported && (_preferredRadioStore?.GetG2AdcRandomEnabled() ?? true);
-        return (supported, dither, random);
+        bool rx1AttenuatorSupported = supported && caps.HasSteppedAttenuationRx2;
+        int rx1AttenuatorDb = rx1AttenuatorSupported
+            ? Math.Clamp(_preferredRadioStore?.GetG2Rx1AttenuatorDb() ?? 0, 0, 31)
+            : 0;
+        return (supported, dither, random, rx1AttenuatorSupported, rx1AttenuatorDb);
     }
 
-    public (bool Supported, bool DitherEnabled, bool RandomEnabled) ResolveG2AdcOptionsForWire(
+    public (bool Supported, bool DitherEnabled, bool RandomEnabled, bool Rx1AttenuatorSupported, int Rx1AttenuatorDb)
+        ResolveG2AdcOptionsForWire(
         HpsdrBoardKind connectedBoard)
     {
         var board = connectedBoard != HpsdrBoardKind.Unknown
@@ -1859,12 +1866,16 @@ public sealed class RadioService : IDisposable
             DitherEnabled: _preferredRadioStore?.GetG2AdcDitherEnabled() ?? true,
             RandomEnabled: _preferredRadioStore?.GetG2AdcRandomEnabled() ?? true,
             MaxRxFreqMHz: 60.0,
-            Supported: options.Supported);
+            Supported: options.Supported,
+            Rx1AttenuatorDb: _preferredRadioStore?.GetG2Rx1AttenuatorDb() ?? 0,
+            Rx1AttenuatorMinDb: 0,
+            Rx1AttenuatorMaxDb: 31,
+            Rx1AttenuatorSupported: options.Rx1AttenuatorSupported);
     }
 
     public G2OptionsDto SetG2Options(G2OptionsSetRequest req)
     {
-        _preferredRadioStore?.SetG2AdcOptions(req.DitherEnabled, req.RandomEnabled);
+        _preferredRadioStore?.SetG2AdcOptions(req.DitherEnabled, req.RandomEnabled, req.Rx1AttenuatorDb);
         var options = GetG2Options();
         ApplyG2AdcOptionsToP2Client(_p2Client, ConnectedBoardKind);
         return options;
@@ -1875,6 +1886,7 @@ public sealed class RadioService : IDisposable
         if (client is null) return;
         var options = ResolveG2AdcOptionsForWire(connectedBoard);
         client.SetAdcDitherRandom(options.DitherEnabled, options.RandomEnabled);
+        client.SetRx1Attenuator(options.Rx1AttenuatorSupported ? options.Rx1AttenuatorDb : 0);
     }
 
     /// <summary>
