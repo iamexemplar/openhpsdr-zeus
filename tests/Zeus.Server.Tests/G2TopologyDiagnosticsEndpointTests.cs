@@ -52,7 +52,17 @@ public sealed class G2TopologyDiagnosticsEndpointTests
         Assert.Contains("10 independent DDC receivers", manualReference.GetProperty("notes").GetString());
         Assert.Contains("ADC2 ground-on-TX", manualReference.GetProperty("notes").GetString());
 
-        var receiverBandwidth = root.GetProperty("dsp").GetProperty("filterGeometry").GetProperty("receiverBandwidth");
+        var filterGeometry = root.GetProperty("dsp").GetProperty("filterGeometry");
+        Assert.True(filterGeometry.GetProperty("operatorConfigurable").GetBoolean());
+        var runtimeControl = filterGeometry.GetProperty("runtimeSampleRateControl");
+        Assert.Equal("max-wideband-active", runtimeControl.GetProperty("status").GetString());
+        Assert.True(runtimeControl.GetProperty("writable").GetBoolean());
+        Assert.False(runtimeControl.GetProperty("requiresReconnect").GetBoolean());
+        Assert.Equal(1_536_000, runtimeControl.GetProperty("maxWritableSampleRateHz").GetInt32());
+        Assert.True(runtimeControl.GetProperty("widebandWritable").GetBoolean());
+        Assert.Equal("/api/sampleRate", runtimeControl.GetProperty("apiRoute").GetString());
+
+        var receiverBandwidth = filterGeometry.GetProperty("receiverBandwidth");
         Assert.Equal("max-wideband-active", receiverBandwidth.GetProperty("status").GetString());
         Assert.True(receiverBandwidth.GetProperty("protocol2Active").GetBoolean());
         Assert.True(receiverBandwidth.GetProperty("widebandActive").GetBoolean());
@@ -119,7 +129,14 @@ public sealed class G2TopologyDiagnosticsEndpointTests
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         using var body = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
-        var receiverBandwidth = body.RootElement.GetProperty("dsp").GetProperty("filterGeometry").GetProperty("receiverBandwidth");
+        var filterGeometry = body.RootElement.GetProperty("dsp").GetProperty("filterGeometry");
+        var runtimeControl = filterGeometry.GetProperty("runtimeSampleRateControl");
+        Assert.Equal("board-capability-limited", runtimeControl.GetProperty("status").GetString());
+        Assert.True(runtimeControl.GetProperty("writable").GetBoolean());
+        Assert.Equal(384_000, runtimeControl.GetProperty("maxWritableSampleRateHz").GetInt32());
+        Assert.False(runtimeControl.GetProperty("widebandWritable").GetBoolean());
+
+        var receiverBandwidth = filterGeometry.GetProperty("receiverBandwidth");
 
         Assert.Equal("board-capability-limited", receiverBandwidth.GetProperty("status").GetString());
         Assert.True(receiverBandwidth.GetProperty("protocol2Active").GetBoolean());
