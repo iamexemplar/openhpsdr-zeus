@@ -193,4 +193,36 @@ public class RadioCalibrationsDispatchTests
 
     public static IEnumerable<object[]> EveryBoardKind() =>
         Enum.GetValues<HpsdrBoardKind>().Select(b => new object[] { b });
+
+    [Theory]
+    [InlineData(HpsdrBoardKind.HermesLite2, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.Hermes, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.Metis, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.HermesII, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.Angelia, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.Orion, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.HermesC10, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.Unknown, OrionMkIIVariant.G2, 0.98)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.G2, -4.476)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.G2_1K, -4.476)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.Anan7000DLE, 4.841644)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.Anan8000DLE, 4.841644)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.OrionMkII, 4.841644)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.AnvelinaPro3, 4.841644)]
+    [InlineData(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.RedPitaya, 4.841644)]
+    public void RxMeterOffsetDb_Dispatches_Per_Thetis_Defaults(
+        HpsdrBoardKind board,
+        OrionMkIIVariant variant,
+        double expectedOffsetDb)
+    {
+        Assert.Equal(expectedOffsetDb, RadioCalibrations.RxMeterOffsetDb(board, variant), precision: 6);
+    }
+
+    [Fact]
+    public void RxMeterOffsetDb_Default_OrionMkII_Uses_G2_Default()
+    {
+        Assert.Equal(
+            RadioCalibrations.RxMeterOffsetDb(HpsdrBoardKind.OrionMkII, OrionMkIIVariant.G2),
+            RadioCalibrations.RxMeterOffsetDb(HpsdrBoardKind.OrionMkII));
+    }
 }

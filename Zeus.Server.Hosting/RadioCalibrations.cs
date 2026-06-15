@@ -42,6 +42,13 @@ namespace Zeus.Server;
 /// </summary>
 internal static class RadioCalibrations
 {
+    // Thetis Console/clsHardwareSpecific.cs:428,
+    // RXMeterCalbrationOffsetDefaults. See the local reference matrix at
+    // docs/references/protocol-1/thetis-board-matrix.md.
+    private const double DefaultRxMeterOffsetDb = 0.98;
+    private const double OrionClassRxMeterOffsetDb = 4.841644;
+    private const double G2RxMeterOffsetDb = -4.476;
+
     /// <summary>
     /// Pick the calibration table for a given board. Falls back to
     /// <see cref="RadioCalibration.HermesLite2"/> for unknown boards so a
@@ -87,5 +94,38 @@ internal static class RadioCalibrations
         // bridge_volt = 0.12, refvoltage = 5.0, adc_cal_offset = 32 case).
         HpsdrBoardKind.HermesC10   => RadioCalibration.OrionMkII,
         _                          => RadioCalibration.HermesLite2,
+    };
+
+    /// <summary>
+    /// Per-board RX S-meter calibration offset in dB. Applied to WDSP's raw
+    /// RXA_S_* and RXA_AGC_* dBm readings before broadcasting meter frames.
+    /// ADC dBFS and AGC gain readings are not S-meter readings and must not
+    /// use this offset.
+    /// </summary>
+    public static double RxMeterOffsetDb(HpsdrBoardKind board) =>
+        RxMeterOffsetDb(board, OrionMkIIVariant.G2);
+
+    /// <summary>
+    /// Variant-aware RX S-meter calibration offset. The 0x0A OrionMkII wire
+    /// byte aliases several radios with materially different meter offsets,
+    /// so the operator-selected <see cref="OrionMkIIVariant"/> participates
+    /// in the dispatch. Every non-0x0A board follows Thetis' default branch.
+    /// </summary>
+    public static double RxMeterOffsetDb(HpsdrBoardKind board, OrionMkIIVariant variant) => board switch
+    {
+        HpsdrBoardKind.OrionMkII => variant switch
+        {
+            OrionMkIIVariant.G2 or
+            OrionMkIIVariant.G2_1K => G2RxMeterOffsetDb,
+
+            OrionMkIIVariant.Anan7000DLE or
+            OrionMkIIVariant.Anan8000DLE or
+            OrionMkIIVariant.OrionMkII or
+            OrionMkIIVariant.AnvelinaPro3 or
+            OrionMkIIVariant.RedPitaya => OrionClassRxMeterOffsetDb,
+
+            _ => G2RxMeterOffsetDb,
+        },
+        _ => DefaultRxMeterOffsetDb,
     };
 }

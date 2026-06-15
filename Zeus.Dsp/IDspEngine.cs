@@ -175,9 +175,11 @@ public interface IDspEngine : IDisposable
     /// If OpenTxChannel has not been called (no TXA), this is a no-op.</summary>
     void SetMox(bool moxOn);
 
-    /// <summary>RXA signal-strength meter in dBm (Thetis rxaMeterType.RXA_S_AV, idx 1).
+    /// <summary>Raw RXA signal-strength meter in dBm (Thetis rxaMeterType.RXA_S_AV, idx 1).
     /// Returns a frozen −140 dBm from the synthetic engine. Safe to call from the
-    /// pipeline tick; WDSP's meter struct is lock-guarded internally.</summary>
+    /// pipeline tick; WDSP's meter struct is lock-guarded internally. The caller
+    /// applies the per-board S-meter calibration offset because the DSP engine
+    /// does not know the effective hardware variant.</summary>
     double GetRxaSignalDbm(int channelId);
 
     /// <summary>RXA per-stage readings (signal peak/avg, ADC peak/avg, AGC
