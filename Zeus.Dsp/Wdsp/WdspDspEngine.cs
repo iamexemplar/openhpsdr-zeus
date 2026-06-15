@@ -1079,16 +1079,12 @@ public sealed class WdspDspEngine : IDspEngine
         }
     }
 
-    // Thetis rxaMeterType.RXA_S_AV = 1 (console/dsp.cs:876-884) — average
-    // signal strength in dBm, smoothed by WDSP's internal meter tau. Returns
-    // a large negative (~−200) before any frame has been exchanged.
+    // Thetis rxaMeterType.RXA_S_AV = 1 (console/dsp.cs:876-884) — raw
+    // average signal strength in dBm, smoothed by WDSP's internal meter tau.
+    // The per-board S-meter calibration offset is applied by
+    // DspPipelineService, where the effective board / variant are known.
+    // Returns a large negative (~−200) before any frame has been exchanged.
     private const int RxaMeterSAv = 1;
-
-    // HL2 S-meter calibration offset in dB. Thetis
-    // clsHardwareSpecific.cs:428 — RXMeterCalbrationOffsetDefaults default
-    // branch returns 0.98f for non-ANAN models (HL2 falls here). Added to
-    // GetRXAMeter output before exposing as dBm.
-    private const double Hl2MeterCalOffsetDb = 0.98;
 
     private DateTime _lastRxMeterLogUtc;
     public double GetRxaSignalDbm(int channelId)
@@ -1125,7 +1121,7 @@ public sealed class WdspDspEngine : IDspEngine
                 "wdsp.rx.meter sAv={SAv:F1} adcAv={AdcAv:F1} agcGain={AgcGain:F1} agcAv={AgcAv:F1}",
                 sAv, adcAv, agcGain, agcAv);
         }
-        return sAv + Hl2MeterCalOffsetDb;
+        return sAv;
     }
 
     // Full RXA meter snapshot — fetches all 7 indices in one pass and
