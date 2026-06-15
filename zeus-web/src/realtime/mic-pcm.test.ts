@@ -117,6 +117,39 @@ describe('sendMicPcm', () => {
     }
   });
 
+  it('sanitizes non-finite and overrange samples before serializing', async () => {
+    const { startRealtime } = await import('./ws-client');
+    const stop = startRealtime('/ws');
+    try {
+      const ws = MockWebSocket.instances[0];
+      if (ws?.onopen) ws.onopen({} as unknown);
+
+      const samples = new Float32Array(960);
+      samples[0] = Number.NaN;
+      samples[1] = Number.POSITIVE_INFINITY;
+      samples[2] = Number.NEGATIVE_INFINITY;
+      samples[3] = 1.5;
+      samples[4] = -2;
+      samples[5] = 0.25;
+
+      sendMicPcm(samples);
+
+      expect(ws?.sent.length).toBe(1);
+      const sentBuf = ws!.sent[0];
+      if (!(sentBuf instanceof ArrayBuffer)) throw new Error('expected ArrayBuffer');
+      const view = new DataView(sentBuf);
+      expect(view.getUint8(0)).toBe(MSG_TYPE_MIC_PCM);
+      expect(view.getFloat32(1, true)).toBe(0);
+      expect(view.getFloat32(5, true)).toBe(0);
+      expect(view.getFloat32(9, true)).toBe(0);
+      expect(view.getFloat32(13, true)).toBe(1);
+      expect(view.getFloat32(17, true)).toBe(-1);
+      expect(view.getFloat32(21, true)).toBeCloseTo(0.25, 6);
+    } finally {
+      stop();
+    }
+  });
+
   it('drops blocks with wrong length', async () => {
     const { startRealtime } = await import('./ws-client');
     const stop = startRealtime('/ws');

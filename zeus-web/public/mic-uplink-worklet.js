@@ -62,6 +62,13 @@ function raisedCosineWindow(distance) {
   return 0.5 + 0.5 * Math.cos(Math.PI * distance / RESAMPLE_RADIUS);
 }
 
+function sanitizeSample(sample) {
+  if (!Number.isFinite(sample)) return 0;
+  if (sample > 1) return 1;
+  if (sample < -1) return -1;
+  return sample;
+}
+
 class MicUplinkProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
@@ -105,7 +112,7 @@ class MicUplinkProcessor extends AudioWorkletProcessor {
   }
 
   _appendResampled(ch) {
-    for (let i = 0; i < ch.length; i++) this._input.push(ch[i]);
+    for (let i = 0; i < ch.length; i++) this._input.push(sanitizeSample(ch[i]));
 
     while (this._phase + RESAMPLE_RADIUS < this._input.length) {
       this._appendOutputSample(this._sampleAt(this._phase));
@@ -150,7 +157,9 @@ class MicUplinkProcessor extends AudioWorkletProcessor {
     const out = this._buf;
     let peak = 0;
     for (let i = 0; i < BLOCK_SAMPLES; i++) {
-      const a = out[i] < 0 ? -out[i] : out[i];
+      const sample = sanitizeSample(out[i]);
+      out[i] = sample;
+      const a = sample < 0 ? -sample : sample;
       if (a > peak) peak = a;
     }
     this._buf = new Float32Array(BLOCK_SAMPLES);
