@@ -67,9 +67,9 @@ For RXA S-meter and ADC-meter, `a->run` is hard-coded to 1 and `prun` is null (`
 
 `WdspDspEngine.StopChannel` joins the worker thread with a 2s timeout and falls through to teardown regardless ("worker did not exit in time; fall through to teardown anyway"). If this ever fires, `ch[]` global state (WDSP's `MAX_CHANNELS=32` process-global array) may be left half-destroyed, and subsequent `OpenChannel` calls can inherit stale flags. Instrument this in future debug sessions — if the 2s log ever appears, you have a trigger for state corruption.
 
-## The HL2 meter calibration offset
+## RX meter calibration offsets
 
-`WdspDspEngine.GetRxaSignalDbm` applies `+0.98 dB` on top of WDSP's raw reading, matching Thetis `Console/clsHardwareSpecific.cs:428` `RXMeterCalbrationOffsetDefaults` default branch (ANAN 7000/8000 get `+4.84`, G2 gets `-4.48`, HL2 + everything else gets `+0.98`). Real HL2 units have per-unit cal drift measured in tenths of a dB — revisit when we have multiple radios to cross-reference.
+`WdspDspEngine.GetRxaSignalDbm` returns WDSP's raw `RXA_S_AV` reading. `DspPipelineService` applies the per-board offset from `RadioCalibrations.RxMeterOffsetDb` before broadcasting meter frames, matching Thetis `Console/clsHardwareSpecific.cs:428` `RXMeterCalbrationOffsetDefaults`: Orion-class variants get `+4.841644 dB`, G2/G2-1K get `-4.476 dB`, and HL2/everything else gets `+0.98 dB`. Real radios can have per-unit cal drift measured in tenths of a dB — revisit when we have multiple radios to cross-reference.
 
 ## References
 

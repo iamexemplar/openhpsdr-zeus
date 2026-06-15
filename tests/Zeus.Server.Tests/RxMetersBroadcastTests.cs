@@ -111,17 +111,39 @@ public class RxMetersBroadcastTests
     public void BuildRxMetersV2_FromSilent_ProducesSentinelFrame()
     {
         // RxStageMeters.Silent has dBm fields at −200 and AgcGain at 0.
-        // After cal: dBm fields shift by the offset; AgcGain stays 0.
-        // The frontend's "<= -200 → bypassed" check still fires because
-        // the post-cal value is well below the threshold.
+        // Cal must not shift sentinel-shaped values above the frontend's
+        // "<= -200 -> bypassed" threshold.
         var frame = DspPipelineService.BuildRxMetersV2(RxStageMeters.Silent, calOffsetDb: 0.98);
-        Assert.Equal(-200f + 0.98f, frame.SignalPk);
-        Assert.Equal(-200f + 0.98f, frame.SignalAv);
+        Assert.Equal(-200f, frame.SignalPk);
+        Assert.Equal(-200f, frame.SignalAv);
         Assert.Equal(-200f, frame.AdcPk);
         Assert.Equal(-200f, frame.AdcAv);
         Assert.Equal(0f, frame.AgcGain);
-        Assert.Equal(-200f + 0.98f, frame.AgcEnvPk);
-        Assert.Equal(-200f + 0.98f, frame.AgcEnvAv);
+        Assert.Equal(-200f, frame.AgcEnvPk);
+        Assert.Equal(-200f, frame.AgcEnvAv);
+    }
+
+    [Fact]
+    public void BuildRxMetersV2_PreservesWdspDidNotRunSentinel()
+    {
+        var raw = new RxStageMeters(
+            SignalPk: -400f,
+            SignalAv: -400f,
+            AdcPk: -400f,
+            AdcAv: -400f,
+            AgcGain: 0f,
+            AgcEnvPk: -400f,
+            AgcEnvAv: -400f);
+
+        var frame = DspPipelineService.BuildRxMetersV2(raw, calOffsetDb: 4.841644);
+
+        Assert.Equal(-400f, frame.SignalPk);
+        Assert.Equal(-400f, frame.SignalAv);
+        Assert.Equal(-400f, frame.AdcPk);
+        Assert.Equal(-400f, frame.AdcAv);
+        Assert.Equal(0f, frame.AgcGain);
+        Assert.Equal(-400f, frame.AgcEnvPk);
+        Assert.Equal(-400f, frame.AgcEnvAv);
     }
 
     [Fact]

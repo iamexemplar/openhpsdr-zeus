@@ -31,7 +31,7 @@ Thetis exposes **6 RX meter modes** via `Console/enums.cs:MeterRXMode`:
 
 - **Single-channel RX:** Hermes / ANAN-class radios in Protocol-1 mode expose one RXA WDSP channel (typically channel 0). The `ADC_L` / `ADC_R` distinction in Thetis reflects **stereo ADC hardware**, not two software channels — both read from the same RXA meter call.
 - **Dual RX:** When a second RX is enabled (e.g. sub-RX on ANAN), Zeus must open a second RXA channel (typically channel 2) to access `ADC2_L` / `ADC2_R` independently. This is a **multi-channel WDSP state dependency**.
-- **HL2 calibration:** HL2 meters include a +0.98 dB calibration offset per-board (applied in `WdspDspEngine.GetRxaSignalDbm`). This matches Thetis' hardware-specific defaults; individual units may drift by ±0.5 dB.
+- **RX meter calibration:** WDSP meter reads stay raw inside `WdspDspEngine`; `DspPipelineService` applies `RadioCalibrations.RxMeterOffsetDb` before broadcasting. Thetis defaults are +0.98 dB for HL2/default boards, +4.841644 dB for Orion-class variants, and -4.476 dB for G2/G2-1K. Individual units may drift by tenths of a dB.
 - **AGC readings:** Available only when AGC is enabled on the RXA channel. When AGC is off, `GetRXAMeter(RXA_AGC_GAIN)` returns 0 and the envelope meters report the same as `RXA_S_*`.
 
 ---

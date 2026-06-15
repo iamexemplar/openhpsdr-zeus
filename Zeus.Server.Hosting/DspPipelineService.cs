@@ -2112,13 +2112,22 @@ public class DspPipelineService : BackgroundService,
         if (++_rxMeterTickMod >= RxMeterTickModulus)
         {
             _rxMeterTickMod = 0;
-            // Prefer WDSP's calibrated S-meter when it's ticking. In this
+            double rxCalOffsetDb = RadioCalibrations.RxMeterOffsetDb(
+                _radio.EffectiveBoardKind,
+                _radio.EffectiveOrionMkIIVariant);
+
+            // Prefer WDSP's S-meter when it's ticking. In this
             // integration the meter tap reads -400 ("didn't run") — needs
             // deeper WDSP state debugging to chase down. Until then, fall
             // back to RMS of the already-flowing post-demod audio ring, which
             // gives a "proof of life" meter that moves with band activity.
-            double dbm = engine.GetRxaSignalDbm(channel);
-            if (!double.IsFinite(dbm) || dbm <= -399.0)
+            double rawDbm = engine.GetRxaSignalDbm(channel);
+            double dbm;
+            if (double.IsFinite(rawDbm) && rawDbm > -399.0)
+            {
+                dbm = ApplyRxMeterCalibration(rawDbm, rxCalOffsetDb);
+            }
+            else
             {
                 // 0 dBFS audio ~= S9+ signal; calibrate against ambient band
                 // noise later. Empirical offset of -50 dBm puts typical 20m
@@ -2145,14 +2154,6 @@ public class DspPipelineService : BackgroundService,
             // Panel can render any of them; older clients that only know
             // 0x14 ignore this frame. Same 5 Hz cadence as 0x14 above.
             //
-            // Cal offset: HL2 / non-ANAN default per Thetis
-            // clsHardwareSpecific.cs:428. TODO(meters/cal-offset): replace
-            // with a per-board lookup (e.g.
-            // RadioMeterCalibration.RxOffsetDb(HpsdrBoardKind)) and remove
-            // the duplicate constant inside WdspDspEngine.GetRxaSignalDbm
-            // once the abstraction exists. Tracked as PR-1 follow-up per
-            // plan §7 Q3 and CLAUDE.md "use per-board abstractions".
-            const double rxCalOffsetDb = 0.98;
             var rx = engine.GetRxStageMeters(channel);
             var v2 = BuildRxMetersV2(rx, rxCalOffsetDb);
             _hub.Broadcast(v2);
@@ -2181,12 +2182,18 @@ public class DspPipelineService : BackgroundService,
     {
         float cal = (float)calOffsetDb;
         return new RxMetersV2Frame(
-            SignalPk: rx.SignalPk + cal,
-            SignalAv: rx.SignalAv + cal,
+            SignalPk: ApplyRxMeterCalibration(rx.SignalPk, cal),
+            SignalAv: ApplyRxMeterCalibration(rx.SignalAv, cal),
             AdcPk: rx.AdcPk,
             AdcAv: rx.AdcAv,
             AgcGain: rx.AgcGain,
-            AgcEnvPk: rx.AgcEnvPk + cal,
-            AgcEnvAv: rx.AgcEnvAv + cal);
+            AgcEnvPk: ApplyRxMeterCalibration(rx.AgcEnvPk, cal),
+            AgcEnvAv: ApplyRxMeterCalibration(rx.AgcEnvAv, cal));
     }
+
+    private static double ApplyRxMeterCalibration(double value, double calOffsetDb) =>
+        value <= -199.5 ? value : value + calOffsetDb;
+
+    private static float ApplyRxMeterCalibration(float value, float calOffsetDb) =>
+        value <= -199.5f ? value : value + calOffsetDb;
 }
