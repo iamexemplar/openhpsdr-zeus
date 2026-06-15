@@ -1135,15 +1135,17 @@ describe('POST helpers', () => {
     expect(JSON.parse((init?.body ?? '') as string)).toEqual({ db: 12 });
   });
 
-  it('setMicGain treats 404 as accepted (backend not landed yet)', async () => {
+  it('setMicGain rethrows 404 so missing backend routes roll back', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn<typeof fetch>().mockResolvedValue(
         new Response('Not Found', { status: 404, statusText: 'Not Found' }),
       ),
     );
-    // Must not throw — the slider keeps its optimistic value rather than rolling back.
-    await expect(setMicGain(5)).resolves.toEqual({ micGainDb: 5 });
+    await expect(setMicGain(5)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+    });
   });
 
   it('setMicGain rethrows non-404 errors so the slider can roll back', async () => {
@@ -1174,15 +1176,16 @@ describe('POST helpers', () => {
     expect(JSON.parse((init?.body ?? '') as string)).toEqual({ gain: 7.5 });
   });
 
-  it('setLevelerMaxGain treats 404 as accepted (backend not landed yet)', async () => {
+  it('setLevelerMaxGain rethrows 404 so missing backend routes roll back', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn<typeof fetch>().mockResolvedValue(
         new Response('Not Found', { status: 404, statusText: 'Not Found' }),
       ),
     );
-    await expect(setLevelerMaxGain(5)).resolves.toEqual({
-      levelerMaxGainDb: 5,
+    await expect(setLevelerMaxGain(5)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
     });
   });
 
@@ -1212,14 +1215,17 @@ describe('POST helpers', () => {
     expect(JSON.parse((init?.body ?? '') as string)).toEqual({ on: true });
   });
 
-  it('setTun treats 404 as accepted (backend not landed yet)', async () => {
+  it('setTun rethrows 404 so missing backend routes roll back', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn<typeof fetch>().mockResolvedValue(
         new Response('Not Found', { status: 404, statusText: 'Not Found' }),
       ),
     );
-    await expect(setTun(true)).resolves.toEqual({ tunOn: true });
+    await expect(setTun(true)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+    });
   });
 
   it('setTun rethrows non-404 errors so the button can roll back', async () => {

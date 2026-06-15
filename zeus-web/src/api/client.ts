@@ -42,7 +42,6 @@
 // Zeus is distributed WITHOUT ANY WARRANTY; see the GNU General Public
 // License for details.
 
-import { warnOnce } from '../util/logger';
 import { useVfoLockStore as vfoLockStore } from '../state/vfo-lock-store';
 import {
   parseBoardCapabilities,
@@ -3109,30 +3108,21 @@ export function setTuneDrive(
 
 // TUN endpoint: POST /api/tx/tun { on }. Returns { tunOn }. Keys a single-tone
 // carrier via WDSP SetTXAPostGen* and is mutually exclusive with MOX on the
-// server. Same 404-tolerant pattern as setMicGain because the backend handler
-// lands after this UI.
-export async function setTun(
+// server.
+export function setTun(
   on: boolean,
   signal?: AbortSignal,
 ): Promise<{ tunOn: boolean }> {
-  try {
-    return await jsonFetch(
-      '/api/tx/tun',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ on }),
-        signal,
-      },
-      (raw) => ({ tunOn: Boolean((raw as { tunOn?: unknown }).tunOn) }),
-    );
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
-      warnOnce('tx-tun-404', 'POST /api/tx/tun not implemented yet — treating as accepted');
-      return { tunOn: on };
-    }
-    throw err;
-  }
+  return jsonFetch(
+    '/api/tx/tun',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ on }),
+      signal,
+    },
+    (raw) => ({ tunOn: Boolean((raw as { tunOn?: unknown }).tunOn) }),
+  );
 }
 
 // Per-band memory: last-used (hz, mode) persisted server-side in LiteDB.
@@ -3194,37 +3184,25 @@ export function saveBandMemory(
 
 // Leveler max-gain endpoint: POST /api/tx/leveler-max-gain { gain }. Returns
 // { levelerMaxGainDb }. Backend clamps to [0, 20] and echoes the applied
-// value; stateless across backend restart, so ConnectPanel re-POSTs the
-// persisted value when the connection comes up. Same 404-tolerant pattern as
-// setMicGain for the frontend-ahead-of-backend window.
-export async function setLevelerMaxGain(
+// value; RadioService persists the setting, and the DSP pipeline reapplies it
+// to the active TXA engine after reconnects or engine swaps.
+export function setLevelerMaxGain(
   gain: number,
   signal?: AbortSignal,
 ): Promise<{ levelerMaxGainDb: number }> {
-  try {
-    return await jsonFetch(
-      '/api/tx/leveler-max-gain',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ gain }),
-        signal,
-      },
-      (raw) => {
-        const v = (raw as { levelerMaxGainDb?: unknown }).levelerMaxGainDb;
-        return { levelerMaxGainDb: typeof v === 'number' ? v : gain };
-      },
-    );
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
-      warnOnce(
-        'tx-leveler-max-gain-404',
-        'POST /api/tx/leveler-max-gain not implemented yet — treating as accepted',
-      );
-      return { levelerMaxGainDb: gain };
-    }
-    throw err;
-  }
+  return jsonFetch(
+    '/api/tx/leveler-max-gain',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ gain }),
+      signal,
+    },
+    (raw) => {
+      const v = (raw as { levelerMaxGainDb?: unknown }).levelerMaxGainDb;
+      return { levelerMaxGainDb: typeof v === 'number' ? v : gain };
+    },
+  );
 }
 
 // PureSignal master arm + cal-mode. POST /api/tx/ps. Backend swaps the engine
@@ -3489,33 +3467,22 @@ export async function setTwoTone(
 }
 
 // Mic-gain endpoint: POST /api/mic-gain { db }. Returns { micGainDb }.
-// Backend may not have landed the handler yet — a 404 is downgraded to a
-// silent warnOnce so the console doesn't fill with noise during the
-// frontend-ahead-of-backend window. Non-404 failures bubble up so the
-// slider can roll back the optimistic update.
-export async function setMicGain(
+// Failures bubble up so the slider can roll back the optimistic update.
+export function setMicGain(
   db: number,
   signal?: AbortSignal,
 ): Promise<{ micGainDb: number }> {
-  try {
-    return await jsonFetch(
-      '/api/mic-gain',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ db: Math.round(db) }),
-        signal,
-      },
-      (raw) => {
-        const v = (raw as { micGainDb?: unknown }).micGainDb;
-        return { micGainDb: typeof v === 'number' ? v : 0 };
-      },
-    );
-  } catch (err) {
-    if (err instanceof ApiError && err.status === 404) {
-      warnOnce('mic-gain-404', 'POST /api/mic-gain not implemented yet — treating as accepted');
-      return { micGainDb: Math.round(db) };
-    }
-    throw err;
-  }
+  return jsonFetch(
+    '/api/mic-gain',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ db: Math.round(db) }),
+      signal,
+    },
+    (raw) => {
+      const v = (raw as { micGainDb?: unknown }).micGainDb;
+      return { micGainDb: typeof v === 'number' ? v : 0 };
+    },
+  );
 }
