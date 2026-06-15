@@ -1442,6 +1442,9 @@ public class DspPipelineService : BackgroundService,
     private bool _diagAudioSquelchOpen;
     private bool _diagAudioSquelchTailActive;
     private double _diagAudioSquelchGain = double.NaN;
+    private string _diagAudioSquelchMode = "off";
+    private string _diagAudioSquelchGateSource = "disabled";
+    private bool _diagAudioSquelchOpenKnown = true;
     private long _diagAudioMonitorBacklogSamples;
     private int _diagAudioSinkCount;
     private const long AudioFreshMs = 2_000;
@@ -1808,6 +1811,9 @@ public class DspPipelineService : BackgroundService,
         bool levelerBoostSlewLimited;
         bool levelerPeakLimited;
         bool levelerOutputLimited;
+        string squelchMode;
+        string squelchGateSource;
+        bool squelchOpenKnown;
         long monitorBacklogSamples;
         int audioSinkCount;
 
@@ -1844,6 +1850,9 @@ public class DspPipelineService : BackgroundService,
             levelerBoostSlewLimited = _diagAudioLevelerBoostSlewLimited;
             levelerPeakLimited = _diagAudioLevelerPeakLimited;
             levelerOutputLimited = _diagAudioLevelerOutputLimited;
+            squelchMode = _diagAudioSquelchMode;
+            squelchGateSource = _diagAudioSquelchGateSource;
+            squelchOpenKnown = _diagAudioSquelchOpenKnown;
             monitorBacklogSamples = _diagAudioMonitorBacklogSamples;
             audioSinkCount = _diagAudioSinkCount;
         }
@@ -1882,7 +1891,10 @@ public class DspPipelineService : BackgroundService,
             levelerNr5SpeechHoldBlocks,
             levelerBoostSlewLimited,
             levelerPeakLimited,
-            levelerOutputLimited);
+            levelerOutputLimited,
+            squelchMode,
+            squelchGateSource,
+            squelchOpenKnown);
     }
 
     private Nr5SpnrDiagnosticsDto? SnapshotAlignedLevelerNr5Diagnostics()
@@ -1947,9 +1959,15 @@ public class DspPipelineService : BackgroundService,
         int levelerNr5SpeechHoldBlocks = 0,
         bool levelerBoostSlewLimited = false,
         bool levelerPeakLimited = false,
-        bool levelerOutputLimited = false)
+        bool levelerOutputLimited = false,
+        string? squelchMode = null,
+        string? squelchGateSource = null,
+        bool? squelchOpenKnown = null)
     {
         source = string.IsNullOrWhiteSpace(source) ? "none" : source;
+        squelchMode = NormalizeSquelchMode(squelchMode, squelchEnabled);
+        squelchGateSource = NormalizeSquelchGateSource(squelchGateSource, squelchMode);
+        bool openKnown = squelchOpenKnown ?? (!squelchEnabled || string.Equals(squelchMode, "adaptive", StringComparison.OrdinalIgnoreCase));
         bool fresh = valid && ageMs is <= AudioFreshMs;
         bool stale = !valid || ageMs is null || ageMs > AudioAgingMs;
         bool clippingRisk = valid && double.IsFinite(peak) && peak >= AudioClippingRiskLinear;
@@ -1995,7 +2013,9 @@ public class DspPipelineService : BackgroundService,
         else if (silent)
         {
             status = "silent";
-            recommendation = "RX audio frames are fresh but near silence; cross-check S-meter, panadapter peaks, squelch, mode/filter, and audio sink volume.";
+            recommendation = squelchEnabled && string.Equals(squelchMode, "fixed", StringComparison.OrdinalIgnoreCase)
+                ? "RX audio frames are fresh but near silence while fixed SQL is active; WDSP fixed squelch may be closed, so verify fixed threshold/sensitivity before treating silence as no-signal evidence."
+                : "RX audio frames are fresh but near silence; cross-check S-meter, panadapter peaks, squelch, mode/filter, and audio sink volume.";
         }
         else
         {
@@ -2039,6 +2059,9 @@ public class DspPipelineService : BackgroundService,
             RxAudioLevelerBoostSlewLimited: levelerValid ? levelerBoostSlewLimited : null,
             RxAudioLevelerPeakLimited: levelerValid ? levelerPeakLimited : null,
             RxAudioLevelerOutputLimited: levelerValid ? levelerOutputLimited : null,
+            SquelchMode: squelchMode,
+            SquelchGateSource: squelchGateSource,
+            SquelchOpenKnown: openKnown,
             MonitorBacklogSamples: monitorBacklogSamples,
             AudioSinkCount: audioSinkCount,
             DiagnosticRecommendation: recommendation);
@@ -2051,6 +2074,24 @@ public class DspPipelineService : BackgroundService,
         double.IsFinite(value) && value > 0.0
             ? 20.0 * Math.Log10(Math.Max(value, 1e-12))
             : double.NaN;
+
+    private static string NormalizeSquelchMode(string? mode, bool enabled)
+    {
+        if (!enabled) return "off";
+        if (string.Equals(mode, "fixed", StringComparison.OrdinalIgnoreCase)) return "fixed";
+        if (string.Equals(mode, "adaptive", StringComparison.OrdinalIgnoreCase)) return "adaptive";
+        return "adaptive";
+    }
+
+    private static string NormalizeSquelchGateSource(string? source, string mode)
+    {
+        if (string.Equals(mode, "off", StringComparison.OrdinalIgnoreCase)) return "disabled";
+        if (string.Equals(source, "wdsp-fixed", StringComparison.OrdinalIgnoreCase)) return "wdsp-fixed";
+        if (string.Equals(source, "backend-adaptive", StringComparison.OrdinalIgnoreCase)) return "backend-adaptive";
+        return string.Equals(mode, "fixed", StringComparison.OrdinalIgnoreCase)
+            ? "wdsp-fixed"
+            : "backend-adaptive";
+    }
 
     private static double? AudioLinearToDbfs(double value) =>
         double.IsFinite(value) && value > 0.0
@@ -2066,6 +2107,13 @@ public class DspPipelineService : BackgroundService,
         SquelchConfig squelch,
         Nr5SpnrDiagnosticsDto? nr5LevelerDiagnostics = null)
     {
+        string squelchMode = !squelch.Enabled ? "off" : squelch.Adaptive ? "adaptive" : "fixed";
+        string squelchGateSource = squelchMode switch
+        {
+            "adaptive" => "backend-adaptive",
+            "fixed" => "wdsp-fixed",
+            _ => "disabled",
+        };
         bool squelchOpen = !squelch.Enabled || !squelch.Adaptive || _adaptiveSquelch.Open;
         bool squelchTailActive = IsAdaptiveSquelchTailActive(squelch, _adaptiveSquelch);
         double squelchGain = squelch.Enabled && squelch.Adaptive ? _adaptiveSquelch.Gain : 1.0;
@@ -2111,6 +2159,9 @@ public class DspPipelineService : BackgroundService,
             _diagAudioLevelerNr5FrameMs = levelerValid && nr5LevelerDiagnostics is not null
                 ? (long)frame.TsUnixMs
                 : 0;
+            _diagAudioSquelchMode = squelchMode;
+            _diagAudioSquelchGateSource = squelchGateSource;
+            _diagAudioSquelchOpenKnown = !squelch.Enabled || squelch.Adaptive;
             _diagAudioMonitorBacklogSamples = monitorBacklogSamples;
             _diagAudioSinkCount = _audioSinks.Length;
         }
@@ -2299,6 +2350,14 @@ public class DspPipelineService : BackgroundService,
         double? closeThresholdDbm = openThresholdDbm - hysteresisDb;
         double? deltaDb = signalDbm - floorDbm;
         bool ready = s.WindowFill >= AdaptiveSquelchMinSamples && floorDbm.HasValue;
+        bool adaptiveGateActive = cfg.Enabled && cfg.Adaptive;
+        bool effectiveOpen = !cfg.Enabled || !cfg.Adaptive || s.Open;
+        double effectiveGain = adaptiveGateActive ? s.Gain : 1.0;
+        string gateSource = !cfg.Enabled
+            ? "disabled"
+            : cfg.Adaptive
+                ? "backend-adaptive"
+                : "wdsp-fixed";
         bool tailActive = ready
             && s.Open
             && signalDbm.HasValue
@@ -2329,8 +2388,12 @@ public class DspPipelineService : BackgroundService,
             adaptive = cfg.Adaptive,
             status,
             ready,
-            open = s.Open,
-            gateGain = Math.Round(Math.Clamp(double.IsFinite(s.Gain) ? s.Gain : 0.0, 0.0, 1.0), 3),
+            open = effectiveOpen,
+            openKnown = !cfg.Enabled || cfg.Adaptive,
+            gateSource,
+            adaptiveGateOpen = s.Open,
+            adaptiveGateGain = Math.Round(Math.Clamp(double.IsFinite(s.Gain) ? s.Gain : 0.0, 0.0, 1.0), 3),
+            gateGain = Math.Round(Math.Clamp(double.IsFinite(effectiveGain) ? effectiveGain : 0.0, 0.0, 1.0), 3),
             signalDbm,
             noiseFloorDbm = floorDbm,
             signalOverFloorDb = deltaDb,
@@ -2354,7 +2417,7 @@ public class DspPipelineService : BackgroundService,
                 "tail-hold" => "DYN SQL is holding the gate open briefly to preserve word endings.",
                 "open" => "DYN SQL is open on a signal above the learned noise floor.",
                 "closed" => "DYN SQL is closed; signal is below the learned open threshold.",
-                "fixed-mode" => "Fixed SQL is active; DYN diagnostics are learning but not gating.",
+                "fixed-mode" => "Fixed SQL is active in WDSP; backend DYN diagnostics are learning but not gating, so fixed gate closure must be inferred from final RX audio and WDSP state.",
                 _ => "SQL is disabled; DYN diagnostics are learning but not gating.",
             },
         };
@@ -4683,6 +4746,9 @@ internal sealed record AudioPathDiagnosticsDto(
     bool? RxAudioLevelerBoostSlewLimited,
     bool? RxAudioLevelerPeakLimited,
     bool? RxAudioLevelerOutputLimited,
+    string SquelchMode,
+    string SquelchGateSource,
+    bool SquelchOpenKnown,
     long MonitorBacklogSamples,
     int AudioSinkCount,
     string DiagnosticRecommendation);
