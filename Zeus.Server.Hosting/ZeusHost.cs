@@ -298,6 +298,9 @@ public static class ZeusHost
         // QRZ.com XML client. HttpClient default timeout is 100 s — cap at 10 s so a
         // hung login surfaces quickly in the UI.
         builder.Services.AddHttpClient("Qrz", c => c.Timeout = TimeSpan.FromSeconds(10));
+        // Localhost proxy to the HamClock sidecar's propagation engine. The first
+        // P.533-14 prediction for a cold path can take ~20 s upstream; allow for it.
+        builder.Services.AddHttpClient("Propagation", c => c.Timeout = TimeSpan.FromSeconds(25));
         builder.Services.AddSingleton<CredentialStore>();
         builder.Services.AddSingleton<BandMemoryStore>();
         builder.Services.AddSingleton<LayoutStore>();
@@ -448,6 +451,8 @@ public static class ZeusHost
         // only so its sidecar Node process is killed on Zeus shutdown.
         builder.Services.AddSingleton<HamClockService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<HamClockService>());
+        // Point-to-point propagation (proxies the HamClock sidecar's P.533-14 API).
+        builder.Services.AddSingleton<PropagationService>();
 
         // ActivationSpotsService — polls the public POTA + SOTA activation feeds
         // on a timer and caches the merged snapshot for the Spots panel

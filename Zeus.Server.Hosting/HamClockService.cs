@@ -153,6 +153,39 @@ public sealed class HamClockService : IHostedService, IAsyncDisposable
 
     // -- Status ----------------------------------------------------------
 
+    /// <summary>
+    /// The TCP port the sidecar is currently listening on, or null when it is
+    /// not running. Used by <see cref="PropagationService"/> to reach the
+    /// HamClock REST API (solar + ITU-R P.533-14 propagation) on localhost.
+    /// </summary>
+    public int? RunningPort
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _proc is { HasExited: false } ? _port : null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The port the sidecar would normally bind: the <c>ZEUS_HAMCLOCK_PORT</c>
+    /// override when valid, otherwise <see cref="DefaultStablePort"/>. Used as a
+    /// best-effort fallback by <see cref="PropagationService"/> so propagation
+    /// works even when the sidecar was started outside this Zeus process — the
+    /// caller treats a failed localhost probe as "unavailable", so guessing the
+    /// port is harmless.
+    /// </summary>
+    public int ConfiguredPort
+    {
+        get
+        {
+            var raw = Environment.GetEnvironmentVariable(PortOverrideEnvVar);
+            return int.TryParse(raw, out var p) && p is > 0 and <= 65535 ? p : DefaultStablePort;
+        }
+    }
+
     public HamClockStatus Snapshot()
     {
         // Probe Node outside _gate (it may spawn `node --version`) and cache it.

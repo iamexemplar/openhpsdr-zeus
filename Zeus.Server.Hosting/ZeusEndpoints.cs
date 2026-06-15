@@ -1877,6 +1877,19 @@ public static class ZeusEndpoints
             return Results.Ok(qrz.GetStatus());
         });
 
+        // Point-to-point propagation (DE → DX). Proxies the HamClock sidecar's
+        // ITU-R P.533-14 engine; always returns 200 with an {available:false}
+        // payload when the engine is offline so the QRZ card can degrade quietly.
+        app.MapGet("/api/propagation", async (
+            PropagationService prop, HttpContext ctx,
+            double deLat, double deLon, double dxLat, double dxLon,
+            string? mode, double? power, string? antenna, double? freq) =>
+        {
+            var result = await prop.PredictAsync(
+                deLat, deLon, dxLat, dxLon, mode, power, antenna, freq, ctx.RequestAborted);
+            return Results.Ok(result);
+        });
+
         app.MapGet("/api/log/entries", async (LogService logService, HttpContext ctx, int skip = 0, int take = 100) =>
         {
             var response = await logService.GetLogEntriesAsync(skip, take, ctx.RequestAborted);
