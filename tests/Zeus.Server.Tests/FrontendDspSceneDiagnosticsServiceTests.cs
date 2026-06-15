@@ -136,4 +136,41 @@ public sealed class FrontendDspSceneDiagnosticsServiceTests
         Assert.True(root.GetProperty("sourceAgeMs").GetInt64() >= 45_000);
         Assert.Contains("source evidence is stale", root.GetProperty("diagnosticRecommendation").GetString());
     }
+
+    [Fact]
+    public void Snapshot_ReportsClockSkewWhenFrontendSourceTimeIsInTheFuture()
+    {
+        var service = new FrontendDspSceneDiagnosticsService();
+
+        service.Update(new FrontendDspSceneDiagnosticsRequest(
+            SourceClientId: "client",
+            Mode: "USB",
+            SignalProfile: "dx",
+            SignalReason: "future scene",
+            SmartNrProfile: "NR2",
+            SmartNrReason: "future weak signal",
+            SmartNrRecommendation: "Wait for valid clock",
+            SmartNrHeldByRxChain: false,
+            SmartNrRxChainLabel: "RX chain optimized",
+            MaxSnrDb: 7.1,
+            CoherentMaxSnrDb: 6.8,
+            OccupiedPct: 1.2,
+            CoherentOccupiedPct: 0.8,
+            ImpulsivePct: 0,
+            PeakCount: 0,
+            CoherentPeakCount: 0,
+            CoherentSubthresholdSignal: true,
+            SourceAtUtc: DateTimeOffset.UtcNow.AddSeconds(30)));
+
+        using var doc = JsonDocument.Parse(JsonSerializer.Serialize(service.Snapshot()));
+        var root = doc.RootElement;
+
+        Assert.Equal("clock-skew", root.GetProperty("status").GetString());
+        Assert.False(root.GetProperty("fresh").GetBoolean());
+        Assert.False(root.GetProperty("stale").GetBoolean());
+        Assert.Equal(0, root.GetProperty("sourceAgeMs").GetInt64());
+        Assert.True(root.GetProperty("sourceClockSkewMs").GetInt64() > 25_000);
+        Assert.Contains("future", root.GetProperty("diagnosticRecommendation").GetString());
+        Assert.Contains("clocks", root.GetProperty("diagnosticRecommendation").GetString());
+    }
 }
