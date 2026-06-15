@@ -2713,6 +2713,16 @@ export function publishFrontendDspSceneDiagnostics(
   );
 }
 
+export function fetchFrontendDspSceneDiagnostics(
+  signal?: AbortSignal,
+): Promise<FrontendDspSceneDiagnosticsDto> {
+  return jsonFetch(
+    '/api/radio/diagnostics/dsp-scene',
+    { signal },
+    normalizeFrontendDspScene,
+  );
+}
+
 export function fetchSmartNrCondition(
   signal?: AbortSignal,
 ): Promise<SmartNrConditionDto> {

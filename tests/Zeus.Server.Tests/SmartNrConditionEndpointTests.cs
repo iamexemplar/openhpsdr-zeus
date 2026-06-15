@@ -94,6 +94,48 @@ public sealed class SmartNrConditionEndpointTests
     }
 
     [Fact]
+    public async Task GetDspSceneAfterFrontendPost_ReturnsSceneSnapshot()
+    {
+        using var factory = new Factory();
+        using var client = factory.CreateClient();
+
+        var post = await client.PostAsJsonAsync("/api/radio/diagnostics/dsp-scene", new
+        {
+            sourceClientId = "frontend-live",
+            mode = "LSB",
+            signalProfile = "weak-sparse",
+            signalReason = "single coherent ridge",
+            smartNrProfile = "NR2",
+            smartNrRecommendation = "Keep RX headroom and use gentle NR2",
+            maxSnrDb = 5.64,
+            coherentMaxSnrDb = 5.31,
+            occupiedPct = 0.74,
+            coherentOccupiedPct = 0.62,
+            peakCount = 1,
+            coherentPeakCount = 1,
+            coherentSubthresholdSignal = true,
+            sourceAtUtc = DateTimeOffset.UtcNow.AddSeconds(-1),
+        });
+        Assert.Equal(HttpStatusCode.OK, post.StatusCode);
+
+        var resp = await client.GetAsync("/api/radio/diagnostics/dsp-scene");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var body = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
+        var root = body.RootElement;
+
+        Assert.True(root.GetProperty("available").GetBoolean());
+        Assert.Equal("fresh", root.GetProperty("status").GetString());
+        Assert.Equal("frontend-live", root.GetProperty("sourceClientId").GetString());
+        Assert.Equal("LSB", root.GetProperty("mode").GetString());
+        Assert.Equal("weak-sparse", root.GetProperty("signalProfile").GetString());
+        Assert.Equal("NR2", root.GetProperty("smartNrProfile").GetString());
+        Assert.Equal(5.6, root.GetProperty("maxSnrDb").GetDouble());
+        Assert.Equal(5.3, root.GetProperty("coherentMaxSnrDb").GetDouble());
+        Assert.True(root.GetProperty("coherentSubthresholdSignal").GetBoolean());
+    }
+
+    [Fact]
     public async Task HardwareDiagnostics_AdvertisesLiveNrConditionEndpoint()
     {
         using var factory = new Factory();
@@ -113,6 +155,7 @@ public sealed class SmartNrConditionEndpointTests
             .ToArray();
 
         Assert.Contains("/api/dsp/nr-condition", controls);
+        Assert.Contains("/api/radio/diagnostics/dsp-scene", controls);
         Assert.DoesNotContain("planned:/api/dsp/nr-condition", controls);
     }
 
