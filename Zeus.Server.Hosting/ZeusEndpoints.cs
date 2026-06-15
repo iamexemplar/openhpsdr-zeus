@@ -1565,6 +1565,11 @@ public static class ZeusEndpoints
             return Results.Ok(scene.Snapshot());
         });
 
+        app.MapGet("/api/radio/diagnostics/dsp-scene", (FrontendDspSceneDiagnosticsService scene) =>
+        {
+            return Results.Ok(scene.Snapshot());
+        });
+
         app.MapGet("/api/dsp/nr-condition", (FrontendDspSceneDiagnosticsService scene, DspPipelineService dsp) =>
         {
             return Results.Ok(scene.SmartNrCondition(dsp.SnapshotNrRuntime()));

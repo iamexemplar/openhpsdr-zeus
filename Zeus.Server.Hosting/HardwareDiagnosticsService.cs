@@ -1955,6 +1955,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
             {
                 "Settings > DSP > Signal Intelligence",
                 "/api/dsp/display-intelligence",
+                "/api/radio/diagnostics/dsp-scene",
             },
             safetyClass = "rx-safe",
             notes = "Existing RX display logic now has floor-normalized Signal Pop, snap-to-carrier, temporal confidence, and coherent auto-profile classification; the display-intelligence API persists the active weak-signal display policy while diagnostics mirror live frontend scene evidence.",
@@ -1989,6 +1990,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
             {
                 "Settings > DSP > Smart NR Automation",
                 "/api/nr-ui-prefs",
+                "/api/radio/diagnostics/dsp-scene",
                 "/api/dsp/nr-condition",
             },
             safetyClass = "rx-safe",

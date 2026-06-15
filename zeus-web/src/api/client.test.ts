@@ -57,6 +57,7 @@ import {
   TX_LEVELING_CONFIG_DEFAULT,
   createHardwareDiagnosticsMarker,
   fetchExternalPttStatus,
+  fetchFrontendDspSceneDiagnostics,
   fetchHardwareDiagnostics,
   fetchHardwareKeyingStatus,
   fetchRadioDigInDiagnostics,
@@ -768,6 +769,47 @@ describe('POST helpers', () => {
     expect(scene.sourceClockSkewMs).toBe(6020);
     expect(scene.signalProfile).toBe('dx');
     expect(scene.smartNrProfile).toBe('NR4');
+    expect(scene.coherentSubthresholdSignal).toBe(true);
+  });
+
+  it('fetchFrontendDspSceneDiagnostics reads the latest frontend scene snapshot', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      schemaVersion: 1,
+      available: true,
+      ageMs: 32,
+      status: 'fresh',
+      fresh: true,
+      stale: false,
+      diagnosticRecommendation: 'Frontend DSP scene telemetry is fresh.',
+      atUtc: '2026-06-15T01:00:02Z',
+      sourceAtUtc: '2026-06-15T01:00:01Z',
+      sourceAgeMs: 1032,
+      sourceClockSkewMs: null,
+      sourceClientId: 'frontend-live',
+      mode: 'LSB',
+      signalProfile: 'weak-sparse',
+      signalReason: 'single coherent ridge',
+      smartNrProfile: 'NR2',
+      smartNrRecommendation: 'Keep RX headroom and use gentle NR2',
+      maxSnrDb: 5.6,
+      coherentMaxSnrDb: 5.3,
+      peakCount: 1,
+      coherentPeakCount: 1,
+      coherentSubthresholdSignal: true,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const scene = await fetchFrontendDspSceneDiagnostics();
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/radio/diagnostics/dsp-scene');
+    expect(init?.method).toBeUndefined();
+    expect(scene.available).toBe(true);
+    expect(scene.status).toBe('fresh');
+    expect(scene.mode).toBe('LSB');
+    expect(scene.sourceClientId).toBe('frontend-live');
+    expect(scene.signalProfile).toBe('weak-sparse');
+    expect(scene.smartNrProfile).toBe('NR2');
     expect(scene.coherentSubthresholdSignal).toBe(true);
   });
 
