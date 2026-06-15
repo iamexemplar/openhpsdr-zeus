@@ -31,6 +31,8 @@ function sceneReason(scene: SignalEnhanceScene): string {
   if (scene.baseProfileId === 'cw') return 'CW mode';
   if (scene.baseProfileId === 'digital') return 'digital mode';
   if (scene.peakCount === 0) return 'mode profile';
+  if (scene.coherentPeakCount === 0 && scene.impulsiveOccupiedRatio > 0) return 'impulsive artifacts';
+  if (scene.coherentPeakCount === 0) return 'uncorrelated peaks';
   return 'voice profile';
 }
 
@@ -41,9 +43,13 @@ function publishSceneStatus(scene: SignalEnhanceScene): void {
     baseProfileId: scene.baseProfileId,
     reason: sceneReason(scene),
     peakCount: scene.peakCount,
+    coherentPeakCount: scene.coherentPeakCount,
     peaksPer10Khz: Math.round(scene.peaksPer10Khz * 10) / 10,
     occupiedPct: Math.round(scene.occupiedRatio * 1000) / 10,
+    coherentOccupiedPct: Math.round(scene.coherentOccupiedRatio * 1000) / 10,
+    impulsivePct: Math.round(scene.impulsiveOccupiedRatio * 1000) / 10,
     maxSnrDb: Math.round(scene.maxSnrDb * 10) / 10,
+    coherentMaxSnrDb: Math.round(scene.coherentMaxSnrDb * 10) / 10,
   });
 }
 

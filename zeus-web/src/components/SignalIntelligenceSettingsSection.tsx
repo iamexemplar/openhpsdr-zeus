@@ -167,6 +167,9 @@ export function SignalIntelligenceSettingsSection() {
           <span className="mono">
             SNR {sceneStatus.maxSnrDb.toFixed(1)} dB · OCC {sceneStatus.occupiedPct.toFixed(1)}% · PK {sceneStatus.peakCount}
           </span>
+          <span className="mono">
+            COH {sceneStatus.coherentOccupiedPct.toFixed(1)}% · CPK {sceneStatus.coherentPeakCount} · IMP {sceneStatus.impulsivePct.toFixed(1)}%
+          </span>
         </div>
       )}
 

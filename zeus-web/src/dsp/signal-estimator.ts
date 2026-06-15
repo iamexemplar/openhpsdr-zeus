@@ -402,9 +402,13 @@ export type SignalEnhanceSceneStatus = {
   baseProfileId: SignalEnhancePresetId;
   reason: string;
   peakCount: number;
+  coherentPeakCount: number;
   peaksPer10Khz: number;
   occupiedPct: number;
+  coherentOccupiedPct: number;
+  impulsivePct: number;
   maxSnrDb: number;
+  coherentMaxSnrDb: number;
 };
 
 const SCENE_PEAK_GATE_DB = 8;
