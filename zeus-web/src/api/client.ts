@@ -1297,6 +1297,11 @@ export type TxStageDiagnosticsDto = {
   alcGrDb: number;
   outPkDbfs: number | null;
   outAvDbfs: number | null;
+  outputHeadroomDb: number | null;
+  outputCrestFactorDb: number | null;
+  densityStatus: string;
+  densityTone: string;
+  densityRecommendation: string | null;
   diagnosticRecommendation: string | null;
 };
 
@@ -3006,6 +3011,11 @@ function normalizeTxStageDiagnostics(raw: unknown): TxStageDiagnosticsDto {
     alcGrDb: diagNumber(r.alcGrDb) ?? 0,
     outPkDbfs: diagNumber(r.outPkDbfs),
     outAvDbfs: diagNumber(r.outAvDbfs),
+    outputHeadroomDb: diagNumber(r.outputHeadroomDb),
+    outputCrestFactorDb: diagNumber(r.outputCrestFactorDb),
+    densityStatus: diagString(r.densityStatus) ?? 'unknown',
+    densityTone: diagString(r.densityTone) ?? 'verify',
+    densityRecommendation: diagString(r.densityRecommendation),
     diagnosticRecommendation: diagString(r.diagnosticRecommendation),
   };
 }
