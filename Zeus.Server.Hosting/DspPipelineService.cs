@@ -916,7 +916,11 @@ public class DspPipelineService : BackgroundService,
                 state,
                 engine,
                 wisdom,
-                BoardCapabilitiesTable.For(_radio.EffectiveBoardKind, _radio.EffectiveOrionMkIIVariant)),
+                BoardCapabilitiesTable.For(_radio.EffectiveBoardKind, _radio.EffectiveOrionMkIIVariant),
+                _radio.ConnectedBoardKind,
+                _radio.EffectiveBoardKind,
+                _radio.EffectiveOrionMkIIVariant,
+                state.Status == ConnectionStatus.Connected && _radio.ActiveClient is null),
             channelId = Volatile.Read(ref _channelId),
             sampleRateHz = Volatile.Read(ref _sampleRateHz),
             displayWidth = Width,
@@ -945,7 +949,11 @@ public class DspPipelineService : BackgroundService,
         StateDto state,
         IDspEngine? engine,
         WdspWisdomInitializer wisdom,
-        BoardCapabilities caps)
+        BoardCapabilities caps,
+        HpsdrBoardKind connectedBoard = HpsdrBoardKind.Unknown,
+        HpsdrBoardKind effectiveBoard = HpsdrBoardKind.Unknown,
+        OrionMkIIVariant variant = OrionMkIIVariant.G2,
+        bool protocol2Active = false)
     {
         bool wdsp = engine is WdspDspEngine;
         int txBlock = engine?.TxBlockSamples ?? 0;
@@ -1021,6 +1029,13 @@ public class DspPipelineService : BackgroundService,
                 cfirCompensation = txOut > txBlock && txBlock > 0,
                 status = wdsp ? "wired-fixed" : "not-wdsp",
             },
+            receiverBandwidth = BuildReceiverBandwidthDiagnostics(
+                state,
+                caps,
+                connectedBoard,
+                effectiveBoard,
+                variant,
+                protocol2Active),
             thetisMatrix = new[]
             {
                 ThetisFilterRow("SSB/AM", "RX", 1024, 16384, "Low Latency", "BH-4", "reference"),
@@ -1052,6 +1067,113 @@ public class DspPipelineService : BackgroundService,
             source = "Thetis DSP Options filter matrix + Zeus WdspDspEngine OpenChannel/SetRXABandpassWindow/SetTXABandpassWindow profile",
         };
     }
+
+    private static object BuildReceiverBandwidthDiagnostics(
+        StateDto state,
+        BoardCapabilities caps,
+        HpsdrBoardKind connectedBoard,
+        HpsdrBoardKind effectiveBoard,
+        OrionMkIIVariant variant,
+        bool protocol2Active)
+    {
+        bool connected = state.Status == ConnectionStatus.Connected;
+        bool g2Class = effectiveBoard == HpsdrBoardKind.OrionMkII
+            && variant is OrionMkIIVariant.G2 or OrionMkIIVariant.G2_1K
+            && caps.MaxRxSampleRateHz >= 1_536_000;
+        int activeRate = Math.Max(0, state.SampleRate);
+        int maxRate = Math.Max(48_000, caps.MaxRxSampleRateHz);
+        double utilization = maxRate > 0
+            ? Math.Round(Math.Clamp(activeRate / (double)maxRate, 0.0, 1.0) * 100.0, 1)
+            : 0.0;
+        bool p2WidebandCapable = maxRate > 384_000;
+        bool widebandActive = connected && activeRate > 384_000;
+        int activeSoftwareReceivers = connected ? 1 : 0;
+        int manualReceiverCapacity = g2Class ? 10 : Math.Max(1, caps.RxAdcCount);
+        int unexposedReceivers = Math.Max(0, manualReceiverCapacity - activeSoftwareReceivers);
+        HpsdrBoardKind wireBoard = connectedBoard != HpsdrBoardKind.Unknown
+            ? connectedBoard
+            : effectiveBoard;
+        int? activeUserDdcIndex = connected && protocol2Active
+            ? Zeus.Protocol2.Protocol2Client.RxBaseDdc(wireBoard)
+            : null;
+        object[] activeSlots = activeUserDdcIndex.HasValue
+            ? [DdcSlot(activeUserDdcIndex.Value, "RX1", "active", "Primary operator receive DDC feeding WDSP RXA and the panadapter/waterfall.")]
+            : [];
+        object[] reservedSlots = activeUserDdcIndex == 2
+            ? [
+                DdcSlot(0, "PureSignal RX feedback", "reserved", "Saturn/G2 P2 convention reserves DDC0 for post-PA feedback when PureSignal is armed."),
+                DdcSlot(1, "PureSignal TX reference", "reserved", "Saturn/G2 P2 convention reserves DDC1 for TX-DAC reference feedback when PureSignal is armed."),
+            ]
+            : [];
+
+        string status;
+        string tone;
+        string recommendation;
+        if (!connected)
+        {
+            status = "waiting-for-connection";
+            tone = "verify";
+            recommendation = "Connect the radio before judging receiver bandwidth utilization or DDC-slot assignment.";
+        }
+        else if (p2WidebandCapable && !protocol2Active)
+        {
+            status = "wideband-requires-p2";
+            tone = "verify";
+            recommendation = "This board can use P2 wideband rates above 384 kHz, but the current runtime is not on a P2 wideband path.";
+        }
+        else if (p2WidebandCapable && activeRate < maxRate)
+        {
+            status = "wideband-underused";
+            tone = "ready";
+            recommendation = "Receiver hardware has unused DDC bandwidth; use the existing Settings > DSP > Bandwidth control to test wider 768 kHz or 1536 kHz spans when host/network load allows.";
+        }
+        else if (p2WidebandCapable)
+        {
+            status = "max-wideband-active";
+            tone = "ready";
+            recommendation = "Receiver DDC bandwidth is at the board maximum; refine copy with filters, dynamic-range staging, and display intelligence rather than widening the span.";
+        }
+        else
+        {
+            status = "board-capability-limited";
+            tone = "standby";
+            recommendation = "This board's verified DDC bandwidth ceiling is 384 kHz or lower; dynamic-range gains should come from front-end staging, filters, and DSP rather than P2 wideband rates.";
+        }
+
+        return new
+        {
+            schemaVersion = 1,
+            status,
+            tone,
+            connected,
+            protocol2Active,
+            p2WidebandCapable,
+            widebandActive,
+            activeSampleRateHz = activeRate,
+            maxSampleRateHz = maxRate,
+            activeNyquistHz = activeRate / 2,
+            maxNyquistHz = maxRate / 2,
+            utilizationPct = utilization,
+            unusedSampleRateHz = Math.Max(0, maxRate - activeRate),
+            unusedNyquistHz = Math.Max(0, (maxRate - activeRate) / 2),
+            activeSoftwareReceivers,
+            manualReceiverCapacity,
+            unexposedReceiverCount = unexposedReceivers,
+            activeUserDdcIndex,
+            activeSlots,
+            reservedSlots,
+            source = "ANAN G2 manual receiver architecture + Protocol2Client DDC map + BoardCapabilities",
+            diagnosticRecommendation = recommendation,
+        };
+    }
+
+    private static object DdcSlot(int slot, string purpose, string status, string notes) => new
+    {
+        slot,
+        purpose,
+        status,
+        notes,
+    };
 
     private static object ThetisFilterRow(
         string modeFamily,

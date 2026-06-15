@@ -566,6 +566,7 @@ function ReceiverTopologyDiagnostics({ diag }: { diag: HardwareDiagnosticsDto | 
   if (!diag) return <div style={{ fontSize: 12, color: 'var(--fg-2)' }}>Waiting for topology diagnostics.</div>;
   const caps = diag.capabilities;
   const p2 = diag.p2;
+  const bandwidth = diag.dsp.filterGeometry.receiverBandwidth;
   const dualAdc = caps.rxAdcCount >= 2;
   const saturnClass = diag.effectiveBoard === 'OrionMkII' && dualAdc && caps.mkiiBpf;
   const g2Class = saturnClass && caps.maxRxSampleRateHz >= 1_536_000;
@@ -599,6 +600,10 @@ function ReceiverTopologyDiagnostics({ diag }: { diag: HardwareDiagnosticsDto | 
           { label: 'TX IMD3', value: g2Class ? '-68 dB typical @ 100 W' : 'not applicable' },
           { label: 'Manual RX Capacity', value: manualRxCapacity },
           { label: 'Zeus RX Surface', value: zeusRxSurface },
+          { label: 'Active DDC Rate', value: hz(bandwidth.activeSampleRateHz) },
+          { label: 'DDC Utilization', value: pct(bandwidth.utilizationPct) },
+          { label: 'User DDC Slot', value: bandwidth.activeUserDdcIndex },
+          { label: 'Unexposed RX', value: bandwidth.unexposedReceiverCount },
           { label: 'ADC2 Ground on TX', value: g2Class ? 'not exposed' : 'not applicable' },
           { label: '6m LNA / Filters', value: caps.mkiiBpf ? 'manual-backed, no separate runtime telemetry' : 'not applicable' },
         ]}
@@ -615,6 +620,7 @@ function ReceiverTopologyDiagnostics({ diag }: { diag: HardwareDiagnosticsDto | 
         ]}
       />
       <DiagnosticRecommendation text={recommendation} />
+      <DiagnosticRecommendation text={bandwidth.diagnosticRecommendation} />
     </div>
   );
 }
