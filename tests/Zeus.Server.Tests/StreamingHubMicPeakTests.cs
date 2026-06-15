@@ -66,7 +66,7 @@ public class StreamingHubMicPeakTests
 
         hub.DispatchInbound(frame);
 
-        var diag = hub.MicInboundDiagnosticsSnapshot(DateTimeOffset.UtcNow);
+        var diag = hub.MicPeakDiagnosticsSnapshot(DateTimeOffset.UtcNow);
         Assert.Equal(960 * 4, receivedBytes);
         Assert.Equal(1, diag.Frames);
         Assert.Equal(960 * 4, diag.Bytes);

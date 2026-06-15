@@ -57,6 +57,8 @@ public sealed class StreamingHub
 
     // Matches MsgType.MicPcm; the client→server uplink type-byte.
     private const byte MsgTypeMicPcm = 0x20;
+    private const int MicPcmFrameSamples = 960;
+    private const int MicPcmFrameBytes = MicPcmFrameSamples * sizeof(float);
 
     // Matches MsgType.AudioStreamRequest; client asks to (start|stop) the RX
     // audio stream. Used by GatedWebSocketAudioSink in desktop mode.
@@ -112,6 +114,15 @@ public sealed class StreamingHub
     private long _lastLoggedDisplay;
     private long _lastLoggedMeter;
     private long _lastLoggedOther;
+    private long _micUplinkFrames;
+    private long _micUplinkSamples;
+    private long _micUplinkBytes;
+    private long _micUplinkInvalidFrames;
+    private long _micUplinkOversizeMessages;
+    private long _micUplinkUnknownFrames;
+    private long _micUplinkLastUtcTicks;
+    private long _micUplinkLastBytes;
+    private long _micUplinkLastSamples;
     private readonly System.Threading.Timer _dropLogTimer;
 
     // Aggregate count of connected clients that have asked for the RX audio
@@ -157,7 +168,7 @@ public sealed class StreamingHub
 
     public int ClientCount => _clients.Count;
 
-    public MicInboundDiagnostics MicInboundDiagnosticsSnapshot(DateTimeOffset now)
+    public MicInboundDiagnostics MicPeakDiagnosticsSnapshot(DateTimeOffset now)
     {
         long lastUnixMs = Volatile.Read(ref _lastMicInboundUnixMs);
         long? ageMs = lastUnixMs > 0 ? Math.Max(0, now.ToUnixTimeMilliseconds() - lastUnixMs) : null;
@@ -170,6 +181,57 @@ public sealed class StreamingHub
             LastPeak: BitConverter.Int32BitsToSingle(Volatile.Read(ref _lastMicPeakBits)),
             ConnectedClients: ClientCount);
     }
+
+    internal TxMicUplinkDiagnosticsDto MicInboundDiagnosticsSnapshot(DateTimeOffset generatedUtc)
+    {
+        long lastTicks = System.Threading.Interlocked.Read(ref _micUplinkLastUtcTicks);
+        DateTimeOffset? lastUtc = lastTicks > 0 ? new DateTimeOffset(lastTicks, TimeSpan.Zero) : null;
+        double? ageMs = lastUtc is { } t ? Math.Max(0.0, (generatedUtc - t).TotalMilliseconds) : null;
+        long frames = System.Threading.Interlocked.Read(ref _micUplinkFrames);
+        long invalid = System.Threading.Interlocked.Read(ref _micUplinkInvalidFrames);
+        long oversize = System.Threading.Interlocked.Read(ref _micUplinkOversizeMessages);
+        string status = MicUplinkStatus(frames, invalid, oversize, ageMs, MicPcmReceived is not null);
+        return new TxMicUplinkDiagnosticsDto(
+            SchemaVersion: 1,
+            Status: status,
+            SubscriberAttached: MicPcmReceived is not null,
+            ClientCount: ClientCount,
+            ExpectedFrameSamples: MicPcmFrameSamples,
+            ExpectedFrameBytes: MicPcmFrameBytes,
+            TotalFrames: frames,
+            TotalSamples: System.Threading.Interlocked.Read(ref _micUplinkSamples),
+            TotalBytes: System.Threading.Interlocked.Read(ref _micUplinkBytes),
+            LastFrameBytes: System.Threading.Interlocked.Read(ref _micUplinkLastBytes),
+            LastFrameSamples: System.Threading.Interlocked.Read(ref _micUplinkLastSamples),
+            LastFrameAgeMs: ageMs is { } age ? Math.Round(age, 0) : null,
+            LastFrameUtc: lastUtc,
+            InvalidFrames: invalid,
+            OversizeMessages: oversize,
+            UnknownFrames: System.Threading.Interlocked.Read(ref _micUplinkUnknownFrames),
+            DiagnosticRecommendation: MicUplinkRecommendation(status));
+    }
+
+    private static string MicUplinkStatus(long frames, long invalidFrames, long oversizeMessages, double? ageMs, bool subscriberAttached)
+    {
+        if (!subscriberAttached) return "no-subscriber";
+        if (frames <= 0)
+            return invalidFrames > 0 || oversizeMessages > 0 ? "invalid-only" : "waiting-for-mic";
+        if (ageMs is null) return "unknown";
+        if (ageMs <= 1000.0) return "live";
+        if (ageMs <= 5000.0) return "stale";
+        return "expired";
+    }
+
+    private static string MicUplinkRecommendation(string status) => status switch
+    {
+        "no-subscriber" => "No TX ingest subscriber is attached to the mic uplink; restart the audio ingest service before judging microphone fidelity.",
+        "invalid-only" => "Mic uplink frames are arriving but have invalid size or were oversized; verify the browser/native worklet is sending 960 f32 samples per frame.",
+        "waiting-for-mic" => "No client mic PCM frames have reached the websocket uplink yet; grant mic permission, start native capture, or feed TCI/WAV audio before judging TX fidelity.",
+        "live" => "Mic PCM uplink is live; continue through ingest, TXA stage meters, DUC packets, RF power, and PureSignal feedback for end-to-end TX fidelity tuning.",
+        "stale" => "Mic PCM uplink was recently active but is not fresh; watch for browser sleep, muted capture, websocket stalls, or native audio device changes.",
+        "expired" => "Mic PCM uplink is stale; TX may be keyed without fresh speech samples, so verify client capture before increasing drive or processing density.",
+        _ => "Mic uplink status is unknown; use ingest counters and TXA stage meters to verify whether speech samples are moving.",
+    };
 
     /// <summary>Updates the hub's cached wisdom phase so clients attaching
     /// after the one-shot broadcast still receive the current state.</summary>
@@ -228,20 +290,25 @@ public sealed class StreamingHub
 
     internal void DispatchInbound(ReadOnlyMemory<byte> frame)
     {
-        if (frame.Length == 0) return;
+        if (frame.Length == 0)
+        {
+            System.Threading.Interlocked.Increment(ref _micUplinkInvalidFrames);
+            return;
+        }
         byte type = frame.Span[0];
         switch (type)
         {
             case MsgTypeMicPcm:
                 var payload = frame.Slice(1);
                 RecordMicInbound(payload);
-                if (MicPcmReceived is { } handler)
+                if (RecordMicUplinkFrame(frame.Length - 1) && MicPcmReceived is { } handler)
                 {
                     try { handler(payload); }
                     catch (Exception ex) { _log.LogWarning(ex, "MicPcmReceived handler threw"); }
                 }
                 break;
             default:
+                System.Threading.Interlocked.Increment(ref _micUplinkUnknownFrames);
                 // Unknown uplink type — log once so a misaligned client is obvious,
                 // but don't tear down the connection.
                 _log.LogDebug("ws.inbound unknown type=0x{Type:X2} len={Len}", type, frame.Length);
@@ -267,6 +334,29 @@ public sealed class StreamingHub
             if (abs > peak) peak = abs;
         }
         Volatile.Write(ref _lastMicPeakBits, BitConverter.SingleToInt32Bits(peak));
+    }
+
+    private bool RecordMicUplinkFrame(int payloadBytes)
+    {
+        if (payloadBytes != MicPcmFrameBytes)
+        {
+            System.Threading.Interlocked.Increment(ref _micUplinkInvalidFrames);
+            return false;
+        }
+
+        long samples = payloadBytes / sizeof(float);
+        System.Threading.Interlocked.Increment(ref _micUplinkFrames);
+        System.Threading.Interlocked.Add(ref _micUplinkSamples, samples);
+        System.Threading.Interlocked.Add(ref _micUplinkBytes, payloadBytes);
+        System.Threading.Interlocked.Exchange(ref _micUplinkLastBytes, payloadBytes);
+        System.Threading.Interlocked.Exchange(ref _micUplinkLastSamples, samples);
+        System.Threading.Interlocked.Exchange(ref _micUplinkLastUtcTicks, DateTimeOffset.UtcNow.UtcTicks);
+        return true;
+    }
+
+    private void RecordInboundOversize()
+    {
+        System.Threading.Interlocked.Increment(ref _micUplinkOversizeMessages);
     }
 
     // Each Broadcast(...) below allocates the wire payload directly into a
@@ -708,6 +798,7 @@ public sealed class StreamingHub
                     if (accumLen + chunkLen > MaxInboundMessageBytes)
                     {
                         _log.LogWarning("ws.inbound oversize id={Id} len={Len}", Id, accumLen + chunkLen);
+                        _hub.RecordInboundOversize();
                         ArrayPool<byte>.Shared.Return(accum);
                         accum = null;
                         accumLen = 0;

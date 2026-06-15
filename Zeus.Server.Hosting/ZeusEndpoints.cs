@@ -433,10 +433,12 @@ public static class ZeusEndpoints
         {
             var generatedUtc = DateTimeOffset.UtcNow;
             var p2Tx = dsp.ActiveP2Client?.TxIqDiagnosticsSnapshot();
+            var micUplink = hub.MicInboundDiagnosticsSnapshot(generatedUtc);
             var radioState = radio.Snapshot();
             var keying = hardware.KeyingSnapshot(externalPtt.Snapshot());
             var power = hardware.PowerCalibrationSnapshot();
             bool hostTxActive = tx.IsMoxOn || tx.IsTunOn || tx.IsTwoToneOn;
+            bool requiresMicUplink = tx.IsMoxOn && !tx.IsTunOn && !tx.IsTwoToneOn;
             var txStage = dsp.CurrentEngine?.GetTxStageMeters() ?? TxStageMeters.Silent;
             var activePower = string.Equals(power.ActiveProtocol, "P2", StringComparison.OrdinalIgnoreCase)
                 ? power.P2
@@ -450,7 +452,7 @@ public static class ZeusEndpoints
                 iqSourceType = src.GetType().FullName,
                 iqSourceIsRing = ReferenceEquals(src, ring),
                 ring = new { ring.TotalWritten, ring.TotalRead, ring.Count, ring.Dropped, ring.Capacity, ring.RecentMag },
-                micUplink = hub.MicInboundDiagnosticsSnapshot(generatedUtc),
+                micUplink,
                 ingest = new { ingest.TotalMicSamples, ingest.TotalTxBlocks, ingest.DroppedFrames },
                 protocol2 = p2Tx,
                 audioPath = BuildTxAudioPathHealth(
@@ -465,7 +467,9 @@ public static class ZeusEndpoints
                     ingest.TotalTxBlocks,
                     ingest.DroppedFrames,
                     p2Tx,
-                    hostTxActive),
+                    hostTxActive,
+                    micUplink,
+                    requiresMicUplink),
                 stage = BuildTxStageDiagnostics(txStage, hostTxActive),
                 egress = BuildTxEgressHealth(
                     generatedUtc,
@@ -2782,7 +2786,9 @@ public static class ZeusEndpoints
         long totalTxBlocks,
         long droppedFrames,
         Protocol2TxIqDiagnostics? p2,
-        bool hostTxActive)
+        bool hostTxActive,
+        TxMicUplinkDiagnosticsDto? micUplink = null,
+        bool requiresMicUplink = false)
     {
         double ringFillPct = ringCapacity <= 0
             ? 0.0
@@ -2808,10 +2814,30 @@ public static class ZeusEndpoints
         bool p2PriorActivity = p2InputComplexSamples > 0 || p2PacketsSent > 0;
         bool ringPressure = ringDropRatioPct > 1.0
             || (ringDropped > 0 && ringFillPct >= 95.0);
+        double? micAgeMs = micUplink?.LastFrameAgeMs;
+        bool micUplinkMissing = requiresMicUplink && (micUplink is null || micUplink.TotalFrames <= 0);
+        bool micUplinkStale = requiresMicUplink && micAgeMs is > 1500.0;
+        bool micUplinkInvalid = requiresMicUplink && micUplink is { TotalFrames: <= 0 }
+            && (micUplink.InvalidFrames > 0 || micUplink.OversizeMessages > 0);
 
         string status;
         string recommendation;
-        if (!ingestSeen)
+        if (micUplinkInvalid)
+        {
+            status = "tx-mic-uplink-invalid";
+            recommendation = "Host MOX is active but only invalid mic uplink frames are reaching the server; verify the browser/native worklet is sending 960 f32 samples per frame before judging TX density.";
+        }
+        else if (micUplinkMissing)
+        {
+            status = "tx-mic-uplink-missing";
+            recommendation = "Host MOX is active but no mic PCM frames have reached the server; grant mic permission, start native capture, or verify the client websocket before increasing drive.";
+        }
+        else if (micUplinkStale && !ingestSeen)
+        {
+            status = "tx-mic-uplink-stale";
+            recommendation = "Host MOX is active but the mic uplink is stale and no TX ingest has advanced; verify client capture and websocket health before judging station audio quality.";
+        }
+        else if (!ingestSeen)
         {
             status = "idle";
             recommendation = "No TX audio or TX IQ has reached the ingest path yet; key MOX/TUN, run two-tone, or enable TX monitor audio before judging station fidelity.";
@@ -2863,6 +2889,13 @@ public static class ZeusEndpoints
             P2InputComplexSamples: p2InputComplexSamples,
             P2PacketsSent: p2PacketsSent,
             P2QueuedPackets: p2QueuedPackets,
+            RequiresMicUplink: requiresMicUplink,
+            MicUplinkStatus: micUplink?.Status ?? "unknown",
+            MicUplinkLastFrameAgeMs: micUplink?.LastFrameAgeMs,
+            MicUplinkFrames: micUplink?.TotalFrames ?? 0,
+            MicUplinkSamples: micUplink?.TotalSamples ?? 0,
+            MicUplinkInvalidFrames: micUplink?.InvalidFrames ?? 0,
+            MicUplinkOversizeMessages: micUplink?.OversizeMessages ?? 0,
             TotalMicSamples: totalMicSamples,
             TotalTxBlocks: totalTxBlocks,
             DroppedFrames: droppedFrames,
@@ -3222,6 +3255,24 @@ internal sealed record TxStageDensityDiagnostics(
     string Status,
     string Tone,
     string Recommendation);
+internal sealed record TxMicUplinkDiagnosticsDto(
+    int SchemaVersion,
+    string Status,
+    bool SubscriberAttached,
+    int ClientCount,
+    int ExpectedFrameSamples,
+    int ExpectedFrameBytes,
+    long TotalFrames,
+    long TotalSamples,
+    long TotalBytes,
+    long LastFrameBytes,
+    long LastFrameSamples,
+    double? LastFrameAgeMs,
+    DateTimeOffset? LastFrameUtc,
+    long InvalidFrames,
+    long OversizeMessages,
+    long UnknownFrames,
+    string DiagnosticRecommendation);
 internal sealed record TxAudioPathHealthDto(
     int SchemaVersion,
     string Status,
@@ -3233,6 +3284,13 @@ internal sealed record TxAudioPathHealthDto(
     long P2InputComplexSamples,
     long P2PacketsSent,
     long? P2QueuedPackets,
+    bool RequiresMicUplink,
+    string MicUplinkStatus,
+    double? MicUplinkLastFrameAgeMs,
+    long MicUplinkFrames,
+    long MicUplinkSamples,
+    long MicUplinkInvalidFrames,
+    long MicUplinkOversizeMessages,
     long TotalMicSamples,
     long TotalTxBlocks,
     long DroppedFrames,
