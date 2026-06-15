@@ -344,6 +344,7 @@ public static class ZeusHost
         builder.Services.AddSingleton<DisplaySettingsStore>();
         builder.Services.AddSingleton<ToolbarSettingsStore>();
         builder.Services.AddSingleton<NrUiPrefsStore>();
+        builder.Services.AddSingleton<TxStationProfileStore>();
         builder.Services.AddSingleton<ThemeSettingsStore>();
         builder.Services.AddSingleton<BottomPinStore>();
         builder.Services.AddSingleton<PanWfSplitStore>();
