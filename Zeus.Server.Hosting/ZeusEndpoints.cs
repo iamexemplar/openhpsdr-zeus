@@ -1814,6 +1814,8 @@ public static class ZeusEndpoints
         {
             if (req is null)
                 return Results.BadRequest(new { error = "body required" });
+            if (req.Rx1AttenuatorDb is < 0 or > 31)
+                return Results.BadRequest(new { error = "rx1AttenuatorDb must be in 0..31 dB." });
 
             return Results.Ok(radio.SetG2Options(req));
         });

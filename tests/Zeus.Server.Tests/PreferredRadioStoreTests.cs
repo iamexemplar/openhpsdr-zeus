@@ -189,7 +189,7 @@ public class PreferredRadioStoreTests : IDisposable
         store.Set(HpsdrBoardKind.OrionMkII);
         store.SetOrionMkIIVariant(OrionMkIIVariant.G2_1K);
         store.SetEnableHl2BandVolts(true);
-        store.SetG2AdcOptions(ditherEnabled: false, randomEnabled: false);
+        store.SetG2AdcOptions(ditherEnabled: false, randomEnabled: false, rx1AttenuatorDb: 12);
 
         store.Set(null);
 
@@ -198,6 +198,7 @@ public class PreferredRadioStoreTests : IDisposable
         Assert.True(store.GetEnableHl2BandVolts());
         Assert.False(store.GetG2AdcDitherEnabled());
         Assert.False(store.GetG2AdcRandomEnabled());
+        Assert.Equal(12, store.GetG2Rx1AttenuatorDb());
     }
 
     [Fact]
@@ -219,6 +220,7 @@ public class PreferredRadioStoreTests : IDisposable
         using var store = new PreferredRadioStore(NullLogger<PreferredRadioStore>.Instance, _dbPath);
         Assert.True(store.GetG2AdcDitherEnabled());
         Assert.True(store.GetG2AdcRandomEnabled());
+        Assert.Equal(0, store.GetG2Rx1AttenuatorDb());
     }
 
     [Fact]
@@ -226,12 +228,13 @@ public class PreferredRadioStoreTests : IDisposable
     {
         using (var s1 = new PreferredRadioStore(NullLogger<PreferredRadioStore>.Instance, _dbPath))
         {
-            s1.SetG2AdcOptions(ditherEnabled: false, randomEnabled: true);
+            s1.SetG2AdcOptions(ditherEnabled: false, randomEnabled: true, rx1AttenuatorDb: 17);
         }
 
         using var s2 = new PreferredRadioStore(NullLogger<PreferredRadioStore>.Instance, _dbPath);
         Assert.False(s2.GetG2AdcDitherEnabled());
         Assert.True(s2.GetG2AdcRandomEnabled());
+        Assert.Equal(17, s2.GetG2Rx1AttenuatorDb());
     }
 
     [Fact]
@@ -241,13 +244,25 @@ public class PreferredRadioStoreTests : IDisposable
         store.Set(HpsdrBoardKind.OrionMkII);
         store.SetOrionMkIIVariant(OrionMkIIVariant.G2_1K);
         store.SetEnableHl2BandVolts(true);
-        store.SetG2AdcOptions(ditherEnabled: false, randomEnabled: false);
+        store.SetG2AdcOptions(ditherEnabled: false, randomEnabled: false, rx1AttenuatorDb: 31);
 
         Assert.Equal(HpsdrBoardKind.OrionMkII, store.Get());
         Assert.Equal(OrionMkIIVariant.G2_1K, store.GetOrionMkIIVariant());
         Assert.True(store.GetEnableHl2BandVolts());
         Assert.False(store.GetG2AdcDitherEnabled());
         Assert.False(store.GetG2AdcRandomEnabled());
+        Assert.Equal(31, store.GetG2Rx1AttenuatorDb());
+    }
+
+    [Fact]
+    public void G2_Rx1_Attenuator_Clamps_To_Hardware_Range()
+    {
+        using var store = new PreferredRadioStore(NullLogger<PreferredRadioStore>.Instance, _dbPath);
+        store.SetG2AdcOptions(rx1AttenuatorDb: -5);
+        Assert.Equal(0, store.GetG2Rx1AttenuatorDb());
+
+        store.SetG2AdcOptions(rx1AttenuatorDb: 44);
+        Assert.Equal(31, store.GetG2Rx1AttenuatorDb());
     }
 
     [Fact]

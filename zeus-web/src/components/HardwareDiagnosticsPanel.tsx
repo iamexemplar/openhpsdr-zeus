@@ -614,6 +614,8 @@ function G2FirmwareOptionsDiagnostics({ options }: { options: G2FirmwareOptionsD
           { label: 'G2 Class', value: boolLabel(options.g2Class) },
           { label: 'MaxRXFreq', value: `${options.maxRxFrequencyMhz.toFixed(2)} MHz` },
           { label: 'MaxRX Status', value: options.maxRxFrequencyStatus },
+          { label: 'ADC1/RX2 ATT', value: options.rx1AttenuatorSupported ? `${options.rx1AttenuatorDb} dB` : 'not supported' },
+          { label: 'ADC1/RX2 Status', value: options.rx1AttenuatorStatus },
           { label: 'Generated', value: time(options.generatedUtc) },
         ]}
       />
@@ -2726,7 +2728,7 @@ export function HardwareDiagnosticsPanel() {
             <div className="ps-card">
               <h4>
                 G2 Firmware Options
-                <span className="ps-card-hint">dither / random / MaxRXFreq parity</span>
+                <span className="ps-card-hint">dither / random / MaxRXFreq / ADC1 ATT</span>
               </h4>
               <G2FirmwareOptionsDiagnostics options={diag?.g2FirmwareOptions ?? null} />
             </div>

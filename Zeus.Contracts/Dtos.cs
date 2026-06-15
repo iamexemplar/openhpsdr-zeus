@@ -1647,13 +1647,18 @@ public sealed record G2OptionsDto(
     bool DitherEnabled,
     bool RandomEnabled,
     double MaxRxFreqMHz,
-    bool Supported);
+    bool Supported,
+    int Rx1AttenuatorDb = 0,
+    int Rx1AttenuatorMinDb = 0,
+    int Rx1AttenuatorMaxDb = 31,
+    bool Rx1AttenuatorSupported = false);
 
 // Partial update so future G2 options can be added without forcing clients
 // to echo fields they did not intend to change.
 public sealed record G2OptionsSetRequest(
     bool? DitherEnabled = null,
-    bool? RandomEnabled = null);
+    bool? RandomEnabled = null,
+    int? Rx1AttenuatorDb = null);
 
 // Panadapter background settings — Mode is one of "basic" | "beam-map" |
 // "image"; Fit is one of "fit" | "fill" | "stretch". Image bytes are NOT

@@ -32,6 +32,10 @@ function resetStore() {
       randomEnabled: true,
       maxRxFreqMHz: 60,
       supported: false,
+      rx1AttenuatorDb: 0,
+      rx1AttenuatorMinDb: 0,
+      rx1AttenuatorMaxDb: 31,
+      rx1AttenuatorSupported: false,
     },
     loaded: false,
     inflight: false,
@@ -50,6 +54,10 @@ function stubRadioOptionsFetch(
     randomEnabled: true,
     maxRxFreqMHz: 60,
     supported: false,
+    rx1AttenuatorDb: 0,
+    rx1AttenuatorMinDb: 0,
+    rx1AttenuatorMaxDb: 31,
+    rx1AttenuatorSupported: false,
   },
 ) {
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
@@ -210,6 +218,10 @@ describe('RadioOptionsPanel', () => {
         randomEnabled: true,
         maxRxFreqMHz: 60,
         supported: true,
+        rx1AttenuatorDb: 7,
+        rx1AttenuatorMinDb: 0,
+        rx1AttenuatorMaxDb: 31,
+        rx1AttenuatorSupported: true,
       },
     );
 
@@ -223,11 +235,16 @@ describe('RadioOptionsPanel', () => {
     expect(container.textContent).toContain('Random Enabled');
     expect(container.textContent).toContain('MaxRXFreq');
     expect(container.textContent).toContain('60.00 MHz');
+    expect(container.textContent).toContain('ADC1 / RX2 Step Attenuator');
 
     const checkboxes = Array.from(
       container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
     );
     expect(checkboxes).toHaveLength(2);
+    const rx1Select = container.querySelector<HTMLSelectElement>('select');
+    expect(rx1Select).not.toBeNull();
+    expect(rx1Select!.value).toBe('7');
+    expect(rx1Select!.querySelectorAll('option')).toHaveLength(32);
 
     await act(async () => {
       checkboxes[0]!.click();
@@ -241,5 +258,19 @@ describe('RadioOptionsPanel', () => {
     );
     expect(ditherPut).toBeDefined();
     expect(useRadioOptionsStore.getState().g2Options.ditherEnabled).toBe(false);
+
+    await act(async () => {
+      rx1Select!.value = '12';
+      rx1Select!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flushMicrotasks();
+
+    const rx1Put = fetchMock.mock.calls.find(
+      ([url, init]) => url === '/api/radio/g2-options'
+        && init?.method === 'PUT'
+        && JSON.parse((init.body ?? '{}') as string).rx1AttenuatorDb === 12,
+    );
+    expect(rx1Put).toBeDefined();
+    expect(useRadioOptionsStore.getState().g2Options.rx1AttenuatorDb).toBe(12);
   });
 });

@@ -104,6 +104,9 @@ internal sealed record G2FirmwareOptionsDiagnosticsDto(
     bool G2Class,
     double MaxRxFrequencyMhz,
     string MaxRxFrequencyStatus,
+    int Rx1AttenuatorDb,
+    string Rx1AttenuatorStatus,
+    bool Rx1AttenuatorSupported,
     G2FirmwareOptionDto[] Options,
     string MissingControlSurface,
     string ManualReference,
@@ -649,6 +652,13 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
         string maxRxStatus = g2Class ? "wired-vfo-clamp" : "generic-vfo-clamp";
         bool? ditherEnabled = supported ? g2Options?.DitherEnabled ?? true : null;
         bool? randomEnabled = supported ? g2Options?.RandomEnabled ?? true : null;
+        bool rx1AttenuatorSupported = supported && (g2Options?.Rx1AttenuatorSupported ?? true);
+        int rx1AttenuatorDb = rx1AttenuatorSupported
+            ? Math.Clamp(g2Options?.Rx1AttenuatorDb ?? 0, 0, 31)
+            : 0;
+        string rx1AttenuatorStatus = rx1AttenuatorSupported
+            ? activeProtocol == "P2" ? "mapped-live" : "mapped-ready"
+            : g2Class ? "capability-missing" : "not-g2";
 
         var options = new[]
         {
@@ -675,7 +685,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
         };
 
         string recommendation = g2Class
-            ? "MaxRXFreq parity is enforced by the 0..60 MHz VFO clamp. Keep dither/random enabled for best ADC linearity and digital-output decorrelation unless a controlled measurement shows a rig-specific reason to disable them."
+            ? "MaxRXFreq parity is enforced by the 0..60 MHz VFO clamp. Keep dither/random enabled for best ADC linearity and digital-output decorrelation unless a controlled measurement shows a rig-specific reason to disable them. Use ADC1/RX2 attenuation to protect the second ADC independently when diversity, RX2, or feedback routing makes its level differ from ADC0."
             : "This board is not a G2/Saturn-class target for the ANAN-G2 dither/random option block; use the board-specific hardware options already exposed for the active radio.";
 
         return new G2FirmwareOptionsDiagnosticsDto(
@@ -687,11 +697,14 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
             G2Class: g2Class,
             MaxRxFrequencyMhz: 60.0,
             MaxRxFrequencyStatus: maxRxStatus,
+            Rx1AttenuatorDb: rx1AttenuatorDb,
+            Rx1AttenuatorStatus: rx1AttenuatorStatus,
+            Rx1AttenuatorSupported: rx1AttenuatorSupported,
             Options: options,
             MissingControlSurface: g2Class
-                ? "None: /api/radio/g2-options writes the verified Protocol-2 CmdRx dither/random bytes for G2-class boards."
+                ? "None: /api/radio/g2-options writes the verified Protocol-2 CmdRx dither/random bytes and the Protocol-2 ADC1/RX2 step attenuator for G2-class boards."
                 : "No G2 ADC random/dither surface applies to this board.",
-            ManualReference: "Thetis ANAN-G2 Options: Dither Enabled, Random Enabled, MaxRXFreq 60.00; G2 manual identifies Saturn-class receiver hardware.",
+            ManualReference: "Thetis ANAN-G2 Options: Dither Enabled, Random Enabled, MaxRXFreq 60.00. The G2 manual documents dual 16-bit phase-synchronous ADCs, independent filter banks for each ADC, RX2 input, and a 1-30 dB step attenuator.",
             DiagnosticRecommendation: recommendation,
             GeneratedUtc: DateTimeOffset.UtcNow);
     }
@@ -2531,10 +2544,10 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
         },
         new
         {
-            field = "G2 ADC dither/random and MaxRXFreq",
-            source = "Thetis Setup > General > ANAN-G2 Options",
+            field = "G2 ADC dither/random, MaxRXFreq, and ADC1/RX2 attenuation",
+            source = "Thetis Setup > General > ANAN-G2 Options + Orion_MkII High_Priority Attenuator1 byte",
             status = "decoded",
-            notes = "Thetis exposes Dither Enabled, Random Enabled, and MaxRXFreq 60.00. Zeus enforces the 60 MHz VFO clamp and now writes the verified Protocol-2 CmdRx byte 5/6 ADC dither/random masks through /api/radio/g2-options.",
+            notes = "Thetis exposes Dither Enabled, Random Enabled, and MaxRXFreq 60.00. Zeus enforces the 60 MHz VFO clamp and writes the verified Protocol-2 CmdRx byte 5/6 ADC dither/random masks plus the ADC1/RX2 step attenuator through /api/radio/g2-options.",
         },
         new
         {
@@ -2557,7 +2570,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
         {
             field = "Board-specific hardware options",
             status = "candidate",
-            notes = "Thetis gates Alex/Apollo/MKII/Orion options by model. Zeus should surface only controls backed by BoardCapabilities and persisted per radio; G2 ADC2 ground-on-TX is automatic protection, while any operator override, 10-DDC assignment, and dither/random writes stay read-only until their protocol/UI mapping is verified. G2 Dig In TX Disable is decoded as read-only diagnostics first; TX blocking must remain opt-in and board-gated.",
+            notes = "Thetis gates Alex/Apollo/MKII/Orion options by model. Zeus should surface only controls backed by BoardCapabilities and persisted per radio; G2 ADC1/RX2 attenuation is now exposed and G2 ADC2 ground-on-TX is automatic protection, while any operator override, 10-DDC assignment, and dither/random writes stay read-only until their protocol/UI mapping is verified. G2 Dig In TX Disable is decoded as read-only diagnostics first; TX blocking must remain opt-in and board-gated.",
         },
         new
         {
@@ -2582,6 +2595,12 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
             field = "G2 ADC dither/random controls",
             status = "control-ready",
             notes = "Thetis calls NetworkIO.SetADCDither and SetADCRandom for the ANAN-G2 option checkboxes. Zeus exposes the same persisted controls in Settings > Radio for verified G2-class boards and writes Protocol-2 CmdRx byte 5/6 masks live.",
+        },
+        new
+        {
+            field = "G2 ADC1/RX2 step attenuator",
+            status = "control-ready",
+            notes = "The G2 manual documents independent RX paths and a 1-30 dB step attenuator. Zeus exposes the existing Protocol-2 Attenuator1 byte as a persisted Settings > Radio control for independent second-ADC dynamic-range management.",
         },
         new
         {
@@ -2961,14 +2980,16 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
         new
         {
             id = "rx.g2.adc-options",
-            title = "G2 ADC dither, randomizer, and MaxRXFreq parity",
+            title = "G2 ADC dither, randomizer, MaxRXFreq, and ADC1 attenuation",
             category = "rx-hardware",
             implementationStatus = "control-ready",
             userConfigurable = true,
-            source = "Thetis ANAN-G2 Options + ChannelMaster CmdRx bytes 5/6 + RadioService VFO clamp",
+            source = "Thetis ANAN-G2 Options + ChannelMaster CmdRx bytes 5/6 + RadioService VFO clamp + Orion_MkII Attenuator1 byte",
             telemetryPaths = new[]
             {
                 "g2FirmwareOptions.maxRxFrequencyMhz",
+                "g2FirmwareOptions.rx1AttenuatorDb",
+                "g2FirmwareOptions.rx1AttenuatorStatus",
                 "g2FirmwareOptions.options",
                 "g2FirmwareOptions.missingControlSurface",
             },
@@ -2980,7 +3001,7 @@ public sealed class HardwareDiagnosticsService : IHostedService, IDisposable
                 "/api/radio/diagnostics",
             },
             safetyClass = "rx-safe",
-            notes = "MaxRXFreq is matched by Zeus's 0..60 MHz clamp. ADC dither/random now persist defaults-on and write the Thetis-compatible Protocol-2 CmdRx masks only when the active capability fingerprint advertises G2 ADC options.",
+            notes = "MaxRXFreq is matched by Zeus's 0..60 MHz clamp. ADC dither/random persist defaults-on and write the Thetis-compatible Protocol-2 CmdRx masks only when the active capability fingerprint advertises G2 ADC options. ADC1/RX2 attenuation now persists 0..31 dB and writes the verified second-ADC step attenuator for independent RX2/diversity headroom.",
         },
         new
         {
