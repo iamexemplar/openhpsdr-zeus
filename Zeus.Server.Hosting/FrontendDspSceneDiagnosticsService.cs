@@ -14,6 +14,7 @@ public sealed class FrontendDspSceneDiagnosticsService
     private const int MaxText = 180;
     private const long FreshSceneMs = 15_000;
     private const long StaleSceneMs = 45_000;
+    private const long FutureSourceToleranceMs = 5_000;
     private readonly object _sync = new();
     private FrontendDspSceneSnapshot? _latest;
 
@@ -55,7 +56,7 @@ public sealed class FrontendDspSceneDiagnosticsService
         {
             if (_latest is null)
             {
-                var health = Health(null, null, null);
+                var health = Health(null, null, null, null);
                 return new
                 {
                     schemaVersion = 1,
@@ -63,6 +64,7 @@ public sealed class FrontendDspSceneDiagnosticsService
                     ageMs = (int?)null,
                     sourceAtUtc = (DateTimeOffset?)null,
                     sourceAgeMs = (int?)null,
+                    sourceClockSkewMs = (int?)null,
                     status = health.Status,
                     fresh = false,
                     stale = false,
@@ -70,11 +72,24 @@ public sealed class FrontendDspSceneDiagnosticsService
                 };
             }
 
-            var ageMs = Math.Max(0L, (long)(DateTimeOffset.UtcNow - _latest.AtUtc).TotalMilliseconds);
-            long? sourceAgeMs = _latest.SourceAtUtc is { } sourceAt
-                ? Math.Max(0L, (long)(DateTimeOffset.UtcNow - sourceAt).TotalMilliseconds)
-                : null;
-            var sceneHealth = Health(ageMs, sourceAgeMs, _latest);
+            var now = DateTimeOffset.UtcNow;
+            var ageMs = Math.Max(0L, (long)(now - _latest.AtUtc).TotalMilliseconds);
+            long? sourceAgeMs = null;
+            long? sourceClockSkewMs = null;
+            if (_latest.SourceAtUtc is { } sourceAt)
+            {
+                var sourceDeltaMs = (long)(now - sourceAt).TotalMilliseconds;
+                if (sourceDeltaMs >= 0)
+                {
+                    sourceAgeMs = sourceDeltaMs;
+                }
+                else
+                {
+                    sourceAgeMs = 0;
+                    sourceClockSkewMs = -sourceDeltaMs;
+                }
+            }
+            var sceneHealth = Health(ageMs, sourceAgeMs, sourceClockSkewMs, _latest);
             return new
             {
                 schemaVersion = _latest.SchemaVersion,
@@ -82,6 +97,7 @@ public sealed class FrontendDspSceneDiagnosticsService
                 ageMs,
                 sourceAtUtc = _latest.SourceAtUtc,
                 sourceAgeMs,
+                sourceClockSkewMs,
                 status = sceneHealth.Status,
                 fresh = sceneHealth.Fresh,
                 stale = sceneHealth.Stale,
@@ -127,7 +143,11 @@ public sealed class FrontendDspSceneDiagnosticsService
     private static int? NonNegative(int? value) =>
         value is { } v && v >= 0 ? v : null;
 
-    private static FrontendDspSceneHealth Health(long? ageMs, long? sourceAgeMs, FrontendDspSceneSnapshot? latest)
+    private static FrontendDspSceneHealth Health(
+        long? ageMs,
+        long? sourceAgeMs,
+        long? sourceClockSkewMs,
+        FrontendDspSceneSnapshot? latest)
     {
         if (ageMs is null)
         {
@@ -136,6 +156,15 @@ public sealed class FrontendDspSceneDiagnosticsService
                 Fresh: false,
                 Stale: false,
                 "No frontend DSP scene has been published yet; open a Zeus client with Signal Intelligence or Smart NR active to audit weak-signal automation.");
+        }
+
+        if (ageMs.Value <= StaleSceneMs && sourceClockSkewMs is { } skewMs && skewMs > FutureSourceToleranceMs)
+        {
+            return new(
+                "clock-skew",
+                Fresh: false,
+                Stale: false,
+                $"Frontend DSP scene source timestamp is {(skewMs / 1000.0):0.0}s in the future; verify client and host clocks before trusting weak-signal automation freshness.");
         }
 
         long effectiveAgeMs = Math.Max(ageMs.Value, sourceAgeMs ?? ageMs.Value);
