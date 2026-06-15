@@ -110,6 +110,7 @@ supporting diagnostics endpoints into an ignored `captures/dsp-modernization/<ti
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-dsp-modernization-bundle.ps1 -BaseUrl http://localhost:6060 -Label g2-nr5-before
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir captures\dsp-modernization\<timestamp>
 ```
 
 The live readiness surface is `/api/dsp/live-diagnostics`. It is read-only and combines the current
