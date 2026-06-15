@@ -54,6 +54,7 @@
 // resamples the actual AudioWorklet rate if a device/browser does not.
 
 import { isNativeAudio } from './host-mode';
+import { clampFinite } from '../util/number';
 
 // `peak` is the max(abs(sample)) across the 20 ms block, linear [0..1].
 // Callers convert to dBFS via 20 * log10(peak); floor at −100 for silence.
@@ -75,6 +76,10 @@ const MIC_CONSTRAINTS: MediaStreamConstraints = {
 
 const WORKLET_URL = '/mic-uplink-worklet.js';
 const EXPECTED_BLOCK_SAMPLES = 960;
+
+function sanitizeMicPeak(value: unknown): number {
+  return clampFinite(value, 0, 1, 0);
+}
 
 export async function startMicUplink(
   onBlock: MicUplinkBlockHandler,
@@ -114,7 +119,7 @@ export async function startMicUplink(
     });
     node.port.onmessage = (ev: MessageEvent<{ samples?: Float32Array; peak?: number }>) => {
       const samples = ev.data?.samples;
-      const peak = typeof ev.data?.peak === 'number' ? ev.data.peak : 0;
+      const peak = sanitizeMicPeak(ev.data?.peak);
       if (samples instanceof Float32Array && samples.length === EXPECTED_BLOCK_SAMPLES) {
         onBlock(samples, peak);
       }

@@ -53,6 +53,7 @@ import { AlertKind, useTxStore } from '../state/tx-store';
 import { useBandPlanStore } from '../state/bandPlan';
 import { useRxMetersStore } from '../state/rx-meters-store';
 import { warnOnce } from '../util/logger';
+import { clampFinite } from '../util/number';
 import { wsUrl as buildWsUrl } from '../serverUrl';
 
 const INITIAL_BACKOFF_MS = 1000;
@@ -134,6 +135,10 @@ const WISDOM_STATUS_MIN_BYTES = 1 + 1;
 export const MSG_TYPE_MIC_PCM = 0x20;
 const MIC_PCM_SAMPLES = 960;
 const MIC_PCM_BYTES = 1 + MIC_PCM_SAMPLES * 4;
+
+function sanitizeMicPcmSample(sample: unknown): number {
+  return clampFinite(sample, -1, 1, 0);
+}
 
 // Mic peak telemetry (server → client). Only emitted by NativeMicCapture in
 // desktop host mode (the SPA's own AudioWorklet path is disabled there by
@@ -236,7 +241,7 @@ export function sendMicPcm(samples: Float32Array): void {
   // match the server's BitConverter.ToSingle on little-endian hosts. Use
   // setFloat32 per-sample with explicit LE for a portable wire format.
   for (let i = 0; i < MIC_PCM_SAMPLES; i++) {
-    view.setFloat32(1 + i * 4, samples[i] ?? 0, true);
+    view.setFloat32(1 + i * 4, sanitizeMicPcmSample(samples[i]), true);
   }
   try {
     ws.send(buf);

@@ -80,6 +80,34 @@ describe('mic-uplink-worklet', () => {
     }
   });
 
+  it('sanitizes non-finite and overrange samples before posting a block', () => {
+    const { processor, messages } = loadProcessor(48_000);
+    const samples = new Float32Array(960);
+    samples[0] = Number.NaN;
+    samples[1] = Number.POSITIVE_INFINITY;
+    samples[2] = Number.NEGATIVE_INFINITY;
+    samples[3] = 1.25;
+    samples[4] = -1.5;
+    samples[5] = 0.5;
+
+    processBlock(processor, samples);
+
+    expect(messages).toHaveLength(1);
+    const out = messages[0]!.samples!;
+    expect(out[0]).toBe(0);
+    expect(out[1]).toBe(0);
+    expect(out[2]).toBe(0);
+    expect(out[3]).toBe(1);
+    expect(out[4]).toBe(-1);
+    expect(out[5]).toBe(0.5);
+    expect(messages[0]!.peak).toBe(1);
+    for (const sample of out) {
+      expect(Number.isFinite(sample)).toBe(true);
+      expect(sample).toBeGreaterThanOrEqual(-1);
+      expect(sample).toBeLessThanOrEqual(1);
+    }
+  });
+
   it('resamples 44.1 kHz capture to 48 kHz mic blocks', () => {
     const { processor, messages } = loadProcessor(44_100);
     processBlock(processor, sine(44_100, 1_000, 1_200));
