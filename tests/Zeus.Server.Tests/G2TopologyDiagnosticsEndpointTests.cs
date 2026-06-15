@@ -51,6 +51,16 @@ public sealed class G2TopologyDiagnosticsEndpointTests
         Assert.Equal("audited", manualReference.GetProperty("status").GetString());
         Assert.Contains("10 independent DDC receivers", manualReference.GetProperty("notes").GetString());
         Assert.Contains("ADC2 ground-on-TX", manualReference.GetProperty("notes").GetString());
+
+        var receiverBandwidth = root.GetProperty("dsp").GetProperty("filterGeometry").GetProperty("receiverBandwidth");
+        Assert.Equal("max-wideband-active", receiverBandwidth.GetProperty("status").GetString());
+        Assert.True(receiverBandwidth.GetProperty("protocol2Active").GetBoolean());
+        Assert.True(receiverBandwidth.GetProperty("widebandActive").GetBoolean());
+        Assert.Equal(100.0, receiverBandwidth.GetProperty("utilizationPct").GetDouble());
+        Assert.Equal(2, receiverBandwidth.GetProperty("activeUserDdcIndex").GetInt32());
+        Assert.Equal(10, receiverBandwidth.GetProperty("manualReceiverCapacity").GetInt32());
+        Assert.Equal(9, receiverBandwidth.GetProperty("unexposedReceiverCount").GetInt32());
+        Assert.Equal(2, receiverBandwidth.GetProperty("reservedSlots").GetArrayLength());
     }
 
     [Fact]
@@ -82,9 +92,42 @@ public sealed class G2TopologyDiagnosticsEndpointTests
         Assert.Contains("capabilities.maxRxSampleRateHz", telemetry);
         Assert.Contains("p2.adc0MaxMagnitude", telemetry);
         Assert.Contains("p2.adc1MaxMagnitude", telemetry);
+        Assert.Contains("dsp.filterGeometry.receiverBandwidth.utilizationPct", telemetry);
+        Assert.Contains("dsp.filterGeometry.receiverBandwidth.activeUserDdcIndex", telemetry);
+        Assert.Contains("dsp.filterGeometry.receiverBandwidth.unexposedReceiverCount", telemetry);
         Assert.Contains("Settings > Hardware > Receiver Topology", controls);
         Assert.Contains("10 independent DDC receivers", notes);
         Assert.Contains("ADC2 ground-on-TX", notes);
+    }
+
+    [Fact]
+    public async Task HardwareDiagnostics_ReportsConservativeP2ReceiverBandwidthForHermesClass()
+    {
+        using var factory = new Factory();
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var radio = scope.ServiceProvider.GetRequiredService<RadioService>();
+            radio.MarkProtocol2Connected(
+                "192.168.1.22:1024",
+                384_000,
+                boardKind: HpsdrBoardKind.Hermes);
+        }
+
+        using var client = factory.CreateClient();
+        var resp = await client.GetAsync("/api/radio/diagnostics");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var body = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
+        var receiverBandwidth = body.RootElement.GetProperty("dsp").GetProperty("filterGeometry").GetProperty("receiverBandwidth");
+
+        Assert.Equal("board-capability-limited", receiverBandwidth.GetProperty("status").GetString());
+        Assert.True(receiverBandwidth.GetProperty("protocol2Active").GetBoolean());
+        Assert.False(receiverBandwidth.GetProperty("p2WidebandCapable").GetBoolean());
+        Assert.Equal(384_000, receiverBandwidth.GetProperty("maxSampleRateHz").GetInt32());
+        Assert.Equal(0, receiverBandwidth.GetProperty("activeUserDdcIndex").GetInt32());
+        Assert.Equal(1, receiverBandwidth.GetProperty("manualReceiverCapacity").GetInt32());
+        Assert.Equal(0, receiverBandwidth.GetProperty("unexposedReceiverCount").GetInt32());
     }
 
     private sealed class Factory : WebApplicationFactory<Program>
