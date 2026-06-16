@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "firstHardwareTarget": "G2",
+  "globalAcceptanceGates": [
+    "No weak-signal loss",
+    "No TX clipping",
+    "G2 first-pass validation",
+    "non-G2 cross-radio validation"
+  ],
+  "scenarios": [
+    {
+      "id": "weak-cw-carrier",
+      "name": "weak-cw-carrier",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "ssb-like-speech",
+      "name": "ssb-like-speech",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "fading-carrier",
+      "name": "fading-carrier",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "impulse-noise",
+      "name": "impulse-noise",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "strong-adjacent",
+      "name": "strong-adjacent",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "noise-only-gating",
+      "name": "noise-only-gating",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "agc-level-step",
+      "name": "agc-level-step",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "squelch-transition",
+      "name": "squelch-transition",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "tx-two-tone",
+      "name": "tx-two-tone",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    },
+    {
+      "id": "tx-voice-like",
+      "name": "tx-voice-like",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "requiredComparisons": [
+        "current-zeus",
+        "thetis-parity",
+        "candidate-under-test"
+      ],
+      "requiredMetrics": [
+        "outputRms",
+        "clippingCount"
+      ],
+      "acceptanceGates": []
+    }
+  ]
+}
