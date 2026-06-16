@@ -1,0 +1,255 @@
+{
+  "schemaVersion": 1,
+  "tool": "dsp-fixture-evidence",
+  "generatedUtc": "2026-06-16T14:16:47.8602413+00:00",
+  "artifactId": "spectrum-before-after",
+  "fixtureScenarioScope": "offline-fixture-ready",
+  "evidenceEngine": "wdsp",
+  "wdspRuntimeRid": "win-x64",
+  "wdspRuntimeSha256": "d684676acdb803fa9912c64fe707317eadbf03a0ccde2f068119378507465ede",
+  "wdspRuntimeStatus": "found",
+  "scenarioCount": 10,
+  "fileCount": 30,
+  "files": [
+    {
+      "path": "artifacts/offline-fixtures/spectrum/weak-cw-carrier/current-zeus.json",
+      "scenarioId": "weak-cw-carrier",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "55CE19FFC564FB6884D7477F651CA5B04F39C0A814E260BB09A1729F8FB951BF"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/weak-cw-carrier/thetis-parity.json",
+      "scenarioId": "weak-cw-carrier",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "F180DA9E19FAD1A59B4429CFFC485C0E7A98F4371DCBDF67FDB8B70C3A643476"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/weak-cw-carrier/candidate-under-test.json",
+      "scenarioId": "weak-cw-carrier",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "011DA50C5A3DC853F51ECFCA4DDE305CDBDA135491D8BB3C00A0E8076AD78B66"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/ssb-like-speech/current-zeus.json",
+      "scenarioId": "ssb-like-speech",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "595F4247B9F44C83D4F5C99467403DBA7B77776ACFCE2E8F29CED93511E11F88"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/ssb-like-speech/thetis-parity.json",
+      "scenarioId": "ssb-like-speech",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "EEE4954DB7F64EE5767C9EDB4AD10E9FD8ABA8CE59CE548937597B7322E0EE92"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/ssb-like-speech/candidate-under-test.json",
+      "scenarioId": "ssb-like-speech",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "2B95A9971E041C2D3D923D8276E83280046C2A602693103893EF8D853B461BBF"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/fading-carrier/current-zeus.json",
+      "scenarioId": "fading-carrier",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "8DBC01E022E9E99B1598EF6DE376FF386642A2491074EFCC4225631C3F6CBB23"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/fading-carrier/thetis-parity.json",
+      "scenarioId": "fading-carrier",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "B6D75424E949975FF0F98BDC6B17AC673185E37044A86D8D249E3703BB9AC16C"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/fading-carrier/candidate-under-test.json",
+      "scenarioId": "fading-carrier",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "9D9E24A32E64DEC57D0407BB1ADFB6EA51ECE6C0A1153095B8491EAC6BBC523B"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/impulse-noise/current-zeus.json",
+      "scenarioId": "impulse-noise",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "2874FFD05B483E3AD5833A567FD62AB802297FE083B42F394E8A99E5F8E30088"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/impulse-noise/thetis-parity.json",
+      "scenarioId": "impulse-noise",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "35794B53530CE160801330FE9535FE241FEA834FF90BF0E9C45C4575B5C8CD22"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/impulse-noise/candidate-under-test.json",
+      "scenarioId": "impulse-noise",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "A80866EC65C5F7F1747F27AEEB7A23EE022A2CE81FB20B62B8447A03F2EC732F"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/strong-adjacent/current-zeus.json",
+      "scenarioId": "strong-adjacent",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "98BDDE8D864F5E98BE2A34BE5F4A235E62EB6A1756BB5A82390DC50AB2DF0F41"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/strong-adjacent/thetis-parity.json",
+      "scenarioId": "strong-adjacent",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "194D82B5789B13DFC2022CC09C7A5E48D7562D6EA1E146B8A6C49BA313EFDF57"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/strong-adjacent/candidate-under-test.json",
+      "scenarioId": "strong-adjacent",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "DCD450C12130845BFAE05D305D3ED5B3C6AFEFD18429E5F6E4BE0ED0A6DBBEF8"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/noise-only-gating/current-zeus.json",
+      "scenarioId": "noise-only-gating",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "8E9B4174AFBE94E4A3B98F23F2CB2FAD1D9EF118A47BC78C9AEB14667883C05C"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/noise-only-gating/thetis-parity.json",
+      "scenarioId": "noise-only-gating",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "0C175EAF16DE9A99A0D8159918EE6331C38AFA144FE045D8D66ECA9D2F06CF8E"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/noise-only-gating/candidate-under-test.json",
+      "scenarioId": "noise-only-gating",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "72A23C1B32B96C10150CDD12E8CE1D9AD15119FF675BD636E8C42B8030FD2D90"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/agc-level-step/current-zeus.json",
+      "scenarioId": "agc-level-step",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "8092FD34753B12DF364B70E066804AD2996944910EFC4BFB3999A702762505D8"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/agc-level-step/thetis-parity.json",
+      "scenarioId": "agc-level-step",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "C6E721C8EDA76E1EE77587E96F6361B50C9A4213F78411CE59088A16C5C15E36"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/agc-level-step/candidate-under-test.json",
+      "scenarioId": "agc-level-step",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "5D4C8012BAAC384680CD8931329E3B88163B2F398D815C14285E03447C7AC2D0"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/squelch-transition/current-zeus.json",
+      "scenarioId": "squelch-transition",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "B0147320E047125044C3172A6D54E9D350E4D411718179801C635500ED3E92A7"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/squelch-transition/thetis-parity.json",
+      "scenarioId": "squelch-transition",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "97D61D0F886174EA3AF3A23322FC19C0BBCB9E721B8A1F5746F1269737E84A25"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/squelch-transition/candidate-under-test.json",
+      "scenarioId": "squelch-transition",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "2016CC32D8D9EFF93E4C7785C774465702B7BB3A9F473E55917EDA22A1DA2FC4"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/tx-two-tone/current-zeus.json",
+      "scenarioId": "tx-two-tone",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "894E1C93A996DB9B15C36BB0596CF18F61336742B10148D25CAD32A31AC9264C"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/tx-two-tone/thetis-parity.json",
+      "scenarioId": "tx-two-tone",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "350F38543441FFBB2E8463A65AB7673152EA247F9B35CE7EAACA412A4FE9DDA7"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/tx-two-tone/candidate-under-test.json",
+      "scenarioId": "tx-two-tone",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "CADA5DF11010F2139333C612D4BEF987E8B1BFB4FA0D96D2E226D127EE34DE72"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/tx-voice-like/current-zeus.json",
+      "scenarioId": "tx-voice-like",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "2BFF8103784DF3EBB9D1B49840A660FCD38E5B75EFA1A8CDF56631197DDC43FB"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/tx-voice-like/thetis-parity.json",
+      "scenarioId": "tx-voice-like",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "DE062908D775B3BB807BC614D5F527860680FA75C9D4BFF70AF001B9272B24DE"
+    },
+    {
+      "path": "artifacts/offline-fixtures/spectrum/tx-voice-like/candidate-under-test.json",
+      "scenarioId": "tx-voice-like",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-spectrum-summary",
+      "sampleRateHz": 48000,
+      "sha256": "1D6B727F4F4EF369F4F0850189CFB2DD18F84A1638522DE88CCF624BD0B66895"
+    }
+  ]
+}

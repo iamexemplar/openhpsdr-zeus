@@ -1,0 +1,671 @@
+﻿{
+    "schemaVersion":  1,
+    "tool":  "compare-dsp-fixture-metrics",
+    "generatedUtc":  "\/Date(1781619413745)\/",
+    "bundleDir":  "C:\\Users\\Admin\\Desktop\\openhpsdr-zeus\\tmp\\wdsp-fixture-matrix-full-smoke",
+    "benchmarkPlanPath":  "C:\\Users\\Admin\\Desktop\\openhpsdr-zeus\\tmp\\wdsp-fixture-matrix-full-smoke\\benchmark-plan.json",
+    "metricCatalogPath":  "C:\\Users\\Admin\\Desktop\\openhpsdr-zeus\\tmp\\wdsp-fixture-matrix-full-smoke\\benchmark-metric-catalog.json",
+    "metricCatalogMetricCount":  2,
+    "metricsPath":  "C:\\Users\\Admin\\Desktop\\openhpsdr-zeus\\tmp\\wdsp-fixture-matrix-full-smoke\\artifacts\\offline-fixture-metrics.json",
+    "metricsSha256":  "b0a9667c386e31495ffeff4ab4e031630ce067ba6fffe2fbf6e10b9cf2f91f6c",
+    "reportPath":  "C:\\Users\\Admin\\Desktop\\openhpsdr-zeus\\tmp\\wdsp-fixture-matrix-full-smoke\\artifacts\\dsp-fixture-metric-comparison.json",
+    "markdownPath":  "C:\\Users\\Admin\\Desktop\\openhpsdr-zeus\\tmp\\wdsp-fixture-matrix-full-smoke\\artifacts\\dsp-fixture-metric-comparison.md",
+    "tolerance":  1E-06,
+    "readyForReview":  true,
+    "metricCoverageReadyForReview":  true,
+    "evidenceEngine":  "wdsp",
+    "evidenceTool":  "dsp-fixture-evidence",
+    "wdspBackedEvidence":  true,
+    "syntheticFallbackEvidence":  false,
+    "wdspRuntimeRid":  "win-x64",
+    "wdspRuntimePath":  "runtimes/win-x64/native/wdsp.dll",
+    "wdspRuntimePathKind":  "app-output-relative",
+    "wdspRuntimeFileName":  "wdsp.dll",
+    "wdspRuntimeLength":  5598208,
+    "wdspRuntimeSha256":  "d684676acdb803fa9912c64fe707317eadbf03a0ccde2f068119378507465ede",
+    "wdspRuntimeStatus":  "found",
+    "wdspRuntimeIdentityReadyForReview":  true,
+    "fixtureScenarioScope":  "offline-fixture-ready",
+    "scenarioPlanCount":  10,
+    "skippedNonFixtureScenarioCount":  0,
+    "skippedNonFixtureScenarioIds":  [
+
+                                     ],
+    "metricEntryCount":  30,
+    "candidateComparisonCount":  10,
+    "improvementCount":  0,
+    "regressionCount":  0,
+    "tieCount":  20,
+    "informationalMetricCount":  20,
+    "missingMetricValueCount":  0,
+    "gateFailureCount":  0,
+    "missingScenarioCount":  0,
+    "missingCurrentBaselineCount":  0,
+    "missingThetisBaselineCount":  0,
+    "missingCandidateCount":  0,
+    "missingScenarios":  [
+
+                         ],
+    "comparisons":  [
+                        {
+                            "scenarioId":  "agc-level-step",
+                            "scenarioName":  "agc-level-step",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.154316,
+                                                          "candidateValue":  0.024247,
+                                                          "improvementValue":  -0.13006900000000002,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "agc-level-step",
+                            "scenarioName":  "agc-level-step",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.030631,
+                                                          "candidateValue":  0.024247,
+                                                          "improvementValue":  -0.0063839999999999973,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "fading-carrier",
+                            "scenarioName":  "fading-carrier",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.194421,
+                                                          "candidateValue":  0.032397,
+                                                          "improvementValue":  -0.162024,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "fading-carrier",
+                            "scenarioName":  "fading-carrier",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.037657,
+                                                          "candidateValue":  0.032397,
+                                                          "improvementValue":  -0.0052600000000000008,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "impulse-noise",
+                            "scenarioName":  "impulse-noise",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.132071,
+                                                          "candidateValue":  0.073115,
+                                                          "improvementValue":  -0.058955999999999995,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "impulse-noise",
+                            "scenarioName":  "impulse-noise",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.033129,
+                                                          "candidateValue":  0.073115,
+                                                          "improvementValue":  0.039986,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "noise-only-gating",
+                            "scenarioName":  "noise-only-gating",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.206517,
+                                                          "candidateValue":  0.032432,
+                                                          "improvementValue":  -0.174085,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "noise-only-gating",
+                            "scenarioName":  "noise-only-gating",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.03793,
+                                                          "candidateValue":  0.032432,
+                                                          "improvementValue":  -0.0054979999999999959,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "squelch-transition",
+                            "scenarioName":  "squelch-transition",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.212952,
+                                                          "candidateValue":  0.03521,
+                                                          "improvementValue":  -0.177742,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "squelch-transition",
+                            "scenarioName":  "squelch-transition",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.04041,
+                                                          "candidateValue":  0.03521,
+                                                          "improvementValue":  -0.0052000000000000032,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "ssb-like-speech",
+                            "scenarioName":  "ssb-like-speech",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.210989,
+                                                          "candidateValue":  0.03412,
+                                                          "improvementValue":  -0.176869,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "ssb-like-speech",
+                            "scenarioName":  "ssb-like-speech",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.042893,
+                                                          "candidateValue":  0.03412,
+                                                          "improvementValue":  -0.008773000000000003,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "strong-adjacent",
+                            "scenarioName":  "strong-adjacent",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.204008,
+                                                          "candidateValue":  0.048958,
+                                                          "improvementValue":  -0.15505,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "strong-adjacent",
+                            "scenarioName":  "strong-adjacent",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.040725,
+                                                          "candidateValue":  0.048958,
+                                                          "improvementValue":  0.0082330000000000042,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "tx-two-tone",
+                            "scenarioName":  "tx-two-tone",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.623025,
+                                                          "candidateValue":  0.623025,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "tx-two-tone",
+                            "scenarioName":  "tx-two-tone",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.623025,
+                                                          "candidateValue":  0.623025,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "tx-voice-like",
+                            "scenarioName":  "tx-voice-like",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.273514,
+                                                          "candidateValue":  0.273514,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "tx-voice-like",
+                            "scenarioName":  "tx-voice-like",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.273514,
+                                                          "candidateValue":  0.273514,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "weak-cw-carrier",
+                            "scenarioName":  "weak-cw-carrier",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "current-zeus",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.215208,
+                                                          "candidateValue":  0.035999,
+                                                          "improvementValue":  -0.179209,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        },
+                        {
+                            "scenarioId":  "weak-cw-carrier",
+                            "scenarioName":  "weak-cw-carrier",
+                            "candidateComparisonId":  "candidate-under-test",
+                            "baselineComparisonId":  "thetis-parity",
+                            "improvementCount":  0,
+                            "regressionCount":  0,
+                            "tieCount":  1,
+                            "informationalMetricCount":  1,
+                            "missingMetricValueCount":  0,
+                            "gateOutcomeCount":  1,
+                            "gateFailureCount":  0,
+                            "metricComparisons":  [
+                                                      {
+                                                          "metricId":  "outputrms",
+                                                          "direction":  "informational",
+                                                          "baselineValue":  0.044105,
+                                                          "candidateValue":  0.035999,
+                                                          "improvementValue":  -0.0081059999999999952,
+                                                          "verdict":  "informational"
+                                                      },
+                                                      {
+                                                          "metricId":  "clippingcount",
+                                                          "direction":  "lower",
+                                                          "baselineValue":  0,
+                                                          "candidateValue":  0,
+                                                          "improvementValue":  0,
+                                                          "verdict":  "tie"
+                                                      }
+                                                  ]
+                        }
+                    ]
+}

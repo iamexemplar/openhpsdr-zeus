@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "tool": "dsp-fixture-evidence",
+  "evidenceKind": "wdsp-tx-iq-render-summary",
+  "scenarioId": "tx-voice-like",
+  "comparisonId": "candidate-under-test",
+  "profile": "wdsp-txa-current-safe-bypass",
+  "fixtureStatus": "offline-fixture-ready",
+  "signalPath": "offline",
+  "sampleRateHz": 48000,
+  "sampleCount": 16384,
+  "processingElapsedMs": 1674.3995,
+  "wdspRuntimeRid": "win-x64",
+  "wdspRuntimeSha256": "d684676acdb803fa9912c64fe707317eadbf03a0ccde2f068119378507465ede",
+  "wdspRuntimeStatus": "found",
+  "rms": 0.27351377,
+  "peak": 0.758611704,
+  "crestFactorDb": 8.860807,
+  "dcOffset": 0.000590913,
+  "windowedRmsSpreadDb": 5993.172106,
+  "clippingCount": 0,
+  "txStageMeters": {
+    "micPkDbfs": -13.167929,
+    "micAvDbfs": -22.794483,
+    "eqPkDbfs": -400,
+    "eqAvDbfs": -400,
+    "levelerPkDbfs": -5.168419,
+    "levelerAvDbfs": -15.0113945,
+    "levelerGainReductionDb": 8.000783,
+    "cfcPkDbfs": -400,
+    "cfcAvDbfs": -400,
+    "cfcGainReductionDb": -0,
+    "compressorPkDbfs": -400,
+    "compressorAvDbfs": -400,
+    "alcPkDbfs": -6.718435,
+    "alcAvDbfs": -11.858487,
+    "alcGainReductionDb": 3.0022347,
+    "outPkDbfs": -6.718435,
+    "outAvDbfs": -11.858487
+  },
+  "nr5Diagnostics": null,
+  "expectedTonesHz": [
+    {
+      "name": "fundamental",
+      "hz": 180,
+      "powerDb": -70.300903
+    },
+    {
+      "name": "formant",
+      "hz": 720,
+      "powerDb": -77.454255
+    },
+    {
+      "name": "presence",
+      "hz": 1820,
+      "powerDb": -83.489667
+    }
+  ],
+  "samplePreview": [
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    },
+    {
+      "i": 0,
+      "q": 0
+    }
+  ],
+  "notes": [
+    "WDSP-backed offline fixture evidence; it does not prove G2, on-air, or cross-radio acceptance.",
+    "TX/PureSignal graduation still requires G2 bench and safe-bypass hardware evidence."
+  ]
+}

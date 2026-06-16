@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "tool": "dsp-fixture-evidence",
+  "generatedUtc": "2026-06-16T14:16:47.8602413+00:00",
+  "artifactId": "audio-render-before-after",
+  "fixtureScenarioScope": "offline-fixture-ready",
+  "evidenceEngine": "wdsp",
+  "wdspRuntimeRid": "win-x64",
+  "wdspRuntimeSha256": "d684676acdb803fa9912c64fe707317eadbf03a0ccde2f068119378507465ede",
+  "wdspRuntimeStatus": "found",
+  "scenarioCount": 10,
+  "fileCount": 30,
+  "files": [
+    {
+      "path": "artifacts/offline-fixtures/audio/weak-cw-carrier/current-zeus.json",
+      "scenarioId": "weak-cw-carrier",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "3D3B135A0F877F263965FDF3E7938F25602C75FE3C1A3B88709466BF9DC07803"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/weak-cw-carrier/thetis-parity.json",
+      "scenarioId": "weak-cw-carrier",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "6E142DF8E0A8BC63660559468C3F2D21EFDA388F51C8C02351779F09FA84845E"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/weak-cw-carrier/candidate-under-test.json",
+      "scenarioId": "weak-cw-carrier",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "1FF960EC550C232DD5F393FE1837753E7D1E34613162686223899FD709FD0F4F"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/ssb-like-speech/current-zeus.json",
+      "scenarioId": "ssb-like-speech",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "9F5E99B1426D1702055F23C28820A17A58ACBE97C4B0560DD1D76858035A0D9E"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/ssb-like-speech/thetis-parity.json",
+      "scenarioId": "ssb-like-speech",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "06F5C2C446615BFE8866673E9DA0C29AE113C59F4105DF90C3D9D7EE96987778"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/ssb-like-speech/candidate-under-test.json",
+      "scenarioId": "ssb-like-speech",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "0F797DEA4491B3B2F2ADF898CBB1151576F3997225DEA3E856B01C7716E76D89"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/fading-carrier/current-zeus.json",
+      "scenarioId": "fading-carrier",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "59365117768FEDA8312E5AE346ECB87B47939654A57371EF9D71E55C1E40BD5C"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/fading-carrier/thetis-parity.json",
+      "scenarioId": "fading-carrier",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "DAB1B640D23AD9CD58755BA96E892B1310A7B194F20FE8C1F0852D823107CE5F"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/fading-carrier/candidate-under-test.json",
+      "scenarioId": "fading-carrier",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "86D187E08738AA546A585517A0586CE8C2DCCD358B4DDE25AFFF61791E58FC42"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/impulse-noise/current-zeus.json",
+      "scenarioId": "impulse-noise",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "359A42CCA116B639F0600782D9A172E1EF89CD20BD5493FB7B72DE400E7FCFB9"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/impulse-noise/thetis-parity.json",
+      "scenarioId": "impulse-noise",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "3673331EB94F3104491A9A06C06EBBF8CC496B9DC85514748421FAFF3D347D3E"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/impulse-noise/candidate-under-test.json",
+      "scenarioId": "impulse-noise",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "C1A262A24D825B9C013E899FE5B1DB1DDC05AE30A995C3A876B6FABD3709BC42"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/strong-adjacent/current-zeus.json",
+      "scenarioId": "strong-adjacent",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "8524F909FA781608958461191D377FEA377A6B5CF01B128BA3FFAD39540DC570"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/strong-adjacent/thetis-parity.json",
+      "scenarioId": "strong-adjacent",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "7F1D5B97064B1ABA963C712F6004336759423986837F6B8E5DDBBD7DABAE0A21"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/strong-adjacent/candidate-under-test.json",
+      "scenarioId": "strong-adjacent",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "629B64B9315C2FC8E3979FAB057621987C72630DD4BF56BD860DD55E640EDE1E"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/noise-only-gating/current-zeus.json",
+      "scenarioId": "noise-only-gating",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "033DD140BAE28176774FC80573E397912667640BCF922E0D63370845E387163B"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/noise-only-gating/thetis-parity.json",
+      "scenarioId": "noise-only-gating",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "7866DA06ECA6C52D519D48110A76C5B6AF99195F2D6A08DA73F1F232AAD4FF1B"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/noise-only-gating/candidate-under-test.json",
+      "scenarioId": "noise-only-gating",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "4F2FFBBE4A1703A14639573AF169E17D0A0FBEDB7FA5E0E496F69C5B76D3FD4B"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/agc-level-step/current-zeus.json",
+      "scenarioId": "agc-level-step",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "68F2D2C674BD63D08D78B019DE2D503BF8020686D2E66DF74DCEA7A1474C5955"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/agc-level-step/thetis-parity.json",
+      "scenarioId": "agc-level-step",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "871FBECC5D1F2DFB6AB1B9B07A64A22996A15F783BA843C47935E07C0A6D3388"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/agc-level-step/candidate-under-test.json",
+      "scenarioId": "agc-level-step",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "C9247A478709334FAAE7DBDD6C7B36E0CCFCECE60E4CE2CA5FA0BC136F8F5126"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/squelch-transition/current-zeus.json",
+      "scenarioId": "squelch-transition",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "CBFB18FF180576562888F7A7CEE79144FAE3CD649CFC3F71AF789C33326DA12F"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/squelch-transition/thetis-parity.json",
+      "scenarioId": "squelch-transition",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "7DF99A13523290A691A4B1ED0643A542EE30C703857CA5FC3E1F7A0B6B109854"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/squelch-transition/candidate-under-test.json",
+      "scenarioId": "squelch-transition",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-rx-audio-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "25F1EAA6E897C6B51721F4D4ECC8C96E5E6D852DAB26F0DCE5B213028F2BE35E"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/tx-two-tone/current-zeus.json",
+      "scenarioId": "tx-two-tone",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-tx-iq-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "81EC9451AFDB48F20AE36CCFD0EEBF01563F812C79268C8540714A9476C29C9F"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/tx-two-tone/thetis-parity.json",
+      "scenarioId": "tx-two-tone",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-tx-iq-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "2C300349121D0A0622BDD7A11E9B7C00C528E35BFB434B0000C80E1D1EBB45E0"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/tx-two-tone/candidate-under-test.json",
+      "scenarioId": "tx-two-tone",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-tx-iq-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "263EEFA5A777AFC4A4C10794E02EACBACEE90F4C6F953DE2ED15FBE45EA77595"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/tx-voice-like/current-zeus.json",
+      "scenarioId": "tx-voice-like",
+      "comparisonId": "current-zeus",
+      "kind": "wdsp-tx-iq-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "965F1EA0C5E90820CFBCD2229F3F50F50542B73BB602A1078232830861CDB018"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/tx-voice-like/thetis-parity.json",
+      "scenarioId": "tx-voice-like",
+      "comparisonId": "thetis-parity",
+      "kind": "wdsp-tx-iq-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "155E197C08D238D2985D2691348270E4E6918600E20A3E581598E3EC7C8A9804"
+    },
+    {
+      "path": "artifacts/offline-fixtures/audio/tx-voice-like/candidate-under-test.json",
+      "scenarioId": "tx-voice-like",
+      "comparisonId": "candidate-under-test",
+      "kind": "wdsp-tx-iq-render-summary",
+      "sampleRateHz": 48000,
+      "sampleCount": 16384,
+      "sha256": "E74DA5BCA624E6057A36EAEA0DDF966ADC4C7DB18218909CB0F84FEE46B9E0CC"
+    }
+  ]
+}

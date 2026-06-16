@@ -1,0 +1,762 @@
+{
+  "schemaVersion": 1,
+  "tool": "dsp-fixture-evidence",
+  "generatedUtc": "2026-06-16T14:16:47.8602413+00:00",
+  "benchmarkPlanPath": "benchmark-plan.json",
+  "metricCatalogPath": "benchmark-metric-catalog.json",
+  "fixtureScenarioScope": "offline-fixture-ready",
+  "evidenceEngine": "wdsp",
+  "wdspRuntimeRid": "win-x64",
+  "wdspRuntimePath": "runtimes/win-x64/native/wdsp.dll",
+  "wdspRuntimePathKind": "app-output-relative",
+  "wdspRuntimeFileName": "wdsp.dll",
+  "wdspRuntimeLength": 5598208,
+  "wdspRuntimeSha256": "d684676acdb803fa9912c64fe707317eadbf03a0ccde2f068119378507465ede",
+  "wdspRuntimeStatus": "found",
+  "scenarioCount": 10,
+  "comparisonIds": [
+    "current-zeus",
+    "thetis-parity",
+    "candidate-under-test"
+  ],
+  "generatedScenarioIds": [
+    "weak-cw-carrier",
+    "ssb-like-speech",
+    "fading-carrier",
+    "impulse-noise",
+    "strong-adjacent",
+    "noise-only-gating",
+    "agc-level-step",
+    "squelch-transition",
+    "tx-two-tone",
+    "tx-voice-like"
+  ],
+  "skippedNonFixtureScenarioIds": [],
+  "acceptanceLimitations": [
+    "WDSP-backed offline fixture evidence exercises WdspDspEngine RXA/TXA but does not prove on-air or hardware acceptance.",
+    "Thetis parity still requires source parity review plus G2 live/bench evidence.",
+    "PureSignal-safe bypass and cross-radio evidence remain separate default-graduation gates."
+  ],
+  "scenarios": [
+    {
+      "scenarioId": "weak-cw-carrier",
+      "scenarioName": "weak-cw-carrier",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Weak coherent carrier in broadband noise.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.215208,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/weak-cw-carrier/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/weak-cw-carrier/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.044105,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/weak-cw-carrier/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/weak-cw-carrier/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.035999,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/weak-cw-carrier/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/weak-cw-carrier/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "ssb-like-speech",
+      "scenarioName": "ssb-like-speech",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "SSB-like formant content with slow speech envelope.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.210989,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/ssb-like-speech/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/ssb-like-speech/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.042893,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/ssb-like-speech/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/ssb-like-speech/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.03412,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/ssb-like-speech/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/ssb-like-speech/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "fading-carrier",
+      "scenarioName": "fading-carrier",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Coherent carrier under deterministic fading.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.194421,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/fading-carrier/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/fading-carrier/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.037657,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/fading-carrier/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/fading-carrier/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.032397,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/fading-carrier/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/fading-carrier/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "impulse-noise",
+      "scenarioName": "impulse-noise",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Wanted carrier plus periodic impulse noise.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.132071,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/impulse-noise/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/impulse-noise/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.033129,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/impulse-noise/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/impulse-noise/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.073115,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/impulse-noise/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/impulse-noise/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "strong-adjacent",
+      "scenarioName": "strong-adjacent",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Weak wanted signal beside a strong adjacent blocker.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.204008,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/strong-adjacent/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/strong-adjacent/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.040725,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/strong-adjacent/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/strong-adjacent/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.048958,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/strong-adjacent/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/strong-adjacent/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "noise-only-gating",
+      "scenarioName": "noise-only-gating",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Broadband noise-only input for false-open checks.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.206517,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/noise-only-gating/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/noise-only-gating/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.03793,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/noise-only-gating/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/noise-only-gating/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.032432,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/noise-only-gating/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/noise-only-gating/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "agc-level-step",
+      "scenarioName": "agc-level-step",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Three-level wanted carrier step for AGC pumping checks.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.154316,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/agc-level-step/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/agc-level-step/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.030631,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/agc-level-step/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/agc-level-step/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.024247,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/agc-level-step/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/agc-level-step/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "squelch-transition",
+      "scenarioName": "squelch-transition",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Noise-signal-noise transition for squelch open/close behavior.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-current-nr-off",
+          "metrics": {
+            "outputRms": 0.212952,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/squelch-transition/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/squelch-transition/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-emnr-nr2-thetis-parity",
+          "metrics": {
+            "outputRms": 0.04041,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/squelch-transition/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/squelch-transition/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-nr5-spnr-candidate",
+          "metrics": {
+            "outputRms": 0.03521,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/squelch-transition/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/squelch-transition/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "tx-two-tone",
+      "scenarioName": "tx-two-tone",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "TX two-tone linearity probe.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-txa-current-defaults",
+          "metrics": {
+            "outputRms": 0.623025,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/tx-two-tone/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/tx-two-tone/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-txa-thetis-defaults",
+          "metrics": {
+            "outputRms": 0.623025,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/tx-two-tone/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/tx-two-tone/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-txa-current-safe-bypass",
+          "metrics": {
+            "outputRms": 0.623025,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/tx-two-tone/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/tx-two-tone/candidate-under-test.json"
+          }
+        }
+      ]
+    },
+    {
+      "scenarioId": "tx-voice-like",
+      "scenarioName": "tx-voice-like",
+      "fixtureStatus": "offline-fixture-ready",
+      "signalPath": "offline",
+      "fixtureSummary": "Voice-like TX audio envelope and spectrum.",
+      "comparisons": [
+        {
+          "comparisonId": "current-zeus",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-txa-current-defaults",
+          "metrics": {
+            "outputRms": 0.273514,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/tx-voice-like/current-zeus.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/tx-voice-like/current-zeus.json"
+          }
+        },
+        {
+          "comparisonId": "thetis-parity",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-txa-thetis-defaults",
+          "metrics": {
+            "outputRms": 0.273514,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/tx-voice-like/thetis-parity.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/tx-voice-like/thetis-parity.json"
+          }
+        },
+        {
+          "comparisonId": "candidate-under-test",
+          "source": "wdsp-fixture-runner",
+          "profile": "wdsp-txa-current-safe-bypass",
+          "metrics": {
+            "outputRms": 0.273514,
+            "clippingCount": 0
+          },
+          "gates": [
+            {
+              "id": "wdsp-fixture-executed",
+              "passed": true,
+              "status": "pass",
+              "note": "WDSP offline fixture executed; hardware acceptance remains a separate gate."
+            }
+          ],
+          "evidence": {
+            "audioPath": "artifacts/offline-fixtures/audio/tx-voice-like/candidate-under-test.json",
+            "spectrumPath": "artifacts/offline-fixtures/spectrum/tx-voice-like/candidate-under-test.json"
+          }
+        }
+      ]
+    }
+  ]
+}
