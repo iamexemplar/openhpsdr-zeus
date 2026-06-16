@@ -76,10 +76,14 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
   const rendererRef = useRef<ReturnType<typeof createWfRenderer> | null>(null);
   const popEnabled = useSignalEnhanceStore((s) => s.popEnabled);
   const popRenderIntensity = useSignalEnhanceStore((s) => s.popRenderIntensity);
+  const waterfallReliefDepth = useSignalEnhanceStore((s) => s.waterfallReliefDepth);
+  const waterfallSmoothness = useSignalEnhanceStore((s) => s.waterfallSmoothness);
   const moxOn = useTxStore((s) => s.moxOn);
   const tunOn = useTxStore((s) => s.tunOn);
   const popActive = popEnabled && !moxOn && !tunOn;
   const popIntensityCss = Math.max(0, Math.min(1, popRenderIntensity / 100)).toFixed(2);
+  const reliefDepthCss = Math.max(0, Math.min(1, waterfallReliefDepth / 100)).toFixed(2);
+  const smoothnessCss = Math.max(0, Math.min(1, waterfallSmoothness / 100)).toFixed(2);
   // Live transparency, read by buildRenderer() on context-restore so a rebuild
   // mid-QRZ-mode comes back transparent rather than occluding the map (#629).
   const transparentRef = useRef(transparent);
@@ -131,8 +135,10 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
       const signalEnhance = useSignalEnhanceStore.getState();
       const active = isPopRenderActive();
       const intensity = active ? Math.max(0, Math.min(1, signalEnhance.popRenderIntensity / 100)) : 0;
+      const reliefDepth = active ? Math.max(0, Math.min(1, signalEnhance.waterfallReliefDepth / 100)) : 0;
+      const smoothness = active ? Math.max(0, Math.min(1, signalEnhance.waterfallSmoothness / 100)) : 0;
       const colormap: RenderColormapId = active ? 'pop' : useDisplaySettingsStore.getState().colormap;
-      renderer.setPopMode(active, intensity);
+      renderer.setPopMode(active, intensity, reliefDepth, smoothness);
       renderer.setColormap(colormap);
     };
 
@@ -210,11 +216,13 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
       // keeps the absolute dB window.
       const popOn = pop.popEnabled && !keyed;
       const popIntensity = popOn ? Math.max(0, Math.min(1, pop.popRenderIntensity / 100)) : 0;
+      const reliefDepth = popOn ? Math.max(0, Math.min(1, pop.waterfallReliefDepth / 100)) : 0;
+      const smoothness = popOn ? Math.max(0, Math.min(1, pop.waterfallSmoothness / 100)) : 0;
       // Mirror DbScale.tsx — keyed (MOX/TUN) renders the TX waterfall
       // window so the operator's RX noise-floor view stays put.
       const dbMin = popOn ? 0 : keyed ? wfTxDbMin : wfDbMin;
       const dbMax = popOn ? 1 : keyed ? wfTxDbMax : wfDbMax;
-      renderer.setPopMode(popOn, popIntensity);
+      renderer.setPopMode(popOn, popIntensity, reliefDepth, smoothness);
       renderer.draw(
         dbMin,
         dbMax,
@@ -416,6 +424,8 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
         state.popSpanDb !== prev.popSpanDb ||
         state.popGamma !== prev.popGamma ||
         state.popRenderIntensity !== prev.popRenderIntensity ||
+        state.waterfallReliefDepth !== prev.waterfallReliefDepth ||
+        state.waterfallSmoothness !== prev.waterfallSmoothness ||
         state.coherenceHoldGate !== prev.coherenceHoldGate ||
         state.coherenceBoostDb !== prev.coherenceBoostDb ||
         state.ridgeBoost !== prev.ridgeBoost ||
@@ -524,7 +534,11 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
         height: '100%',
         background: popActive ? 'var(--pop-surface-bg)' : 'var(--wf-0)',
         ...(popActive
-          ? ({ ['--pop-intensity' as string]: popIntensityCss } as CSSProperties)
+          ? ({
+              ['--pop-intensity' as string]: popIntensityCss,
+              ['--pop-relief' as string]: reliefDepthCss,
+              ['--pop-smoothness' as string]: smoothnessCss,
+            } as CSSProperties)
           : undefined),
       }}
     >

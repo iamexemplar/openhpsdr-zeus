@@ -2357,6 +2357,16 @@ public static class ZeusEndpoints
             error = "popRenderIntensity must be 0..100";
             return false;
         }
+        if (settings.WaterfallReliefDepth < 0 || settings.WaterfallReliefDepth > 100)
+        {
+            error = "waterfallReliefDepth must be 0..100";
+            return false;
+        }
+        if (settings.WaterfallSmoothness < 0 || settings.WaterfallSmoothness > 100)
+        {
+            error = "waterfallSmoothness must be 0..100";
+            return false;
+        }
         if (!IsFinite(settings.CoherenceHoldGate) || settings.CoherenceHoldGate < 0.2 || settings.CoherenceHoldGate > 0.8)
         {
             error = "coherenceHoldGate must be 0.2..0.8";

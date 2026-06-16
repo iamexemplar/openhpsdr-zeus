@@ -118,4 +118,45 @@ public class TxActiveChangedTests : IDisposable
 
         Assert.Equal(0, sink.CurrentRingDepth);
     }
+
+    [Fact]
+    public void NativeAudioSink_RebuffersUntilEnoughRxSamplesAreQueued()
+    {
+        var sink = new NativeAudioSink(NullLogger<NativeAudioSink>.Instance);
+        var shortFrame = BuildMonoFrame(200);
+        sink.Publish(in shortFrame);
+
+        var output = new float[480 * 2];
+        sink.RenderPlaybackForTest(output, 480, 2);
+
+        Assert.All(output, s => Assert.Equal(0f, s));
+        Assert.Equal(200, sink.CurrentRingDepth);
+
+        var refill = BuildMonoFrame(800);
+        sink.Publish(in refill);
+        sink.RenderPlaybackForTest(output, 480, 2);
+
+        Assert.Contains(output, s => s > 0f);
+        Assert.Equal(520, sink.CurrentRingDepth);
+    }
+
+    [Fact]
+    public void NativeAudioSink_RebuffersInsteadOfSplicingPartialRxTailIntoSilence()
+    {
+        var sink = new NativeAudioSink(NullLogger<NativeAudioSink>.Instance);
+        var frame = BuildMonoFrame(1000);
+        sink.Publish(in frame);
+
+        var output = new float[480 * 2];
+        sink.RenderPlaybackForTest(output, 480, 2);
+        Assert.Equal(520, sink.CurrentRingDepth);
+
+        sink.RenderPlaybackForTest(output, 480, 2);
+        Assert.Equal(40, sink.CurrentRingDepth);
+
+        sink.RenderPlaybackForTest(output, 480, 2);
+
+        Assert.All(output, s => Assert.Equal(0f, s));
+        Assert.Equal(40, sink.CurrentRingDepth);
+    }
 }

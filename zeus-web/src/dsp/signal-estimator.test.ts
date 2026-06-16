@@ -29,6 +29,7 @@ import {
   recommendSignalEnhanceScene,
   signalExtentHz,
   signalEnhanceProfileForMode,
+  signalEnhanceSettingsFromState,
   useSignalEnhanceStore,
 } from './signal-estimator';
 
@@ -83,6 +84,8 @@ describe('signal estimator — spatial floor', () => {
       popFloorDb: -10,
       popGamma: 2,
       popRenderIntensity: 250,
+      waterfallReliefDepth: 250,
+      waterfallSmoothness: -20,
       snapRadiusHz: 99_999,
     });
     const tuned = useSignalEnhanceStore.getState();
@@ -90,7 +93,22 @@ describe('signal estimator — spatial floor', () => {
     expect(tuned.popFloorDb).toBe(0);
     expect(tuned.popGamma).toBe(1.2);
     expect(tuned.popRenderIntensity).toBe(100);
+    expect(tuned.waterfallReliefDepth).toBe(100);
+    expect(tuned.waterfallSmoothness).toBe(0);
     expect(tuned.snapRadiusHz).toBe(12_000);
+  });
+
+  it('migrates early subtle waterfall relief values to visible defaults', () => {
+    const state = useSignalEnhanceStore.getState();
+    state.applySignalEnhanceSettings({
+      ...signalEnhanceSettingsFromState(state),
+      waterfallReliefDepth: 48,
+      waterfallSmoothness: 42,
+    });
+
+    const tuned = useSignalEnhanceStore.getState();
+    expect(tuned.waterfallReliefDepth).toBe(92);
+    expect(tuned.waterfallSmoothness).toBe(64);
   });
 
   it('maps RX modes to signal-intelligence profiles and lets manual tuning leave auto mode', () => {

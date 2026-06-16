@@ -781,15 +781,9 @@ internal static partial class NativeMethods
 
     // CFC (Continuous Frequency Compressor — multi-band frequency-domain
     // compressor sitting in xtxa between xeqp and xbandpass). Issue #123.
-    // Entry points are case-sensitive — note `prof_i_le` is lowercase per
-    // cfcomp.c. Verified via `nm -D libwdsp.so | grep -i CFC`.
-    //
     // SetTXACFCOMPprofile takes parallel arrays F[], G[], E[] (frequency Hz,
-    // compression dB, post-EQ gain dB) plus optional Q-derivative arrays for
-    // the *parametric* mode. Pass IntPtr.Zero for Qg/Qe to select the classic
-    // (pihpsdr / PowerSDR) non-parametric mode — cfcomp.c:122-123 falls back
-    // to linear interpolation when the Q pointers are NULL. The caller pins
-    // F/G/E with `fixed` blocks and passes them via `ref *pF`.
+    // compression dB, post-EQ gain dB). The caller pins F/G/E with `fixed`
+    // blocks and passes them via `ref *pF`.
     [LibraryImport(LibraryName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void SetTXACFCOMPprofile(
@@ -797,9 +791,7 @@ internal static partial class NativeMethods
         int nfreqs,
         ref double F,
         ref double G,
-        ref double E,
-        IntPtr Qg,
-        IntPtr Qe);
+        ref double E);
 
     // Frequency-independent pre-compressor gain (dB).
     [LibraryImport(LibraryName)]

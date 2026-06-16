@@ -11,6 +11,9 @@ namespace Zeus.Server;
 
 public sealed class DisplayIntelligenceSettingsStore : IDisposable
 {
+    private const int LegacyWaterfallReliefDepth = 48;
+    private const int LegacyWaterfallSmoothness = 42;
+
     private readonly LiteDatabase _db;
     private readonly ILiteCollection<DisplayIntelligenceSettingsEntry> _docs;
     private readonly ILogger<DisplayIntelligenceSettingsStore> _log;
@@ -51,6 +54,8 @@ public sealed class DisplayIntelligenceSettingsStore : IDisposable
                     e.PopSpanDb,
                     e.PopGamma,
                     e.PopRenderIntensity,
+                    e.WaterfallReliefDepth,
+                    e.WaterfallSmoothness,
                     e.CoherenceHoldGate,
                     e.CoherenceBoostDb,
                     e.RidgeBoost,
@@ -81,6 +86,8 @@ public sealed class DisplayIntelligenceSettingsStore : IDisposable
             e.PopSpanDb = normalized.PopSpanDb;
             e.PopGamma = normalized.PopGamma;
             e.PopRenderIntensity = normalized.PopRenderIntensity;
+            e.WaterfallReliefDepth = normalized.WaterfallReliefDepth;
+            e.WaterfallSmoothness = normalized.WaterfallSmoothness;
             e.CoherenceHoldGate = normalized.CoherenceHoldGate;
             e.CoherenceBoostDb = normalized.CoherenceBoostDb;
             e.RidgeBoost = normalized.RidgeBoost;
@@ -109,6 +116,8 @@ public sealed class DisplayIntelligenceSettingsStore : IDisposable
         PopSpanDb: 30.0,
         PopGamma: 0.5,
         PopRenderIntensity: 72,
+        WaterfallReliefDepth: 92,
+        WaterfallSmoothness: 64,
         CoherenceHoldGate: 0.45,
         CoherenceBoostDb: 4.0,
         RidgeBoost: 0.35,
@@ -123,6 +132,16 @@ public sealed class DisplayIntelligenceSettingsStore : IDisposable
     {
         var d = Defaults();
         var profileId = NormalizeProfileId(s.ProfileId, d.ProfileId);
+        var waterfallReliefDepth = Math.Clamp(s.WaterfallReliefDepth, 0, 100);
+        var waterfallSmoothness = Math.Clamp(s.WaterfallSmoothness, 0, 100);
+        if (
+            waterfallReliefDepth == LegacyWaterfallReliefDepth &&
+            waterfallSmoothness == LegacyWaterfallSmoothness)
+        {
+            waterfallReliefDepth = d.WaterfallReliefDepth;
+            waterfallSmoothness = d.WaterfallSmoothness;
+        }
+
         return s with
         {
             ProfileId = profileId,
@@ -130,6 +149,8 @@ public sealed class DisplayIntelligenceSettingsStore : IDisposable
             PopSpanDb = ClampFinite(s.PopSpanDb, 12.0, 60.0, d.PopSpanDb),
             PopGamma = ClampFinite(s.PopGamma, 0.3, 1.2, d.PopGamma),
             PopRenderIntensity = Math.Clamp(s.PopRenderIntensity, 0, 100),
+            WaterfallReliefDepth = waterfallReliefDepth,
+            WaterfallSmoothness = waterfallSmoothness,
             CoherenceHoldGate = ClampFinite(s.CoherenceHoldGate, 0.2, 0.8, d.CoherenceHoldGate),
             CoherenceBoostDb = ClampFinite(s.CoherenceBoostDb, 0.0, 8.0, d.CoherenceBoostDb),
             RidgeBoost = ClampFinite(s.RidgeBoost, 0.0, 0.8, d.RidgeBoost),
@@ -175,6 +196,8 @@ public sealed class DisplayIntelligenceSettingsEntry
     public double PopSpanDb { get; set; } = 30.0;
     public double PopGamma { get; set; } = 0.5;
     public int PopRenderIntensity { get; set; } = 72;
+    public int WaterfallReliefDepth { get; set; } = 92;
+    public int WaterfallSmoothness { get; set; } = 64;
     public double CoherenceHoldGate { get; set; } = 0.45;
     public double CoherenceBoostDb { get; set; } = 4.0;
     public double RidgeBoost { get; set; } = 0.35;

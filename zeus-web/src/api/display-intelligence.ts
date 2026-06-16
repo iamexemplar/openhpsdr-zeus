@@ -15,6 +15,8 @@ export type DisplayIntelligenceSettings = {
   popSpanDb: number;
   popGamma: number;
   popRenderIntensity: number;
+  waterfallReliefDepth: number;
+  waterfallSmoothness: number;
   coherenceHoldGate: number;
   coherenceBoostDb: number;
   ridgeBoost: number;
@@ -38,6 +40,8 @@ export const DISPLAY_INTELLIGENCE_DEFAULTS: DisplayIntelligenceSettings = {
   popSpanDb: 30,
   popGamma: 0.5,
   popRenderIntensity: 72,
+  waterfallReliefDepth: 92,
+  waterfallSmoothness: 64,
   coherenceHoldGate: 0.45,
   coherenceBoostDb: 4,
   ridgeBoost: 0.35,
@@ -48,6 +52,9 @@ export const DISPLAY_INTELLIGENCE_DEFAULTS: DisplayIntelligenceSettings = {
   snapMinSnrDb: 6,
   peakMinSnrDb: 8,
 };
+
+const LEGACY_WATERFALL_RELIEF_DEPTH = 48;
+const LEGACY_WATERFALL_SMOOTHNESS = 42;
 
 function clampFinite(value: unknown, min: number, max: number, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value)
@@ -77,6 +84,15 @@ function profileId(value: unknown): DisplayIntelligenceSettings['profileId'] {
 export function normalizeDisplayIntelligenceSettings(raw: unknown): DisplayIntelligenceSettings {
   const r = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
   const d = DISPLAY_INTELLIGENCE_DEFAULTS;
+  let waterfallReliefDepth = clampInt(r.waterfallReliefDepth, 0, 100, d.waterfallReliefDepth);
+  let waterfallSmoothness = clampInt(r.waterfallSmoothness, 0, 100, d.waterfallSmoothness);
+  if (
+    waterfallReliefDepth === LEGACY_WATERFALL_RELIEF_DEPTH &&
+    waterfallSmoothness === LEGACY_WATERFALL_SMOOTHNESS
+  ) {
+    waterfallReliefDepth = d.waterfallReliefDepth;
+    waterfallSmoothness = d.waterfallSmoothness;
+  }
   return {
     profileId: profileId(typeof r.profileId === 'string' ? r.profileId.trim().toLowerCase() : r.profileId),
     popEnabled: typeof r.popEnabled === 'boolean' ? r.popEnabled : d.popEnabled,
@@ -89,6 +105,8 @@ export function normalizeDisplayIntelligenceSettings(raw: unknown): DisplayIntel
     popSpanDb: clampFinite(r.popSpanDb, 12, 60, d.popSpanDb),
     popGamma: clampFinite(r.popGamma, 0.3, 1.2, d.popGamma),
     popRenderIntensity: clampInt(r.popRenderIntensity, 0, 100, d.popRenderIntensity),
+    waterfallReliefDepth,
+    waterfallSmoothness,
     coherenceHoldGate: clampFinite(r.coherenceHoldGate, 0.2, 0.8, d.coherenceHoldGate),
     coherenceBoostDb: clampFinite(r.coherenceBoostDb, 0, 8, d.coherenceBoostDb),
     ridgeBoost: clampFinite(r.ridgeBoost, 0, 0.8, d.ridgeBoost),

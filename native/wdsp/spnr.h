@@ -26,6 +26,7 @@ typedef struct _spnr {
   int incr;
   double rate;
   double* window;
+  double* dry;
   int iasize;
   double* inaccum;
   double* forfftin;
@@ -66,6 +67,7 @@ typedef struct _spnr {
   double agc_gate;
   double agc_env;
   double agc_level_drive;
+  double agc_makeup_gain;
   double agc_attack;
   double agc_release;
   double diag_input_rms;

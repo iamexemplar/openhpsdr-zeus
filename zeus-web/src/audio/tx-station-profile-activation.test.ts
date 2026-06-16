@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DX_PROFILE, txStationProfileToDto } from './tx-station-profile';
+import { useAudioSuiteStore } from '../state/audio-suite-store';
 import { useConnectionStore } from '../state/connection-store';
 import { useTxStore } from '../state/tx-store';
 import {
@@ -19,6 +20,32 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
+type RadioStateProfile = Pick<
+  typeof DX_PROFILE,
+  | 'micGainDb'
+  | 'levelerMaxGainDb'
+  | 'txLeveling'
+  | 'lowCutHz'
+  | 'highCutHz'
+  | 'cfcConfig'
+>;
+
+function radioStateForProfile(profile: RadioStateProfile = DX_PROFILE): Record<string, unknown> {
+  return {
+    status: 'Connected',
+    endpoint: '192.168.1.20:1024',
+    mode: 'USB',
+    micGainDb: profile.micGainDb,
+    levelerMaxGainDb: profile.levelerMaxGainDb,
+    txLeveling: profile.txLeveling,
+    txFilterLowHz: profile.lowCutHz,
+    txFilterHighHz: profile.highCutHz,
+    cfc: profile.cfcConfig,
+    drivePct: 0,
+    tunePct: 10,
+  };
+}
+
 describe('tx-station-profile activation', () => {
   beforeEach(() => {
     resetTxStationProfileActivation();
@@ -30,6 +57,13 @@ describe('tx-station-profile activation', () => {
     useTxStore.setState({
       micGainDb: 0,
       levelerMaxGainDb: 8,
+    });
+    useAudioSuiteStore.setState({
+      processingMode: 'native',
+      vstEngineAvailable: false,
+      vstEngineActive: false,
+      masterBypassed: true,
+      selectedProfile: '',
     });
   });
 
@@ -68,7 +102,7 @@ describe('tx-station-profile activation', () => {
         return jsonResponse({ levelerMaxGainDb: 12 });
       }
       if (url === '/api/tx/leveling' || url === '/api/tx-filter' || url === '/api/tx/cfc') {
-        return jsonResponse({ status: 'Connected', mode: 'USB', cfc: dx.cfcConfig });
+        return jsonResponse(radioStateForProfile(dx));
       }
       return jsonResponse({});
     });
@@ -103,7 +137,7 @@ describe('tx-station-profile activation', () => {
       if (url === '/api/mic-gain') return jsonResponse({ micGainDb: -2 });
       if (url === '/api/tx/leveler-max-gain') return jsonResponse({ levelerMaxGainDb: 12 });
       if (url === '/api/tx/leveling' || url === '/api/tx-filter' || url === '/api/tx/cfc') {
-        return jsonResponse({ status: 'Connected', mode: 'USB', cfc: DX_PROFILE.cfcConfig });
+        return jsonResponse(radioStateForProfile(DX_PROFILE));
       }
       return jsonResponse({});
     });

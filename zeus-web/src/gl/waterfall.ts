@@ -106,7 +106,7 @@ export type WfRenderer = {
   draw: (dbMin: number, dbMax: number, viewCenterHz?: number | null) => void;
   setColormap: (id: RenderColormapId) => void;
   /** Enables and tunes the Signal Pop waterfall shader treatment. */
-  setPopMode: (active: boolean, intensity?: number) => void;
+  setPopMode: (active: boolean, intensity?: number, reliefDepth?: number, smoothness?: number) => void;
   /** 1.0 = opaque (default). 0.0 = noise floor fades to transparent so a
    *  background layer (e.g. the QRZ-mode Leaflet map) shows through. */
   setTransparent: (transparent: boolean) => void;
@@ -171,9 +171,14 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
   const uSeedDbDraw = gl.getUniformLocation(drawProg, 'uSeedDb');
   const uPopActive = gl.getUniformLocation(drawProg, 'uPopActive');
   const uPopIntensity = gl.getUniformLocation(drawProg, 'uPopIntensity');
+  const uReliefDepth = gl.getUniformLocation(drawProg, 'uReliefDepth');
+  const uSmoothness = gl.getUniformLocation(drawProg, 'uSmoothness');
+  const uTexW = gl.getUniformLocation(drawProg, 'uTexW');
   let bgAlpha = 1;
   let popActive = false;
   let popIntensity = 0;
+  let reliefDepth = 0;
+  let smoothness = 0;
 
   const remapProg = buildProgram(gl, WF_VS, WF_REMAP_FS);
   const uRemapSrc = gl.getUniformLocation(remapProg, 'uSrc');
@@ -386,9 +391,11 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     setTransparent(transparent) {
       bgAlpha = transparent ? 0 : 1;
     },
-    setPopMode(active, intensity = active ? 1 : 0) {
+    setPopMode(active, intensity = active ? 1 : 0, nextReliefDepth = 0, nextSmoothness = 0) {
       popActive = active;
       popIntensity = Number.isFinite(intensity) ? Math.max(0, Math.min(1, intensity)) : 0;
+      reliefDepth = Number.isFinite(nextReliefDepth) ? Math.max(0, Math.min(1, nextReliefDepth)) : 0;
+      smoothness = Number.isFinite(nextSmoothness) ? Math.max(0, Math.min(1, nextSmoothness)) : 0;
     },
     clearHistory() {
       if (texWidth > 0) resetTextures(texWidth);
@@ -431,6 +438,9 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
       gl.uniform1f(uSeedDbDraw, SEED_DB);
       gl.uniform1f(uPopActive, popActive ? 1 : 0);
       gl.uniform1f(uPopIntensity, popIntensity);
+      gl.uniform1f(uReliefDepth, reliefDepth);
+      gl.uniform1f(uSmoothness, smoothness);
+      gl.uniform1f(uTexW, texWidth);
       gl.bindVertexArray(vao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindVertexArray(null);

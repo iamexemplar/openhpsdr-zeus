@@ -113,6 +113,9 @@ public partial class Program
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool FreeConsole();
 
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
+
     private static void HideConsoleOnWindows()
     {
         if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
@@ -159,7 +162,15 @@ public partial class Program
         if (args.Contains("--desktop"))
         {
             HideConsoleOnWindows();
-            return RunDesktop(args);
+            try
+            {
+                return RunDesktop(args);
+            }
+            catch (Exception ex) when (IsAddressInUse(ex))
+            {
+                ReportStartupAddressInUse(ex);
+                return 1;
+            }
         }
 
         if (args.Contains("--server"))
@@ -170,7 +181,15 @@ public partial class Program
             // deploys (Docker, Pi) keep using the no-flag path and never
             // load Photino.
             HideConsoleOnWindows();
-            return RunServerWithStatus(args);
+            try
+            {
+                return RunServerWithStatus(args);
+            }
+            catch (Exception ex) when (IsAddressInUse(ex))
+            {
+                ReportStartupAddressInUse(ex);
+                return 1;
+            }
         }
 
         return RunService(args).GetAwaiter().GetResult();
@@ -259,13 +278,21 @@ public partial class Program
         // a random port makes every desktop launch a new web origin, which
         // strands localStorage-backed UI preferences. If the preferred port is
         // busy we fall back to port 0 so Zeus still launches.
+        var lanHttpsPort = LanCertificate.GetHttpsPort();
+        var shareOverLan = IsAnyTcpPortAvailable(lanHttpsPort);
+        if (!shareOverLan)
+        {
+            Console.WriteLine(
+                $"LAN share port {lanHttpsPort} is already in use; desktop will start loopback-only for this launch.");
+        }
+
         var hostOptions = new ZeusHostOptions
         {
             HostMode = ZeusHostMode.Desktop,
             HttpPort = ResolveDesktopHttpPort(),
             BindAllInterfaces = false,
-            UseHttpsLanCert = true,
-            ShareOverLan = true,
+            UseHttpsLanCert = shareOverLan,
+            ShareOverLan = shareOverLan,
             PrintConsoleBanner = false,
         };
 
@@ -293,10 +320,12 @@ public partial class Program
         // operator gets a copy-pasteable URL per NIC. If for some reason no LAN
         // NIC is visible (offline laptop, ethernet down) we just skip this
         // line — the Photino window still works.
-        var lanHttpsPort = LanCertificate.GetHttpsPort();
-        foreach (var ip in LanCertificate.GetLanIps())
+        if (hostOptions.ShareOverLan)
         {
-            Console.WriteLine($"OpenhpsdrZeus (desktop) LAN share: https://{ip}:{lanHttpsPort}");
+            foreach (var ip in LanCertificate.GetLanIps())
+            {
+                Console.WriteLine($"OpenhpsdrZeus (desktop) LAN share: https://{ip}:{lanHttpsPort}");
+            }
         }
 
         // SetUseOsDefaultLocation(false)+Center so first launch doesn't drop the
@@ -583,6 +612,61 @@ public partial class Program
         {
             return false;
         }
+    }
+
+    private static bool IsAnyTcpPortAvailable(int port)
+    {
+        try
+        {
+            using var socket = new Socket(AddressFamily.InterNetworkV6, SocketType.Stream, ProtocolType.Tcp);
+            socket.DualMode = true;
+            socket.ExclusiveAddressUse = true;
+            socket.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            try
+            {
+                using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                socket.ExclusiveAddressUse = true;
+                socket.Bind(new IPEndPoint(IPAddress.Any, port));
+                return true;
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
+        }
+    }
+
+    private static bool IsAddressInUse(Exception ex)
+    {
+        for (var cur = ex; cur is not null; cur = cur.InnerException)
+        {
+            if (cur is SocketException { SocketErrorCode: SocketError.AddressAlreadyInUse })
+                return true;
+            if (cur.Message.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static void ReportStartupAddressInUse(Exception ex)
+    {
+        const string title = "Zeus is already using that port";
+        var message =
+            "Zeus could not start because one of its network ports is already in use. " +
+            "Close the other Zeus instance, or launch with ZEUS_PORT / ZEUS_DESKTOP_PORT set to a free port.\n\n" +
+            ex.GetBaseException().Message;
+        Console.Error.WriteLine($"{title}: {message}");
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            _ = MessageBoxW(IntPtr.Zero, message, title, 0x00000040);
     }
 
     private static int RunServerWithStatus(string[] args)

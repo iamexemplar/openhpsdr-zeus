@@ -42,6 +42,8 @@ public sealed class DisplayIntelligenceEndpointTests : IDisposable
         Assert.False(body.RootElement.GetProperty("popEnabled").GetBoolean());
         Assert.False(body.RootElement.GetProperty("autoNotchEnabled").GetBoolean());
         Assert.True(body.RootElement.GetProperty("visualAgcEnabled").GetBoolean());
+        Assert.Equal(92, body.RootElement.GetProperty("waterfallReliefDepth").GetInt32());
+        Assert.Equal(64, body.RootElement.GetProperty("waterfallSmoothness").GetInt32());
         Assert.Equal(4000, body.RootElement.GetProperty("snapRadiusHz").GetInt32());
     }
 
@@ -61,6 +63,8 @@ public sealed class DisplayIntelligenceEndpointTests : IDisposable
             popSpanDb = 24.0,
             popGamma = 0.42,
             popRenderIntensity = 92,
+            waterfallReliefDepth = 64,
+            waterfallSmoothness = 52,
             coherenceHoldGate = 0.38,
             coherenceBoostDb = 5.5,
             ridgeBoost = 0.5,
@@ -81,6 +85,8 @@ public sealed class DisplayIntelligenceEndpointTests : IDisposable
             using var body = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
             Assert.Equal("dx", body.RootElement.GetProperty("profileId").GetString());
             Assert.Equal(92, body.RootElement.GetProperty("popRenderIntensity").GetInt32());
+            Assert.Equal(64, body.RootElement.GetProperty("waterfallReliefDepth").GetInt32());
+            Assert.Equal(52, body.RootElement.GetProperty("waterfallSmoothness").GetInt32());
             Assert.True(body.RootElement.GetProperty("autoNotchEnabled").GetBoolean());
         }
 
@@ -94,14 +100,16 @@ public sealed class DisplayIntelligenceEndpointTests : IDisposable
             Assert.Equal("dx", body.RootElement.GetProperty("profileId").GetString());
             Assert.True(body.RootElement.GetProperty("popEnabled").GetBoolean());
             Assert.True(body.RootElement.GetProperty("autoNotchEnabled").GetBoolean());
+            Assert.Equal(64, body.RootElement.GetProperty("waterfallReliefDepth").GetInt32());
+            Assert.Equal(52, body.RootElement.GetProperty("waterfallSmoothness").GetInt32());
             Assert.Equal(5000, body.RootElement.GetProperty("snapRadiusHz").GetInt32());
         }
     }
 
     [Theory]
-    [InlineData("{\"profileId\":\"wide\",\"popEnabled\":false,\"snapEnabled\":false,\"autoNotchEnabled\":false,\"autoProfileEnabled\":false,\"visualAgcEnabled\":true,\"impulseRejectEnabled\":true,\"popFloorDb\":3,\"popSpanDb\":30,\"popGamma\":0.5,\"popRenderIntensity\":72,\"coherenceHoldGate\":0.45,\"coherenceBoostDb\":4,\"ridgeBoost\":0.35,\"ridgeMaxBoostDb\":8,\"visualAgcStrength\":45,\"impulseRejectDb\":18,\"snapRadiusHz\":4000,\"snapMinSnrDb\":6,\"peakMinSnrDb\":8}")]
-    [InlineData("{\"profileId\":\"balanced\",\"popEnabled\":false,\"snapEnabled\":false,\"autoNotchEnabled\":false,\"autoProfileEnabled\":false,\"visualAgcEnabled\":true,\"impulseRejectEnabled\":true,\"popFloorDb\":99,\"popSpanDb\":30,\"popGamma\":0.5,\"popRenderIntensity\":72,\"coherenceHoldGate\":0.45,\"coherenceBoostDb\":4,\"ridgeBoost\":0.35,\"ridgeMaxBoostDb\":8,\"visualAgcStrength\":45,\"impulseRejectDb\":18,\"snapRadiusHz\":4000,\"snapMinSnrDb\":6,\"peakMinSnrDb\":8}")]
-    [InlineData("{\"profileId\":\"balanced\",\"popEnabled\":false,\"snapEnabled\":false,\"autoNotchEnabled\":false,\"autoProfileEnabled\":false,\"visualAgcEnabled\":true,\"impulseRejectEnabled\":true,\"popFloorDb\":3,\"popSpanDb\":30,\"popGamma\":0.5,\"popRenderIntensity\":72,\"coherenceHoldGate\":0.45,\"coherenceBoostDb\":4,\"ridgeBoost\":0.35,\"ridgeMaxBoostDb\":8,\"visualAgcStrength\":45,\"impulseRejectDb\":18,\"snapRadiusHz\":50,\"snapMinSnrDb\":6,\"peakMinSnrDb\":8}")]
+    [InlineData("{\"profileId\":\"wide\",\"popEnabled\":false,\"snapEnabled\":false,\"autoNotchEnabled\":false,\"autoProfileEnabled\":false,\"visualAgcEnabled\":true,\"impulseRejectEnabled\":true,\"popFloorDb\":3,\"popSpanDb\":30,\"popGamma\":0.5,\"popRenderIntensity\":72,\"waterfallReliefDepth\":72,\"waterfallSmoothness\":56,\"coherenceHoldGate\":0.45,\"coherenceBoostDb\":4,\"ridgeBoost\":0.35,\"ridgeMaxBoostDb\":8,\"visualAgcStrength\":45,\"impulseRejectDb\":18,\"snapRadiusHz\":4000,\"snapMinSnrDb\":6,\"peakMinSnrDb\":8}")]
+    [InlineData("{\"profileId\":\"balanced\",\"popEnabled\":false,\"snapEnabled\":false,\"autoNotchEnabled\":false,\"autoProfileEnabled\":false,\"visualAgcEnabled\":true,\"impulseRejectEnabled\":true,\"popFloorDb\":99,\"popSpanDb\":30,\"popGamma\":0.5,\"popRenderIntensity\":72,\"waterfallReliefDepth\":72,\"waterfallSmoothness\":56,\"coherenceHoldGate\":0.45,\"coherenceBoostDb\":4,\"ridgeBoost\":0.35,\"ridgeMaxBoostDb\":8,\"visualAgcStrength\":45,\"impulseRejectDb\":18,\"snapRadiusHz\":4000,\"snapMinSnrDb\":6,\"peakMinSnrDb\":8}")]
+    [InlineData("{\"profileId\":\"balanced\",\"popEnabled\":false,\"snapEnabled\":false,\"autoNotchEnabled\":false,\"autoProfileEnabled\":false,\"visualAgcEnabled\":true,\"impulseRejectEnabled\":true,\"popFloorDb\":3,\"popSpanDb\":30,\"popGamma\":0.5,\"popRenderIntensity\":72,\"waterfallReliefDepth\":72,\"waterfallSmoothness\":56,\"coherenceHoldGate\":0.45,\"coherenceBoostDb\":4,\"ridgeBoost\":0.35,\"ridgeMaxBoostDb\":8,\"visualAgcStrength\":45,\"impulseRejectDb\":18,\"snapRadiusHz\":50,\"snapMinSnrDb\":6,\"peakMinSnrDb\":8}")]
     public async Task PutInvalidSettings_Returns400(string json)
     {
         using var factory = new Factory(_dbPath);

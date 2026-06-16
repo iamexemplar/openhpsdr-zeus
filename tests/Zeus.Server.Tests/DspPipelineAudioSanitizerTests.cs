@@ -40,6 +40,25 @@ public sealed class DspPipelineAudioSanitizerTests
     }
 
     [Fact]
+    public void LimitRxAudioBuffer_SoftLimitsFinalBusOverrange()
+    {
+        float[] samples =
+        {
+            float.NaN,
+            0.5f,
+            0.95f,
+            -1.1f,
+        };
+
+        DspPipelineService.LimitRxAudioBuffer(samples);
+
+        Assert.Equal(0f, samples[0]);
+        Assert.Equal(0.5f, samples[1]);
+        Assert.InRange(samples[2], 0.92f, 0.95f);
+        Assert.InRange(samples[3], -1.0f, -0.92f);
+    }
+
+    [Fact]
     public void SanitizeDisplayBuffer_ReplacesOnlyNonFiniteBins()
     {
         float[] bins =

@@ -197,7 +197,7 @@ describe('Waterfall', () => {
     });
 
     expect(renderer.clearHistory).toHaveBeenCalledTimes(1);
-    expect(renderer.setPopMode).toHaveBeenLastCalledWith(false, 0);
+    expect(renderer.setPopMode).toHaveBeenLastCalledWith(false, 0, 0, 0);
 
     unmount();
   });

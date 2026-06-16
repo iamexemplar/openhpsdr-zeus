@@ -178,6 +178,15 @@ public class DspPipelineService : BackgroundService,
         }
     }
 
+    internal static void LimitRxAudioBuffer(Span<float> samples)
+    {
+        for (int i = 0; i < samples.Length; i++)
+        {
+            float s = samples[i];
+            samples[i] = float.IsFinite(s) ? SoftLimitRxAudioSample(s) : 0f;
+        }
+    }
+
     internal static void SanitizeDisplayBuffer(Span<float> dbBins)
     {
         for (int i = 0; i < dbBins.Length; i++)
@@ -3271,7 +3280,7 @@ public class DspPipelineService : BackgroundService,
                 // block, so it reaches every sink in browser and desktop modes
                 // alike. No-op (one volatile read) when nothing is queued.
                 MixMonitorInject(audioBuf.AsSpan(0, audioSampleCount));
-                SanitizeAudioBuffer(audioBuf.AsSpan(0, audioSampleCount));
+                LimitRxAudioBuffer(audioBuf.AsSpan(0, audioSampleCount));
                 double finalAudioRms = Rms(audioBuf.AsSpan(0, audioSampleCount));
                 double finalAudioPeak = PeakAbs(audioBuf.AsSpan(0, audioSampleCount));
 

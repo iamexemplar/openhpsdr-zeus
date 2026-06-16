@@ -131,6 +131,14 @@ public static class DspBenchmarkCaptureManifestService
                 false,
                 all),
             Artifact(
+                "live-diagnostics-trace-index",
+                "trace",
+                "tools/run-dsp-live-diagnostics-matrix.ps1",
+                "Collect repeatable baseline or candidate live diagnostics windows across benchmark scenarios and write a bundle-compatible trace index.",
+                "once-per-baseline-or-candidate-scenario-matrix",
+                false,
+                all),
+            Artifact(
                 "benchmark-plan-json",
                 "endpoint-json",
                 "/api/dsp/benchmark-plan",
@@ -168,6 +176,14 @@ public static class DspBenchmarkCaptureManifestService
                 "/api/dsp/external-engine-candidates",
                 "Freeze opt-in external candidate blockers, license/package risk, and required benchmarks.",
                 "once-per-capture-bundle",
+                true,
+                all),
+            Artifact(
+                "wdsp-native-symbol-audit",
+                "native-audit-json",
+                "tools/audit-wdsp-native-symbols.ps1",
+                "Audit Zeus NativeMethods bindings against vendored WDSP source and native exports before accepting DSP changes.",
+                "once-per-native-build-and-candidate",
                 true,
                 all),
             Artifact(

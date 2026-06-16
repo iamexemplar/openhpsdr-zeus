@@ -42,12 +42,18 @@ not the separate panadapter display FFT.
 12. Build a signal-confidence gate from presence, salience, coherence, and
    ridge memory. The output normalizer uses that gate to authorize leveling,
    then drives confirmed weak and strong signals toward the same target RMS.
-   Its RMS envelope follows confirmed signal drops faster than noise-only
+   Its RMS envelope follows confirmed weak-signal drops faster than noise-only
    drops, confirmed signals can use a wider makeup range, and explicit gain
    slew limits plus a held level-drive keep the leveling action from audibly
-   pumping up and down. A final RMS limiter catches sudden powerful frames
-   above target without feeding that limiter reduction back into the long-term
-   AGC gain, avoiding fade-out/fade-in recovery cycles after loud bursts.
+   pumping up and down. Loud-to-weak transitions get extra recovery drive only
+   when NR5's confidence and spectral gain evidence still indicate signal
+   energy, so the normalizer can lift weak copy after a powerful block without
+   simply opening on the floor. A bounded fast makeup stage then gives those
+   confirmed weak blocks immediate lift before the final limiter, while
+   noise-only frames remain constrained by the slow gate. The final RMS limiter
+   catches sudden powerful frames above target without feeding that limiter
+   reduction back into the long-term AGC gain, avoiding fade-out/fade-in
+   recovery cycles after loud bursts.
 13. Report `dynamicRangeDb` against the effective post-NR floor, so diagnostics
     track usable recovered-signal range rather than only the pre-suppression
     learned input floor.
@@ -86,6 +92,10 @@ or train a model on operator audio.
 
 - NR5 is conservative by default. It should favor intelligibility and signal
   preservation over the deepest possible noise subtraction.
+- Weak-signal NR5 listening should be evaluated with fixed squelch, ANF, and
+  backend auto-AGC disabled. Each can gate or retune the same weak audio that
+  NR5 is trying to hold steady, which sounds like fade in/out even when the
+  NR5 post-normalizer is stable.
 - There are no public NR5 tunables in the first pass. The implementation should
   be judged against synthetic fixtures and on-air listening before exposing
   knobs.

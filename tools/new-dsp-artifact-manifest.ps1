@@ -255,7 +255,10 @@ $output = [ordered]@{
         "This scaffold is derived from benchmark-capture-manifest.json.",
         "Endpoint JSON is validated through bundle-index.json unless -IncludeEndpointJson is used.",
         "Use watch-dsp-live-diagnostics.ps1 for optional diagnostics-jsonl traces across live scenario windows.",
+        "Use run-dsp-live-diagnostics-matrix.ps1 for optional multi-scenario trace indexes; pass -IncludeOptionalArtifacts when this scaffold should include live-diagnostics-trace-index.",
         "Use compare-dsp-live-diagnostics-traces.ps1 to compare baseline and candidate live traces before accepting a candidate window.",
+        "For single-comparison artifact indexes, add comparisonIds to the artifact entry so validation checks only the captured comparison scope.",
+        "Run audit-wdsp-native-symbols.ps1 with -RequireBinaryExports for the required wdsp-native-symbol-audit.json before accepting native or P/Invoke changes.",
         "For plural audio, spectrum, and trace evidence, store an index JSON at the generated path with a files array of bundle-relative evidence file paths plus scenario/candidate metadata.",
         "Run compare-dsp-fixture-metrics.ps1 after offline-fixture-metrics.json is filled; strict validation requires dsp-fixture-metric-comparison.json.",
         "Run validate-dsp-modernization-bundle.ps1 with -RequireArtifactFiles only after every required path exists and is non-empty."

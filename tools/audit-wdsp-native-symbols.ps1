@@ -72,6 +72,24 @@ function Get-LineNumber {
     return 1 + ([regex]::Matches($Text.Substring(0, $Index), "`n")).Count
 }
 
+function Remove-CComments {
+    param([string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return ""
+    }
+
+    $withoutBlock = [regex]::Replace(
+        $Text,
+        "(?s)/\*.*?\*/",
+        {
+            param($match)
+            return ("`n" * ([regex]::Matches($match.Value, "`n")).Count)
+        })
+
+    return [regex]::Replace($withoutBlock, "(?m)//.*$", "")
+}
+
 function Get-ParameterList {
     param([string]$Parameters)
 
@@ -220,6 +238,7 @@ function Get-NativeSourceHits {
 
     foreach ($file in $sourceFiles) {
         $text = Read-TextFile $file.FullName
+        $signatureText = Remove-CComments $text
         foreach ($import in @($Imports)) {
             $symbol = [string]$import.symbolName
             if (-not $text.Contains($symbol)) {
@@ -228,12 +247,12 @@ function Get-NativeSourceHits {
 
             $escaped = [regex]::Escape($symbol)
             $signaturePattern = "(?ms)(?:^|[\r\n])\s*(?:(?:extern\s+)?(?:PORT|AGCPORT|WDSP_EXPORT|__declspec\s*\([^)]*\))\s+)?(?<return>[A-Za-z_][A-Za-z0-9_\s\*\[\]]*?)\s+$escaped\s*\((?<params>[^;{}]*?)\)\s*(?<kind>[;{])"
-            $signature = [regex]::Match($text, $signaturePattern)
+            $signature = [regex]::Match($signatureText, $signaturePattern)
             if ($signature.Success) {
                 $params = Get-ParameterList ([string]$signature.Groups["params"].Value)
                 $result[$symbol].Add([pscustomobject][ordered]@{
                     file = Resolve-RelativePath $file.FullName
-                    line = Get-LineNumber $text $signature.Index
+                    line = Get-LineNumber $signatureText $signature.Index
                     kind = if ([string]$signature.Groups["kind"].Value -eq "{") { "definition" } else { "prototype" }
                     returnType = ([string]$signature.Groups["return"].Value).Trim()
                     parameterCount = @($params).Count
@@ -301,88 +320,106 @@ function Resolve-WdspBinaryPath {
 function Get-PEExportNames {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    $bytes = [System.IO.File]::ReadAllBytes($Path)
-    function ReadU16([int]$Offset) { return [BitConverter]::ToUInt16($bytes, $Offset) }
-    function ReadU32([int]$Offset) { return [BitConverter]::ToUInt32($bytes, $Offset) }
-    function ReadAsciiZ([int]$Offset) {
-        $end = $Offset
-        while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) {
-            $end++
+    $stream = [System.IO.File]::OpenRead($Path)
+    $reader = New-Object System.IO.BinaryReader($stream)
+    try {
+        function ReadU16At([int64]$Offset) {
+            $null = $stream.Seek($Offset, [System.IO.SeekOrigin]::Begin)
+            return $reader.ReadUInt16()
         }
-        return [Text.Encoding]::ASCII.GetString($bytes, $Offset, $end - $Offset)
-    }
-
-    if ($bytes.Length -lt 0x100 -or [Text.Encoding]::ASCII.GetString($bytes, 0, 2) -ne "MZ") {
-        throw "Not a PE image: $Path"
-    }
-
-    $peOffset = [int](ReadU32 0x3C)
-    if ($peOffset -le 0 -or $peOffset + 0x18 -ge $bytes.Length) {
-        throw "Invalid PE header offset in $Path"
-    }
-    if ([Text.Encoding]::ASCII.GetString($bytes, $peOffset, 4) -ne "PE`0`0") {
-        throw "Invalid PE signature in $Path"
-    }
-
-    $numberOfSections = [int](ReadU16 ($peOffset + 6))
-    $optionalHeaderSize = [int](ReadU16 ($peOffset + 20))
-    $optionalHeader = $peOffset + 24
-    $magic = ReadU16 $optionalHeader
-    $dataDirectory = if ($magic -eq 0x20B) { $optionalHeader + 112 } elseif ($magic -eq 0x10B) { $optionalHeader + 96 } else { throw "Unsupported PE optional header magic 0x$($magic.ToString("X")) in $Path" }
-    $exportRva = [int](ReadU32 $dataDirectory)
-    if ($exportRva -eq 0) {
-        return @()
-    }
-
-    $sections = New-Object System.Collections.Generic.List[object]
-    $sectionOffset = $optionalHeader + $optionalHeaderSize
-    for ($i = 0; $i -lt $numberOfSections; $i++) {
-        $offset = $sectionOffset + ($i * 40)
-        if ($offset + 40 -gt $bytes.Length) {
-            break
+        function ReadU32At([int64]$Offset) {
+            $null = $stream.Seek($Offset, [System.IO.SeekOrigin]::Begin)
+            return $reader.ReadUInt32()
         }
-        $virtualSize = [int](ReadU32 ($offset + 8))
-        $virtualAddress = [int](ReadU32 ($offset + 12))
-        $rawSize = [int](ReadU32 ($offset + 16))
-        $rawPointer = [int](ReadU32 ($offset + 20))
-        $sections.Add([pscustomobject][ordered]@{
-            virtualAddress = $virtualAddress
-            virtualSize = $virtualSize
-            rawSize = $rawSize
-            rawPointer = $rawPointer
-        }) | Out-Null
-    }
+        function ReadBytesAt([int64]$Offset, [int]$Count) {
+            $null = $stream.Seek($Offset, [System.IO.SeekOrigin]::Begin)
+            return $reader.ReadBytes($Count)
+        }
+        function ReadAsciiZAt([int64]$Offset) {
+            $null = $stream.Seek($Offset, [System.IO.SeekOrigin]::Begin)
+            $bytes = New-Object System.Collections.Generic.List[byte]
+            while ($stream.Position -lt $stream.Length) {
+                $b = $reader.ReadByte()
+                if ($b -eq 0) {
+                    break
+                }
+                $bytes.Add($b) | Out-Null
+            }
+            return [Text.Encoding]::ASCII.GetString($bytes.ToArray())
+        }
 
-    function Convert-RvaToOffset([int]$Rva) {
-        foreach ($section in @($sections)) {
-            $start = [int]$section.virtualAddress
-            $length = [Math]::Max([int]$section.virtualSize, [int]$section.rawSize)
-            if ($Rva -ge $start -and $Rva -lt ($start + $length)) {
-                return [int]$section.rawPointer + ($Rva - $start)
+        if ($stream.Length -lt 0x100 -or [Text.Encoding]::ASCII.GetString((ReadBytesAt 0 2)) -ne "MZ") {
+            throw "Not a PE image: $Path"
+        }
+
+        $peOffset = [int](ReadU32At 0x3C)
+        if ($peOffset -le 0 -or $peOffset + 0x18 -ge $stream.Length) {
+            throw "Invalid PE header offset in $Path"
+        }
+        if ([Text.Encoding]::ASCII.GetString((ReadBytesAt $peOffset 4)) -ne "PE`0`0") {
+            throw "Invalid PE signature in $Path"
+        }
+
+        $numberOfSections = [int](ReadU16At ($peOffset + 6))
+        $optionalHeaderSize = [int](ReadU16At ($peOffset + 20))
+        $optionalHeader = $peOffset + 24
+        $magic = ReadU16At $optionalHeader
+        $dataDirectory = if ($magic -eq 0x20B) { $optionalHeader + 112 } elseif ($magic -eq 0x10B) { $optionalHeader + 96 } else { throw "Unsupported PE optional header magic 0x$($magic.ToString("X")) in $Path" }
+        $exportRva = [int](ReadU32At $dataDirectory)
+        if ($exportRva -eq 0) {
+            return @()
+        }
+
+        $sections = New-Object System.Collections.Generic.List[object]
+        $sectionOffset = $optionalHeader + $optionalHeaderSize
+        for ($i = 0; $i -lt $numberOfSections; $i++) {
+            $offset = $sectionOffset + ($i * 40)
+            if ($offset + 40 -gt $stream.Length) {
+                break
+            }
+            $sections.Add([pscustomobject][ordered]@{
+                virtualSize = [int](ReadU32At ($offset + 8))
+                virtualAddress = [int](ReadU32At ($offset + 12))
+                rawSize = [int](ReadU32At ($offset + 16))
+                rawPointer = [int](ReadU32At ($offset + 20))
+            }) | Out-Null
+        }
+
+        function Convert-RvaToOffset([int64]$Rva) {
+            foreach ($section in $sections.ToArray()) {
+                $start = [int64]$section.virtualAddress
+                $length = [Math]::Max([int64]$section.virtualSize, [int64]$section.rawSize)
+                if ($Rva -ge $start -and $Rva -lt ($start + $length)) {
+                    return ([int64]$section.rawPointer + ($Rva - $start))
+                }
+            }
+            return $Rva
+        }
+
+        $exportOffset = Convert-RvaToOffset $exportRva
+        if ($exportOffset + 40 -gt $stream.Length) {
+            throw "Invalid PE export directory in $Path"
+        }
+
+        $numberOfNames = [int](ReadU32At ($exportOffset + 24))
+        $addressOfNamesRva = [int](ReadU32At ($exportOffset + 32))
+        $addressOfNamesOffset = Convert-RvaToOffset $addressOfNamesRva
+
+        $names = New-Object System.Collections.Generic.List[string]
+        for ($i = 0; $i -lt $numberOfNames; $i++) {
+            $nameRva = [int](ReadU32At ($addressOfNamesOffset + ($i * 4)))
+            $nameOffset = Convert-RvaToOffset $nameRva
+            if ($nameOffset -ge 0 -and $nameOffset -lt $stream.Length) {
+                $names.Add((ReadAsciiZAt $nameOffset)) | Out-Null
             }
         }
-        return $Rva
+
+        return @($names.ToArray() | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
     }
-
-    $exportOffset = Convert-RvaToOffset $exportRva
-    if ($exportOffset + 40 -gt $bytes.Length) {
-        throw "Invalid PE export directory in $Path"
+    finally {
+        $reader.Dispose()
+        $stream.Dispose()
     }
-
-    $numberOfNames = [int](ReadU32 ($exportOffset + 24))
-    $addressOfNamesRva = [int](ReadU32 ($exportOffset + 32))
-    $addressOfNamesOffset = Convert-RvaToOffset $addressOfNamesRva
-
-    $names = New-Object System.Collections.Generic.List[string]
-    for ($i = 0; $i -lt $numberOfNames; $i++) {
-        $nameRva = [int](ReadU32 ($addressOfNamesOffset + ($i * 4)))
-        $nameOffset = Convert-RvaToOffset $nameRva
-        if ($nameOffset -ge 0 -and $nameOffset -lt $bytes.Length) {
-            $names.Add((ReadAsciiZ $nameOffset)) | Out-Null
-        }
-    }
-
-    return @($names.ToArray() | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
 }
 
 function Get-ToolExportNames {

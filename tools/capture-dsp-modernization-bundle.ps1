@@ -241,12 +241,16 @@ captures, offline fixture metrics, and operator notes.
 Next steps:
 1. Generate an artifact scaffold:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\new-dsp-artifact-manifest.ps1 -BundleDir "$bundleDir"
-2. Capture optional live runtime trends during scenario windows:
+2. Audit Zeus NativeMethods against vendored WDSP source and the native binary export table:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\audit-wdsp-native-symbols.ps1 -ReportPath "$bundleDir\artifacts\wdsp-native-symbol-audit.json" -RequireBinaryExports
+3. Capture optional live runtime trends during scenario windows:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl $base -Samples 60 -IntervalMs 1000 -JsonlPath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-watch.json"
-3. Compare a candidate live trace against a baseline trace before accepting the window:
+4. Or capture a repeatable multi-scenario live diagnostics matrix:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BundleDir "$bundleDir" -ComparisonId current-zeus -Samples 60 -IntervalMs 1000
+5. Compare a candidate live trace against a baseline trace before accepting the window:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\compare-dsp-live-diagnostics-traces.ps1 -BaselinePath "$bundleDir\artifacts\live-diagnostics-baseline.jsonl" -CandidatePath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-trace-comparison.json" -FailOnRegression
-4. Fill the required files listed in artifact-manifest.template.json.
-5. Copy or regenerate the scaffold as artifact-manifest.json, then validate with:
+6. Fill the required files listed in artifact-manifest.template.json.
+7. Copy or regenerate the scaffold as artifact-manifest.json, then validate with:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir "$bundleDir" -RequireArtifactFiles
 "@
 Set-Content -LiteralPath (Join-Path $bundleDir "README.md") -Value $readme -Encoding UTF8

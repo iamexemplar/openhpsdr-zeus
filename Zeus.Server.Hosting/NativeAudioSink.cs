@@ -35,8 +35,8 @@ namespace Zeus.Server;
 /// <item>The miniaudio playback thread calls <see cref="OnPlaybackData"/>
 /// asking for N frames of stereo float32 (at whatever rate the device
 /// negotiated). The callback drains the ring, duplicates each mono sample
-/// to L=R, and writes silence + bumps an underrun counter when the ring is
-/// empty.</item>
+/// to L=R, and writes silence + bumps an underrun counter while the ring is
+/// rebuffering.</item>
 /// </list>
 ///
 /// <para>Sample rate: miniaudio negotiates the device rate at open time and
@@ -53,11 +53,11 @@ namespace Zeus.Server;
 /// channel count by either passing mono straight through, duplicating
 /// L=R for stereo, or replicating across all channels for surround setups.</para>
 ///
-/// <para>Underrun policy: when the ring is empty (DSP thread hasn't produced
-/// audio yet — initial connect, between bursts, or backlog spike) we write
-/// silence and increment <c>_underrunSamples</c>. A 5-second timer logs the
-/// count + resets it; persistent underruns mean either ring sizing is too
-/// small or the DSP thread is starved.</para>
+/// <para>Underrun policy: when the ring starts empty or falls below one
+/// callback, we hold queued fragments until roughly 20 ms are buffered again
+/// instead of splicing a short RX tail into silence. A 5-second timer logs
+/// the silence count + resets it; persistent underruns mean either ring
+/// sizing is too small or the DSP thread is starved.</para>
 /// </summary>
 internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHostedService, IDisposable
 {
@@ -68,6 +68,11 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
     // anything past ~50 ms is just bounded slack to absorb DSP-tick
     // jitter.
     private const int RingCapacity = 65_536;
+
+    // Hold roughly 20 ms before starting or resuming playback. Without this
+    // small cushion, the OS callback can run the ring to a handful of samples
+    // and splice that partial tail into silence, which presents as RX crackle.
+    private const int PlaybackPrebufferSamples = 960;
 
     // ~250 ms @ 48 kHz mono = 12000 samples ≈ 48 KB. Power of two for the
     // mask wrap. The audition path is sourced from mic capture (one block
@@ -106,6 +111,8 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
     // open either way so there's no pop and no fight with the OS mixer.
     private volatile bool _muted;
 
+    private volatile bool _rebuffering = true;
+
     // Local side-channel enable flag. Audio Suite audition now uses the full
     // TX Monitor path; this ring remains available for desktop-only local
     // playback sources such as WAV monitor playback. Read on the miniaudio
@@ -120,7 +127,11 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
     public void SetMuted(bool muted)
     {
         _muted = muted;
-        if (muted) _ring.Clear();
+        if (muted)
+        {
+            _ring.Clear();
+            _rebuffering = true;
+        }
     }
 
     public void SetEnabled(bool enabled)
@@ -241,6 +252,7 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
     {
         if (!txActive) return;
         _ring.Clear();
+        _rebuffering = true;
     }
 
     // Test surface — lets unit tests assert the ring's drain behaviour
@@ -248,6 +260,9 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
     // thread; matches FloatSpscRing.Count's relaxed-reader contract
     // (best-effort snapshot, may be off by one in a race window).
     internal int CurrentRingDepth => _ring.Count;
+
+    internal void RenderPlaybackForTest(Span<float> output, uint frameCount, uint channels) =>
+        OnPlaybackData(output, frameCount, channels);
 
     public void Publish(in AudioFrame frame)
     {
@@ -293,12 +308,41 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
             ? stackalloc float[totalFrames]
             : new float[totalFrames];
 
-        int read = _ring.Read(mono);
-        if (read < totalFrames)
+        bool rxSilence = false;
+        int queued = _ring.Count;
+        if (_rebuffering)
         {
-            // Underrun — zero the remainder.
-            mono[read..].Clear();
-            Interlocked.Add(ref _underrunSamples, totalFrames - read);
+            if (queued >= PlaybackPrebufferSamples)
+            {
+                _rebuffering = false;
+            }
+            else
+            {
+                rxSilence = true;
+            }
+        }
+        else if (queued < totalFrames)
+        {
+            _rebuffering = true;
+            rxSilence = true;
+        }
+
+        if (rxSilence)
+        {
+            mono.Clear();
+            Interlocked.Add(ref _underrunSamples, totalFrames);
+        }
+        else
+        {
+            int read = _ring.Read(mono);
+            if (read < totalFrames)
+            {
+                // Defensive race fallback: clear on mute/TX can discard the
+                // ring between Count and Read.
+                mono[read..].Clear();
+                _rebuffering = true;
+                Interlocked.Add(ref _underrunSamples, totalFrames - read);
+            }
         }
 
         // Local side-channel mixing: when enabled, sum published mono monitor
@@ -307,6 +351,7 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
         // ring on the common disabled path. Underrun is benign — the operator
         // just hears silence for that gap, which is what they expect when the
         // publisher isn't producing.
+        bool mixedAudition = false;
         if (_auditionEnabled)
         {
             Span<float> aud = totalFrames <= 4096
@@ -317,7 +362,11 @@ internal sealed class NativeAudioSink : IRxAudioSink, IAuditionAudioSink, IHoste
             // underran we still sum the bytes we got and leave the
             // rest of mono unchanged (RX continues underneath).
             for (int i = 0; i < audRead; i++) mono[i] += aud[i];
+            mixedAudition = audRead > 0;
         }
+
+        if (mixedAudition)
+            DspPipelineService.LimitRxAudioBuffer(mono);
 
         // Expand mono → output channels. channels==1 is the trivial path.
         if (channelsI == 1)

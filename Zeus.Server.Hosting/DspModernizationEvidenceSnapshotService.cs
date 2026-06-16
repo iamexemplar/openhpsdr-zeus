@@ -112,6 +112,8 @@ public static class DspModernizationEvidenceSnapshotService
 
         if (!manifest.RequiredArtifacts.Any(static artifact => artifact.Id == "offline-fixture-metrics"))
             missing.Add("offline-fixture-metrics");
+        if (!manifest.RequiredArtifacts.Any(static artifact => artifact.Id == "wdsp-native-symbol-audit"))
+            missing.Add("wdsp-native-symbol-audit");
         if (!manifest.RequiredArtifacts.Any(static artifact => artifact.Source == "/api/radio/diagnostics/dsp-scene"))
             missing.Add("frontend-scene-artifact");
 
@@ -135,7 +137,7 @@ public static class DspModernizationEvidenceSnapshotService
         actions.AddRange(manifest.RecommendedActions);
 
         if (manifest.ReadyForCapture)
-            actions.Add("Run all manifest scenarios and attach offline metrics, audio renders, spectrum captures, and before/after diagnostics JSON.");
+            actions.Add("Run all manifest scenarios and attach the WDSP native symbol audit, offline metrics, audio renders, spectrum captures, and before/after diagnostics JSON.");
         else
             actions.Add("Resolve missing evidence before using this snapshot as acceptance evidence.");
 

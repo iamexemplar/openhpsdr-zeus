@@ -208,6 +208,24 @@ export function SignalIntelligenceSettingsSection() {
           onChange={(popRenderIntensity) => setSignalEnhanceTuning({ popRenderIntensity })}
         />
         <TuneSlider
+          label="Waterfall Smooth"
+          value={state.waterfallSmoothness}
+          min={0}
+          max={100}
+          unit="%"
+          precision={0}
+          onChange={(waterfallSmoothness) => setSignalEnhanceTuning({ waterfallSmoothness })}
+        />
+        <TuneSlider
+          label="Relief Depth"
+          value={state.waterfallReliefDepth}
+          min={0}
+          max={100}
+          unit="%"
+          precision={0}
+          onChange={(waterfallReliefDepth) => setSignalEnhanceTuning({ waterfallReliefDepth })}
+        />
+        <TuneSlider
           label="Coherence Gate"
           value={state.coherenceHoldGate}
           min={0.2}

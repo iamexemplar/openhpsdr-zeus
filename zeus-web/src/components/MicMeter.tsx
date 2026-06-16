@@ -59,7 +59,7 @@ import { useBallisticReading } from './meters/useBallisticReading';
 // Visual sits in the transport strip as a .knob-group, using the design's
 // meter-bar chrome. A permanent red zone paints the last 3 dB of the
 // scale so peaks have a clear "target just below" indicator. Peak-hold
-// decays over 1500 ms to match the SMeter component.
+// comes from the shared meter ballistics hook.
 
 const MIN_DBFS = -60;
 const MAX_DBFS = 0;

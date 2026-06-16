@@ -1539,6 +1539,8 @@ public sealed record DisplayIntelligenceSettingsDto(
     double PopSpanDb,
     double PopGamma,
     int PopRenderIntensity,
+    int WaterfallReliefDepth,
+    int WaterfallSmoothness,
     double CoherenceHoldGate,
     double CoherenceBoostDb,
     double RidgeBoost,

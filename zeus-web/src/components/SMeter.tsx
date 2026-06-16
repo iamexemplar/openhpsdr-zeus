@@ -43,6 +43,11 @@
 // License for details.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  SMETER_PEAK_EPSILON,
+  initialSMeterPeakHoldState,
+  stepSMeterPeakHold,
+} from './sMeterPeakHold';
 
 // RX scale: amateur-radio S-units. S9 = -73 dBm on HF. Each S-unit = 6 dB.
 // Above S9 labelled in dB over S9 (+10, +20, +40, +60).
@@ -120,9 +125,6 @@ export type SMeterProps =
       maxWatts?: number;
     };
 
-// Peak-hold decay time to zero, ms.
-const PEAK_DECAY_MS = 1500;
-
 export function SMeter(props: SMeterProps) {
   const isTx = props.mode === 'tx';
   const maxWatts = isTx ? props.maxWatts ?? 100 : 100;
@@ -149,33 +151,68 @@ export function SMeter(props: SMeterProps) {
   }, []);
   const labelShown = useMemo(() => visibleLabels(ticks, scaleW), [ticks, scaleW]);
 
-  // Peak-hold: rises instantly with the signal, decays linearly.
+  // Peak-hold: rises instantly, latches briefly after the signal leaves the
+  // peak, then falls back to the live value.
   const [peak, setPeak] = useState(fraction);
-  const peakAtRef = useRef<number>(performance.now());
-  const rafRef = useRef<number | null>(null);
+  const peakStateRef = useRef(initialSMeterPeakHoldState(fraction));
+  const targetFractionRef = useRef(fraction);
 
   useEffect(() => {
-    if (fraction >= peak) {
-      setPeak(fraction);
-      peakAtRef.current = performance.now();
-      return;
-    }
-    const tick = () => {
-      const elapsed = performance.now() - peakAtRef.current;
-      const decayed = Math.max(
-        fraction,
-        peak - (peak - fraction) * (elapsed / PEAK_DECAY_MS),
-      );
-      setPeak(decayed);
-      if (decayed > fraction) {
-        rafRef.current = requestAnimationFrame(tick);
+    let raf: number | null = null;
+    let timeout: number | null = null;
+
+    const cancel = () => {
+      if (raf != null) {
+        cancelAnimationFrame(raf);
+        raf = null;
+      }
+      if (timeout != null) {
+        window.clearTimeout(timeout);
+        timeout = null;
       }
     };
-    rafRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+
+    const publish = (nowMs: number) => {
+      const next = stepSMeterPeakHold(
+        peakStateRef.current,
+        targetFractionRef.current,
+        nowMs,
+      );
+      peakStateRef.current = next;
+      setPeak(next.peak);
+      return next;
     };
-  }, [fraction, peak]);
+
+    const tick = (nowMs: number) => {
+      raf = null;
+      const next = publish(nowMs);
+      if (next.peak > targetFractionRef.current + SMETER_PEAK_EPSILON) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    const scheduleDecay = () => {
+      const state = peakStateRef.current;
+      if (state.peak <= targetFractionRef.current + SMETER_PEAK_EPSILON) {
+        return;
+      }
+      const delayMs = state.holdUntilMs - performance.now();
+      if (delayMs > 0) {
+        timeout = window.setTimeout(() => {
+          timeout = null;
+          raf = requestAnimationFrame(tick);
+        }, delayMs);
+      } else {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    targetFractionRef.current = fraction;
+    publish(performance.now());
+    scheduleDecay();
+
+    return cancel;
+  }, [fraction]);
 
   const mainValue = isTx ? props.watts.toFixed(1) : props.dbm.toFixed(0);
   const unit = isTx ? 'W' : 'dBm';
@@ -286,7 +323,7 @@ export function SMeter(props: SMeterProps) {
           {/* Peak-hold marker — bright warm pip. */}
           <div
             aria-hidden
-            className="absolute inset-y-0"
+            className="s-meter-peak absolute inset-y-0"
             style={{
               left: `calc(${peak * 100}% - 1px)`,
               width: 2,

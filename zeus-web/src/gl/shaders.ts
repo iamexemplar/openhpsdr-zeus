@@ -164,20 +164,98 @@ uniform float uViewOffsetUv;
 uniform float uSeedDb;
 uniform float uPopActive;
 uniform float uPopIntensity;
+uniform float uReliefDepth;
+uniform float uSmoothness;
+uniform float uTexW;
 out vec4 fragColor;
-void main() {
-  float agePx = (1.0 - vUv.y) * uH;
+
+float sampleDb(vec2 uv) {
+  vec2 clampedUv = vec2(uv.x, clamp(uv.y, 0.0, 1.0));
+  float agePx = (1.0 - clampedUv.y) * uH;
   float row = mod(uWriteRow - agePx + uH, uH);
-  float srcX = vUv.x - uViewOffsetUv;
-  float v = (srcX < 0.0 || srcX > 1.0)
+  float srcX = clampedUv.x - uViewOffsetUv;
+  return (srcX < 0.0 || srcX > 1.0)
     ? uSeedDb
     : texture(uHistory, vec2(srcX, (row + 0.5) / uH)).r;
-  float n = clamp((v - uDbMin) / (uDbMax - uDbMin), 0.0, 1.0);
-  float popI = clamp(uPopIntensity, 0.0, 1.0) * step(0.5, uPopActive);
+}
+
+float toLevel(float db) {
+  return clamp((db - uDbMin) / max(0.0001, uDbMax - uDbMin), 0.0, 1.0);
+}
+
+float sampleLevel(vec2 uv) {
+  return toLevel(sampleDb(uv));
+}
+
+float popLift(float n, float popI) {
   float lifted = pow(n, mix(1.0, 0.62, popI));
   float micro = smoothstep(0.015, 0.20, n) * 0.10 * popI;
-  n = clamp(max(lifted, n + micro), 0.0, 1.0);
+  return clamp(max(lifted, n + micro), 0.0, 1.0);
+}
+
+void main() {
+  float n = sampleLevel(vUv);
+  float popI = clamp(uPopIntensity, 0.0, 1.0) * step(0.5, uPopActive);
+  float reliefI = clamp(uReliefDepth, 0.0, 1.0) * popI;
+  float smoothI = clamp(uSmoothness, 0.0, 1.0) * popI;
+  float shade = 1.0;
+  float ridge = 0.0;
+  float rim = 0.0;
+  float shadow = 0.0;
+  float specular = 0.0;
+  float warmHalo = 0.0;
+  float coolHalo = 0.0;
+  if (popI > 0.001) {
+    vec2 texel = vec2(1.0 / max(1.0, uTexW), 1.0 / max(1.0, uH));
+    float left = sampleLevel(vUv - vec2(texel.x, 0.0));
+    float right = sampleLevel(vUv + vec2(texel.x, 0.0));
+    float older = sampleLevel(vUv - vec2(0.0, texel.y));
+    float newer = sampleLevel(vUv + vec2(0.0, texel.y));
+    float cross = (left + right + older + newer) * 0.25;
+    float reliefCurve = smoothstep(0.02, 0.62, clamp(uReliefDepth, 0.0, 1.0)) * popI;
+    float edgeEnergy = abs(right - left) + abs(newer - older);
+    n = mix(n, n * 0.54 + cross * 0.46, smoothI);
+
+    if (reliefCurve > 0.001) {
+      float upLeft = sampleLevel(vUv + vec2(-texel.x * 1.35, texel.y * 1.35));
+      float downRight = sampleLevel(vUv + vec2(texel.x * 1.65, -texel.y * 1.65));
+      float nearMax = max(max(left, right), max(older, newer));
+      float bevel = n - cross;
+      n = clamp(
+        n + bevel * mix(0.34, 1.05, reliefCurve) + max(bevel, 0.0) * 0.08 * reliefCurve,
+        0.0,
+        1.0);
+      float slope = mix(18.0, 56.0, reliefCurve);
+      vec3 normal = normalize(vec3((left - right) * slope, (older - newer) * slope, 1.0));
+      vec3 lightDir = normalize(vec3(-0.52, 0.74, 0.82));
+      float lambert = clamp(dot(normal, lightDir) * 0.5 + 0.5, 0.0, 1.0);
+      shade = 0.34 + 1.26 * pow(lambert, 1.45);
+      ridge = smoothstep(0.006, 0.082, edgeEnergy) *
+        smoothstep(0.014, 0.24, n) * reliefCurve;
+      rim = smoothstep(0.020, 0.42, n) * smoothstep(0.004, 0.16, max(0.0, n - downRight)) *
+        reliefCurve;
+      shadow = smoothstep(0.035, 0.48, upLeft) * (1.0 - smoothstep(0.014, 0.24, n)) *
+        reliefCurve;
+      warmHalo = smoothstep(0.055, 0.45, downRight) * (1.0 - smoothstep(0.018, 0.26, n)) *
+        reliefCurve;
+      coolHalo = smoothstep(0.045, 0.40, nearMax) * (1.0 - smoothstep(0.020, 0.30, n)) *
+        reliefCurve;
+      vec3 viewDir = vec3(0.0, 0.0, 1.0);
+      specular = pow(max(dot(reflect(-lightDir, normal), viewDir), 0.0), 16.0) *
+        reliefCurve * smoothstep(0.18, 0.86, n);
+      reliefI = reliefCurve;
+    }
+  }
+  n = popLift(n, popI);
   vec4 c = texture(uLut, vec2(n, 0.5));
+  c.rgb *= mix(1.0, shade, reliefI);
+  c.rgb = mix(c.rgb, vec3(0.00, 0.040, 0.075) + c.rgb * 0.32, 0.72 * shadow);
+  c.rgb += vec3(0.55, 0.36, 0.08) * warmHalo;
+  c.rgb += vec3(0.00, 0.18, 0.30) * coolHalo;
+  c.rgb += vec3(0.04, 0.42, 0.46) * ridge;
+  c.rgb += vec3(0.26, 0.74, 0.78) * rim;
+  c.rgb += vec3(1.00, 0.90, 0.50) * specular;
+  c.rgb = min(c.rgb, vec3(1.0));
   float a = mix(smoothstep(0.05, 0.9, n), 1.0, uBgAlpha);
   fragColor = vec4(c.rgb * a, a);
 }`;

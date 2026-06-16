@@ -2794,9 +2794,6 @@ public sealed class WdspDspEngine : IDspEngine
     // mirrors the same "configure, then enable" Thetis pattern we use for
     // every other WDSP stage (see SetNoiseReduction NR2/NR4 ordering).
     //
-    // Pass IntPtr.Zero for Qg/Qe — selects classic non-parametric mode
-    // (cfcomp.c:122-123 falls back to linear interpolation). Matches
-    // pihpsdr's cfc_menu.c, which is the canonical reference per issue #123.
     public unsafe void SetCfcConfig(CfcConfig cfg)
     {
         ArgumentNullException.ThrowIfNull(cfg);
@@ -2839,8 +2836,7 @@ public sealed class WdspDspEngine : IDspEngine
             {
                 NativeMethods.SetTXACFCOMPprofile(
                     id, nfreqs,
-                    ref *pF, ref *pG, ref *pE,
-                    IntPtr.Zero, IntPtr.Zero);
+                    ref *pF, ref *pG, ref *pE);
             }
             NativeMethods.SetTXACFCOMPPrecomp(id, cfg.PreCompDb);
             NativeMethods.SetTXACFCOMPPrePeq(id, cfg.PrePeqDb);

@@ -200,6 +200,7 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.Contains("wdsp-channel-lifecycle", manifest.ScenarioIds);
         Assert.Contains("capture-preflight-not-ready", manifest.Constraints);
         Assert.Contains(manifest.RequiredArtifacts, artifact => artifact.Id == "live-diagnostics-json" && artifact.Required);
+        Assert.Contains(manifest.RequiredArtifacts, artifact => artifact.Id == "wdsp-native-symbol-audit" && artifact.Required);
         Assert.Contains(manifest.RequiredArtifacts, artifact => artifact.Id == "offline-fixture-metrics" && artifact.Required);
         Assert.Contains(manifest.StopConditions, item => item.Contains("weak-signal loss", StringComparison.Ordinal));
     }
@@ -234,6 +235,14 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.False(traceComparisonArtifact.Required);
         Assert.Equal("diagnostics-comparison-json", traceComparisonArtifact.Kind);
         Assert.Contains("compare-dsp-live-diagnostics-traces.ps1", traceComparisonArtifact.Source);
+        var traceIndexArtifact = Assert.Single(manifest.RequiredArtifacts, artifact => artifact.Id == "live-diagnostics-trace-index");
+        Assert.False(traceIndexArtifact.Required);
+        Assert.Equal("trace", traceIndexArtifact.Kind);
+        Assert.Contains("run-dsp-live-diagnostics-matrix.ps1", traceIndexArtifact.Source);
+        var nativeAuditArtifact = Assert.Single(manifest.RequiredArtifacts, artifact => artifact.Id == "wdsp-native-symbol-audit");
+        Assert.True(nativeAuditArtifact.Required);
+        Assert.Equal("native-audit-json", nativeAuditArtifact.Kind);
+        Assert.Contains("audit-wdsp-native-symbols.ps1", nativeAuditArtifact.Source);
         Assert.Contains(manifest.OperatorNotes, item => item.Contains("Cross-radio validation", StringComparison.Ordinal));
     }
 
@@ -260,6 +269,7 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.Contains("/api/dsp/modernization-snapshot", snapshot.IncludedEndpoints);
         Assert.Contains("/api/dsp/benchmark-metric-catalog", snapshot.IncludedEndpoints);
         Assert.Contains("live-diagnostics-json", snapshot.IncludedArtifacts);
+        Assert.Contains("wdsp-native-symbol-audit", snapshot.IncludedArtifacts);
         Assert.Contains("frontend-dsp-scene", snapshot.MissingEvidence);
         Assert.Same(condition, snapshot.SmartNrCondition);
         Assert.Same(live, snapshot.LiveDiagnostics);
@@ -293,6 +303,7 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.True(snapshot.EvidenceCompletenessScore >= 90);
         Assert.Empty(snapshot.MissingEvidence);
         Assert.Contains("offline-fixture-metrics", snapshot.IncludedArtifacts);
+        Assert.Contains("wdsp-native-symbol-audit", snapshot.IncludedArtifacts);
         Assert.Contains(snapshot.NextActions, action => action.Contains("Save this modernization snapshot", StringComparison.Ordinal));
         Assert.Contains(snapshot.ExternalEngineCandidates, candidate => candidate.Id == "rnnoise");
     }

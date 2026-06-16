@@ -33,6 +33,8 @@ describe('display-intelligence API', () => {
       popSpanDb: 999,
       popGamma: Number.NaN,
       popRenderIntensity: 101,
+      waterfallReliefDepth: 101,
+      waterfallSmoothness: -5,
       coherenceHoldGate: 0.1,
       coherenceBoostDb: 9,
       ridgeBoost: 2,
@@ -54,6 +56,8 @@ describe('display-intelligence API', () => {
       popFloorDb: 0,
       popSpanDb: 60,
       popRenderIntensity: 100,
+      waterfallReliefDepth: 100,
+      waterfallSmoothness: 0,
       coherenceHoldGate: 0.2,
       coherenceBoostDb: 8,
       ridgeBoost: 0.8,
@@ -64,6 +68,17 @@ describe('display-intelligence API', () => {
       snapMinSnrDb: 16,
       peakMinSnrDb: 4,
     });
+  });
+
+  it('migrates early subtle waterfall relief values to visible defaults', () => {
+    const settings = normalizeDisplayIntelligenceSettings({
+      ...DISPLAY_INTELLIGENCE_DEFAULTS,
+      waterfallReliefDepth: 48,
+      waterfallSmoothness: 42,
+    });
+
+    expect(settings.waterfallReliefDepth).toBe(92);
+    expect(settings.waterfallSmoothness).toBe(64);
   });
 
   it('fetches the display intelligence settings endpoint', async () => {
@@ -87,6 +102,8 @@ describe('display-intelligence API', () => {
       profileId: 'cw',
       snapEnabled: true,
       autoNotchEnabled: true,
+      waterfallReliefDepth: 64,
+      waterfallSmoothness: 55,
     }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -95,6 +112,8 @@ describe('display-intelligence API', () => {
       profileId: 'cw',
       snapEnabled: true,
       autoNotchEnabled: true,
+      waterfallReliefDepth: 64,
+      waterfallSmoothness: 55,
     });
 
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -104,9 +123,13 @@ describe('display-intelligence API', () => {
       profileId: 'cw',
       snapEnabled: true,
       autoNotchEnabled: true,
+      waterfallReliefDepth: 64,
+      waterfallSmoothness: 55,
     });
     expect(settings.profileId).toBe('cw');
     expect(settings.snapEnabled).toBe(true);
     expect(settings.autoNotchEnabled).toBe(true);
+    expect(settings.waterfallReliefDepth).toBe(64);
+    expect(settings.waterfallSmoothness).toBe(55);
   });
 });
