@@ -1356,6 +1356,34 @@ static void spnr_apply_output_agc(SPNR a, double* out, int n) {
     }
   }
 
+  double speech_valley_drive = weak_input_drive
+    * spnr_clip((gate_confidence - 0.275) / 0.120, 0.0, 1.0)
+    * spnr_clip((a->agc_gate - 0.480) / 0.300, 0.0, 1.0)
+    * max(
+      spnr_clip((a->diag_signal_probability - 0.132) / 0.080, 0.0, 1.0),
+      spnr_clip((a->agc_weak_signal_memory - 0.180) / 0.280, 0.0, 1.0))
+    * max(
+      spnr_clip((a->diag_recovery_drive - 0.250) / 0.200, 0.0, 1.0),
+      0.60 * spnr_clip((a->diag_mask_smoothing - 0.300) / 0.160, 0.0, 1.0))
+    * spnr_clip((a->target_rms * 0.42 - out_rms) / (a->target_rms * 0.36), 0.0, 1.0);
+  speech_valley_drive *= 1.0 - 0.82 * spnr_clip(
+    (low_evidence_noise_drive - 0.20) / 0.40,
+    0.0, 1.0);
+  if (a->agc_run && speech_valley_drive > 0.006 && out_rms > 1.0e-9) {
+    double speech_valley_floor_rms = a->target_rms * (0.30 + 0.12 * speech_valley_drive);
+    double speech_valley_lift = spnr_clip(speech_valley_floor_rms / out_rms, 1.0, 8.50);
+    double speech_valley_blend = spnr_clip(
+      0.46 + 0.24 * speech_valley_drive,
+      0.0, 0.70);
+    double speech_valley_gain = 1.0 + speech_valley_blend * (speech_valley_lift - 1.0);
+    if (speech_valley_gain > 1.001) {
+      for (int i = 0; i < n; i++) {
+        out[2 * i + 0] *= speech_valley_gain;
+      }
+      out_rms *= speech_valley_gain;
+    }
+  }
+
   double out_peak = 0.0;
   for (int i = 0; i < n; i++) {
     double v = fabs(out[2 * i + 0]);
