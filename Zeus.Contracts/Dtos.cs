@@ -960,6 +960,17 @@ public sealed record StateDto(
     // (console.cs:43143-43170), now Zeus's only tuning model.
     long RadioLoHz = 0,
 
+    // RX2 / VFO B. Zeus implements the first usable dual-receive path by
+    // feeding the current wide IQ stream into a second WDSP RXA channel and
+    // tuning it with an independent VFO-B shift. That gives simultaneous
+    // RX1/RX2 inside the captured bandwidth immediately; future protocol
+    // work can map this same state onto a second hardware DDC for wider
+    // splits without changing the UI contract.
+    bool Rx2Enabled = false,
+    long VfoBHz = 14_200_000,
+    Zeus.Contracts.Rx2AudioMode Rx2AudioMode = Zeus.Contracts.Rx2AudioMode.Both,
+    double Rx2AfGainDb = 0.0,
+
     // CW sidetone pitch in Hz. Currently a baked-in constant
     // (CwDefaults.PitchHz); will become a user-settable preference
     // (Thetis: Setup → DSP → Keyer → CW Pitch). On the wire now so
@@ -1011,7 +1022,20 @@ public sealed record ConnectRequest(
     // behaviour. Issue #171.
     byte? BoardId = null);
 
-public sealed record VfoSetRequest(long Hz);
+public sealed record VfoSetRequest(long Hz, int Receiver = 0);
+
+public enum Rx2AudioMode
+{
+    Both = 0,
+    Rx1 = 1,
+    Rx2 = 2,
+}
+
+public sealed record Rx2SetRequest(
+    bool? Enabled = null,
+    long? VfoBHz = null,
+    Rx2AudioMode? AudioMode = null,
+    double? AfGainDb = null);
 
 /// <summary>Operator settings for the POTA/SOTA Spots feature. Persisted in
 /// zeus-prefs.db (<c>SpotsSettingsStore</c>) and shared with the frontend.

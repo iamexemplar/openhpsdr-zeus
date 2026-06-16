@@ -82,6 +82,7 @@ import {
   normalizeNbMode,
   normalizeNr,
   normalizeNrMode,
+  normalizeRx2AudioMode,
   normalizeSquelch,
   normalizeState,
   normalizeStatus,
@@ -142,12 +143,30 @@ describe('normalizeMode', () => {
   });
 });
 
+describe('normalizeRx2AudioMode', () => {
+  it('accepts numeric and string enum values', () => {
+    expect(normalizeRx2AudioMode(0)).toBe('both');
+    expect(normalizeRx2AudioMode(1)).toBe('rx1');
+    expect(normalizeRx2AudioMode(2)).toBe('rx2');
+    expect(normalizeRx2AudioMode('Both')).toBe('both');
+    expect(normalizeRx2AudioMode('Rx2')).toBe('rx2');
+  });
+  it('falls back to both on garbage', () => {
+    expect(normalizeRx2AudioMode(42)).toBe('both');
+    expect(normalizeRx2AudioMode('nope')).toBe('both');
+  });
+});
+
 describe('normalizeState', () => {
   it('reads a camelCase StateDto with numeric enums', () => {
     const s = normalizeState({
       status: 2,
       endpoint: '192.168.100.21:1024',
       vfoHz: 14_200_000,
+      vfoBHz: 14_250_000,
+      rx2Enabled: true,
+      rx2AudioMode: 2,
+      rx2AfGainDb: -3,
       mode: 1,
       filterLowHz: 150,
       filterHighHz: 2850,
@@ -157,6 +176,10 @@ describe('normalizeState', () => {
     expect(s.mode).toBe('USB');
     expect(s.endpoint).toBe('192.168.100.21:1024');
     expect(s.vfoHz).toBe(14_200_000);
+    expect(s.vfoBHz).toBe(14_250_000);
+    expect(s.rx2Enabled).toBe(true);
+    expect(s.rx2AudioMode).toBe('rx2');
+    expect(s.rx2AfGainDb).toBe(-3);
     expect(s.sampleRate).toBe(192_000);
     expect(s.preampOn).toBe(false);
   });
@@ -179,6 +202,10 @@ describe('normalizeState', () => {
     expect(s.status).toBe('Error');
     expect(s.endpoint).toBe(null);
     expect(s.vfoHz).toBe(0);
+    expect(s.vfoBHz).toBe(0);
+    expect(s.rx2Enabled).toBe(false);
+    expect(s.rx2AudioMode).toBe('both');
+    expect(s.rx2AfGainDb).toBe(0);
     expect(s.mode).toBe('USB');
     expect(s.nr).toEqual(NR_CONFIG_DEFAULT);
     expect(s.zoomLevel).toBe(1);

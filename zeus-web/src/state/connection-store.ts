@@ -53,6 +53,7 @@ import {
   type ConnectionStatus,
   type NrConfigDto,
   type RadioStateDto,
+  type Rx2AudioMode,
   type RxMode,
   type SquelchConfigDto,
   type TxLevelingConfigDto,
@@ -70,6 +71,10 @@ export type ConnectionState = {
   status: ConnectionStatus;
   endpoint: string | null;
   vfoHz: number;
+  vfoBHz: number;
+  rx2Enabled: boolean;
+  rx2AudioMode: Rx2AudioMode;
+  rx2AfGainDb: number;
   mode: RxMode;
   filterLowHz: number;
   filterHighHz: number;
@@ -146,6 +151,10 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
   status: 'Disconnected',
   endpoint: null,
   vfoHz: 14_200_000,
+  vfoBHz: 14_200_000,
+  rx2Enabled: false,
+  rx2AudioMode: 'both',
+  rx2AfGainDb: 0,
   mode: 'USB',
   filterLowHz: 150,
   filterHighHz: 2850,
@@ -186,6 +195,10 @@ export const useConnectionStore = create<ConnectionState>((set) => ({
         (opts?.trustVfo ?? true) || msSinceOptimisticTune() >= 1500
           ? s.vfoHz
           : prev.vfoHz,
+      vfoBHz: s.vfoBHz,
+      rx2Enabled: s.rx2Enabled,
+      rx2AudioMode: s.rx2AudioMode,
+      rx2AfGainDb: s.rx2AfGainDb,
       mode: s.mode,
       filterLowHz: s.filterLowHz,
       filterHighHz: s.filterHighHz,

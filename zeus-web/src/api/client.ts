@@ -66,6 +66,8 @@ export type RxMode =
   | 'DIGL'
   | 'DIGU';
 
+export type Rx2AudioMode = 'both' | 'rx1' | 'rx2';
+
 export type NrMode = 'Off' | 'Anr' | 'Emnr' | 'Sbnr' | 'Nr5';
 export type NbMode = 'Off' | 'Nb1' | 'Nb2';
 
@@ -271,6 +273,10 @@ export type RadioStateDto = {
   status: ConnectionStatus;
   endpoint: string | null;
   vfoHz: number;
+  vfoBHz: number;
+  rx2Enabled: boolean;
+  rx2AudioMode: Rx2AudioMode;
+  rx2AfGainDb: number;
   mode: RxMode;
   filterLowHz: number;
   filterHighHz: number;
@@ -1532,6 +1538,7 @@ const MODE_ORDER: readonly RxMode[] = [
   'DIGU',
 ];
 
+const RX2_AUDIO_MODE_ORDER: readonly Rx2AudioMode[] = ['both', 'rx1', 'rx2'];
 const NR_MODE_ORDER: readonly NrMode[] = ['Off', 'Anr', 'Emnr', 'Sbnr', 'Nr5'];
 const NB_MODE_ORDER: readonly NbMode[] = ['Off', 'Nb1', 'Nb2'];
 
@@ -1561,6 +1568,19 @@ function modeFromWire(v: unknown): RxMode | null {
 
 export function normalizeMode(v: unknown): RxMode {
   return modeFromWire(v) ?? 'USB';
+}
+
+export function normalizeRx2AudioMode(v: unknown): Rx2AudioMode {
+  if (typeof v === 'string') {
+    const lowered = v.toLowerCase();
+    return (RX2_AUDIO_MODE_ORDER as readonly string[]).includes(lowered)
+      ? (lowered as Rx2AudioMode)
+      : 'both';
+  }
+  if (typeof v === 'number' && Number.isInteger(v)) {
+    return RX2_AUDIO_MODE_ORDER[v] ?? 'both';
+  }
+  return 'both';
 }
 
 export function normalizeNrMode(v: unknown): NrMode {
@@ -1797,6 +1817,15 @@ export function normalizeState(raw: unknown): RadioStateDto {
     status: normalizeStatus(r.status),
     endpoint: typeof r.endpoint === 'string' ? r.endpoint : null,
     vfoHz: typeof r.vfoHz === 'number' ? r.vfoHz : 0,
+    vfoBHz:
+      typeof r.vfoBHz === 'number' && r.vfoBHz > 0
+        ? r.vfoBHz
+        : typeof r.vfoHz === 'number'
+        ? r.vfoHz
+        : 0,
+    rx2Enabled: typeof r.rx2Enabled === 'boolean' ? r.rx2Enabled : false,
+    rx2AudioMode: normalizeRx2AudioMode(r.rx2AudioMode),
+    rx2AfGainDb: typeof r.rx2AfGainDb === 'number' ? r.rx2AfGainDb : 0,
     mode: normalizeMode(r.mode),
     filterLowHz: typeof r.filterLowHz === 'number' ? r.filterLowHz : 0,
     filterHighHz: typeof r.filterHighHz === 'number' ? r.filterHighHz : 0,
@@ -4180,6 +4209,72 @@ export function setVfo(
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ hz }),
+      signal,
+    },
+    normalizeState,
+  );
+}
+
+function rx2AudioModeToWire(mode: Rx2AudioMode): number {
+  return RX2_AUDIO_MODE_ORDER.indexOf(mode);
+}
+
+export function setVfoB(
+  hz: number,
+  signal?: AbortSignal,
+): Promise<RadioStateDto> {
+  if (vfoLockStore.getState().locked) {
+    return fetchState(signal);
+  }
+  return jsonFetch(
+    '/api/vfo',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hz, receiver: 1 }),
+      signal,
+    },
+    normalizeState,
+  );
+}
+
+export function swapVfos(signal?: AbortSignal): Promise<RadioStateDto> {
+  if (vfoLockStore.getState().locked) {
+    return fetchState(signal);
+  }
+  return jsonFetch(
+    '/api/vfo/swap',
+    {
+      method: 'POST',
+      signal,
+    },
+    normalizeState,
+  );
+}
+
+export function setRx2(
+  req: {
+    enabled?: boolean;
+    vfoBHz?: number;
+    audioMode?: Rx2AudioMode;
+    afGainDb?: number;
+  },
+  signal?: AbortSignal,
+): Promise<RadioStateDto> {
+  return jsonFetch(
+    '/api/rx2',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        enabled: req.enabled,
+        vfoBHz: req.vfoBHz,
+        audioMode:
+          req.audioMode === undefined
+            ? undefined
+            : rx2AudioModeToWire(req.audioMode),
+        afGainDb: req.afGainDb,
+      }),
       signal,
     },
     normalizeState,

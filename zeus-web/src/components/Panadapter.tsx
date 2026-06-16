@@ -48,6 +48,7 @@ import { planForFrame } from '../gl/frame-plan';
 import { cancelDrawBusFrame, requestDrawBusFrame } from '../realtime/draw-bus';
 import { registerFrameConsumer, useDisplayStore } from '../state/display-store';
 import { useDisplaySettingsStore } from '../state/display-settings-store';
+import { useConnectionStore } from '../state/connection-store';
 import { enhanceInto, useSignalEnhanceStore } from '../dsp/signal-estimator';
 import * as viewCenter from '../state/view-center';
 import { useTxStore } from '../state/tx-store';
@@ -61,9 +62,16 @@ import { SpotOverlay } from './SpotOverlay';
 import { PeakMarkerOverlay } from './PeakMarkerOverlay';
 import { NotchOverlay } from './NotchOverlay';
 
-export function Panadapter() {
+type PanadapterProps = {
+  receiver?: 'A' | 'B';
+};
+
+export function Panadapter({ receiver = 'A' }: PanadapterProps = {}) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const vfoHz = useConnectionStore((s) =>
+    receiver === 'B' ? s.vfoBHz : s.vfoHz,
+  );
   const popEnabled = useSignalEnhanceStore((s) => s.popEnabled);
   const popRenderIntensity = useSignalEnhanceStore((s) => s.popRenderIntensity);
   const moxOn = useTxStore((s) => s.moxOn);
@@ -334,7 +342,7 @@ export function Panadapter() {
     };
   }, []);
 
-  usePanTuneGesture(canvasRef);
+  usePanTuneGesture(canvasRef, receiver);
 
   return (
     <div
@@ -352,13 +360,25 @@ export function Panadapter() {
       }}
     >
       <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-      <PassbandOverlay resizable containerRef={containerRef} />
+      <div
+        className="pointer-events-none absolute z-[25] rounded-sm px-2 py-0.5 font-mono text-[10px]"
+        style={{
+          top: 24,
+          left: 8,
+          background: 'rgba(8, 10, 14, 0.78)',
+          color: receiver === 'B' ? 'var(--signal)' : 'var(--accent)',
+          border: '1px solid rgba(255,255,255,0.16)',
+        }}
+      >
+        {receiver === 'B' ? 'RX2 · VFO B' : 'RX1 · VFO A'} · {(vfoHz / 1e6).toFixed(6)}
+      </div>
+      <PassbandOverlay resizable containerRef={containerRef} receiver={receiver} />
       <FilterCursorOverlay containerRef={containerRef} />
       <SpotOverlay />
       <PeakMarkerOverlay />
       <NotchOverlay interactive resizable containerRef={containerRef} />
       <ImdReadings />
-      <FreqAxis />
+      <FreqAxis receiver={receiver} />
       <DbScale />
     </div>
   );

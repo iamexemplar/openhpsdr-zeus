@@ -679,6 +679,7 @@ public class DspPipelineService : BackgroundService,
     private readonly object _engineLock = new();
     private IDspEngine? _engine;
     private int _channelId;
+    private int _rx2ChannelId = -1;
     private int _sampleRateHz;
 
     // Protocol 2 path (parallel to the RadioService-owned P1 path). Held
@@ -889,6 +890,7 @@ public class DspPipelineService : BackgroundService,
     private readonly float[] _panBuf = new float[Width];
     private readonly float[] _wfBuf = new float[Width];
     private readonly float[] _audioBuf = new float[AudioDrainCapacity];
+    private readonly float[] _rx2AudioBuf = new float[AudioDrainCapacity];
 
     // Cached panadapter snapshot for the frequency-calibration service
     // (issue #325). Tick fills this every cycle that produced a valid
@@ -2065,6 +2067,7 @@ public class DspPipelineService : BackgroundService,
         {
             Volatile.Write(ref _engine, engine);
             Volatile.Write(ref _channelId, channelId);
+            Volatile.Write(ref _rx2ChannelId, -1);
             Volatile.Write(ref _sampleRateHz, SyntheticSampleRateHz);
         }
         _log.LogInformation("dsp.pipeline engine=synthetic channel={Id}", channelId);
@@ -2091,6 +2094,7 @@ public class DspPipelineService : BackgroundService,
             oldChannel = _channelId;
             Volatile.Write(ref _engine, wdsp);
             Volatile.Write(ref _channelId, channelId);
+            Volatile.Write(ref _rx2ChannelId, -1);
             Volatile.Write(ref _sampleRateHz, rate);
         }
 
@@ -2156,6 +2160,7 @@ public class DspPipelineService : BackgroundService,
             oldChannel = _channelId;
             Volatile.Write(ref _engine, synth);
             Volatile.Write(ref _channelId, channelId);
+            Volatile.Write(ref _rx2ChannelId, -1);
             Volatile.Write(ref _sampleRateHz, SyntheticSampleRateHz);
         }
 
@@ -2210,10 +2215,12 @@ public class DspPipelineService : BackgroundService,
         var engine = Volatile.Read(ref _engine);
         int channel = Volatile.Read(ref _channelId);
         if (engine is null) return;
+        int rx2Channel = EnsureRx2Channel(engine, s);
 
         if (s.Mode != _appliedMode)
         {
             engine.SetMode(channel, s.Mode);
+            if (rx2Channel >= 0) engine.SetMode(rx2Channel, s.Mode);
             // Keep TXA modulator mode in sync with the RX side. On Synthetic
             // and before OpenTxChannel has run this is a no-op.
             engine.SetTxMode(s.Mode);
@@ -2222,6 +2229,7 @@ public class DspPipelineService : BackgroundService,
         if (s.FilterLowHz != _appliedLowHz || s.FilterHighHz != _appliedHighHz)
         {
             engine.SetFilter(channel, s.FilterLowHz, s.FilterHighHz);
+            if (rx2Channel >= 0) engine.SetFilter(rx2Channel, s.FilterLowHz, s.FilterHighHz);
             _appliedLowHz = s.FilterLowHz;
             _appliedHighHz = s.FilterHighHz;
         }
@@ -2252,6 +2260,7 @@ public class DspPipelineService : BackgroundService,
         {
             double effectiveAgc = s.AgcTopDb + s.AgcOffsetDb;
             engine.SetAgcTop(channel, effectiveAgc);
+            if (rx2Channel >= 0) engine.SetAgcTop(rx2Channel, effectiveAgc);
             _appliedAgcTopDb = s.AgcTopDb;
             _appliedAgcOffsetDb = s.AgcOffsetDb;
         }
@@ -2278,18 +2287,21 @@ public class DspPipelineService : BackgroundService,
         if (!nr.Equals(_appliedNr))
         {
             engine.SetNoiseReduction(channel, nr);
+            if (rx2Channel >= 0) engine.SetNoiseReduction(rx2Channel, nr);
             _appliedNr = nr;
         }
         var agc = s.Agc ?? new AgcConfig(AgcMode.Med);
         if (!agc.Equals(_appliedAgc))
         {
             engine.SetAgc(channel, agc);
+            if (rx2Channel >= 0) engine.SetAgc(rx2Channel, agc);
             _appliedAgc = agc;
         }
         var squelch = s.Squelch ?? new SquelchConfig();
         if (!squelch.Equals(_appliedSquelch))
         {
             engine.SetSquelch(channel, squelch);
+            if (rx2Channel >= 0) engine.SetSquelch(rx2Channel, squelch);
             _appliedSquelch = squelch;
         }
         var txLeveling = s.TxLeveling ?? new TxLevelingConfig();
@@ -2301,6 +2313,7 @@ public class DspPipelineService : BackgroundService,
         if (s.ZoomLevel != _appliedZoomLevel)
         {
             engine.SetZoom(channel, s.ZoomLevel);
+            if (rx2Channel >= 0) engine.SetZoom(rx2Channel, s.ZoomLevel);
             _appliedZoomLevel = s.ZoomLevel;
         }
 
@@ -2637,6 +2650,72 @@ public class DspPipelineService : BackgroundService,
         _appliedZoomLevel = s.ZoomLevel;
     }
 
+    private int EnsureRx2Channel(IDspEngine engine, StateDto s)
+    {
+        int rx2Channel = Volatile.Read(ref _rx2ChannelId);
+        if (!s.Rx2Enabled)
+        {
+            CloseRx2Channel(engine, rx2Channel);
+            return -1;
+        }
+
+        if (rx2Channel >= 0)
+        {
+            ApplyStateToRx2Channel(engine, rx2Channel, s);
+            return rx2Channel;
+        }
+
+        int rateHz = Volatile.Read(ref _sampleRateHz);
+        if (rateHz <= 0) rateHz = s.SampleRate > 0 ? s.SampleRate : SyntheticSampleRateHz;
+        int opened = engine.OpenChannel(rateHz, Width);
+        try
+        {
+            ApplyStateToRx2Channel(engine, opened, s);
+            Volatile.Write(ref _rx2ChannelId, opened);
+            _log.LogInformation(
+                "dsp.pipeline rx2 opened channel={Channel} rate={Rate} vfoBHz={VfoBHz}",
+                opened,
+                rateHz,
+                s.VfoBHz);
+            return opened;
+        }
+        catch
+        {
+            try { engine.CloseChannel(opened); } catch { /* best-effort */ }
+            throw;
+        }
+    }
+
+    private void CloseRx2Channel(IDspEngine engine, int rx2Channel)
+    {
+        if (rx2Channel < 0) return;
+        Volatile.Write(ref _rx2ChannelId, -1);
+        try { engine.CloseChannel(rx2Channel); }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "dsp.pipeline rx2 close failed channel={Channel}", rx2Channel);
+        }
+        _log.LogInformation("dsp.pipeline rx2 closed channel={Channel}", rx2Channel);
+    }
+
+    private static void ApplyStateToRx2Channel(IDspEngine engine, int channelId, StateDto s)
+    {
+        var nr = s.Nr ?? new NrConfig();
+        var agc = s.Agc ?? new AgcConfig(AgcMode.Med);
+        var squelch = s.Squelch ?? new SquelchConfig();
+        engine.SetMode(channelId, s.Mode);
+        engine.SetFilter(channelId, s.FilterLowHz, s.FilterHighHz);
+        engine.SetVfoHz(channelId, s.VfoBHz);
+        int shiftHz = (int)(CwOffset.EffectiveLoHz(s.Mode, s.VfoBHz) - s.RadioLoHz);
+        engine.SetCtunShift(channelId, shiftHz);
+        engine.SetAgcTop(channelId, s.AgcTopDb + s.AgcOffsetDb);
+        engine.SetRxAfGainDb(channelId, s.Rx2AfGainDb);
+        engine.SetNoiseReduction(channelId, nr);
+        engine.SetAgc(channelId, agc);
+        engine.SetSquelch(channelId, squelch);
+        engine.SetZoom(channelId, s.ZoomLevel);
+    }
+
     // iter5 (task #4): the four channel pumps that used to live here
     //   - StartIqPump            (P1 IQ → engine.FeedIq)
     //   - StartIqPumpP2          (P2 IQ → engine.FeedIq)
@@ -2774,6 +2853,7 @@ public class DspPipelineService : BackgroundService,
             oldChannel = _channelId;
             Volatile.Write(ref _engine, newEngine);
             Volatile.Write(ref _channelId, newChannelId);
+            Volatile.Write(ref _rx2ChannelId, -1);
             Volatile.Write(ref _sampleRateHz, rateHz);
         }
         TeardownEngine(old, oldChannel);
@@ -2937,8 +3017,14 @@ public class DspPipelineService : BackgroundService,
         if (engine is null) return;
 
         int oldChannel = Volatile.Read(ref _channelId);
+        int oldRx2Channel = Volatile.Read(ref _rx2ChannelId);
         try
         {
+            if (oldRx2Channel >= 0)
+            {
+                Volatile.Write(ref _rx2ChannelId, -1);
+                try { engine.CloseChannel(oldRx2Channel); } catch { /* best-effort */ }
+            }
             engine.CloseChannel(oldChannel);
             int newChannel = engine.OpenChannel(rateHz, Width);
             try { ApplyStateToNewChannel(engine, newChannel); }
@@ -2948,6 +3034,8 @@ public class DspPipelineService : BackgroundService,
             }
             Volatile.Write(ref _channelId, newChannel);
             Volatile.Write(ref _sampleRateHz, rateHz);
+            var state = _radio.Snapshot();
+            if (state.Rx2Enabled) _ = EnsureRx2Channel(engine, state);
             // RX channel is ready at the new rate — now tell the radio to re-rate
             // its DDC (re-emits the RX-spec). Ordering this last means new-rate
             // IQ only starts arriving once the channel can decode it.
@@ -3011,6 +3099,7 @@ public class DspPipelineService : BackgroundService,
             oldChannel = _channelId;
             Volatile.Write(ref _engine, synth);
             Volatile.Write(ref _channelId, channelId);
+            Volatile.Write(ref _rx2ChannelId, -1);
             Volatile.Write(ref _sampleRateHz, SyntheticSampleRateHz);
         }
         TeardownEngine(old, oldChannel);
@@ -3110,6 +3199,9 @@ public class DspPipelineService : BackgroundService,
             if (engine is not null)
             {
                 engine.FeedIq(channel, frame.InterleavedSamples.Span);
+                int rx2Channel = Volatile.Read(ref _rx2ChannelId);
+                if (rx2Channel >= 0)
+                    engine.FeedIq(rx2Channel, frame.InterleavedSamples.Span);
                 RxIqAvailable?.Invoke(0, frame.SampleRateHz, frame.InterleavedSamples);
             }
             MaybeTickInline();
@@ -3153,6 +3245,9 @@ public class DspPipelineService : BackgroundService,
         if (engine is not null)
         {
             engine.FeedIq(channel, frame.InterleavedSamples.Span);
+            int rx2Channel = Volatile.Read(ref _rx2ChannelId);
+            if (rx2Channel >= 0)
+                engine.FeedIq(rx2Channel, frame.InterleavedSamples.Span);
             RxIqAvailable?.Invoke(0, frame.SampleRateHz, frame.InterleavedSamples);
         }
         MaybeTickInline();
@@ -3263,6 +3358,7 @@ public class DspPipelineService : BackgroundService,
             channel = _channelId;
             Volatile.Write(ref _engine, null);
             Volatile.Write(ref _channelId, 0);
+            Volatile.Write(ref _rx2ChannelId, -1);
         }
         TeardownEngine(engine, channel);
     }
@@ -3272,6 +3368,49 @@ public class DspPipelineService : BackgroundService,
         if (engine is null) return;
         try { engine.CloseChannel(channelId); } catch { /* best-effort */ }
         engine.Dispose();
+    }
+
+    private static int SelectRxAudio(
+        Rx2AudioMode mode,
+        Span<float> rx1,
+        int rx1Count,
+        ReadOnlySpan<float> rx2,
+        int rx2Count)
+    {
+        rx1Count = Math.Clamp(rx1Count, 0, rx1.Length);
+        rx2Count = Math.Clamp(rx2Count, 0, rx2.Length);
+        return mode switch
+        {
+            Rx2AudioMode.Rx2 => CopyRx2Audio(rx1, rx2, rx2Count),
+            Rx2AudioMode.Both => MixRxAudio(rx1, rx1Count, rx2, rx2Count),
+            _ => rx1Count,
+        };
+    }
+
+    private static int CopyRx2Audio(Span<float> output, ReadOnlySpan<float> rx2, int rx2Count)
+    {
+        int count = Math.Min(output.Length, rx2Count);
+        rx2[..count].CopyTo(output);
+        return count;
+    }
+
+    private static int MixRxAudio(
+        Span<float> output,
+        int rx1Count,
+        ReadOnlySpan<float> rx2,
+        int rx2Count)
+    {
+        if (rx2Count <= 0) return rx1Count;
+        if (rx1Count <= 0) return CopyRx2Audio(output, rx2, rx2Count);
+
+        int count = Math.Min(output.Length, Math.Max(rx1Count, rx2Count));
+        for (int i = 0; i < count; i++)
+        {
+            float a = i < rx1Count ? output[i] : 0f;
+            float b = i < rx2Count ? rx2[i] : 0f;
+            output[i] = 0.5f * (a + b);
+        }
+        return count;
     }
 
     private void Tick(float[] panBuf, float[] wfBuf, float[] audioBuf)
@@ -3311,6 +3450,9 @@ public class DspPipelineService : BackgroundService,
         }
 
         engine.SetVfoHz(channel, state.VfoHz);
+        int rx2Channel = Volatile.Read(ref _rx2ChannelId);
+        if (state.Rx2Enabled && rx2Channel >= 0)
+            engine.SetVfoHz(rx2Channel, state.VfoBHz);
 
         // perf3 iter4: skip the entire display pipeline when no client is
         // subscribed. Saves: 2× engine.TryGet*DisplayPixels P/Invoke per tick
@@ -3518,6 +3660,15 @@ public class DspPipelineService : BackgroundService,
         // so RX-side plugins keep running even while monitor is on.
         bool txMonitorOn = engine.IsTxMonitorOn;
         int audioSampleCount = engine.ReadAudio(channel, audioBuf);
+        int rx2AudioSampleCount = 0;
+        if (state.Rx2Enabled && rx2Channel >= 0)
+            rx2AudioSampleCount = engine.ReadAudio(rx2Channel, _rx2AudioBuf);
+        audioSampleCount = SelectRxAudio(
+            state.Rx2AudioMode,
+            audioBuf,
+            audioSampleCount,
+            _rx2AudioBuf,
+            rx2AudioSampleCount);
         if (audioSampleCount > 0)
         {
             SanitizeAudioBuffer(audioBuf.AsSpan(0, audioSampleCount));

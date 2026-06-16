@@ -186,6 +186,10 @@ public sealed class RadioStateEntry
     // toggle returned (operator request, 2026-06-13). Older rows missing it
     // hydrate to false (classic "radio follows the dial").
     public long RadioLoHz { get; set; }
+    public bool Rx2Enabled { get; set; }
+    public long VfoBHz { get; set; } = 14_200_000;
+    public Zeus.Contracts.Rx2AudioMode Rx2AudioMode { get; set; } = Zeus.Contracts.Rx2AudioMode.Both;
+    public double Rx2AfGainDb { get; set; }
     // CTUN (click-tune / centred-tuning) toggle. See StateDto.CtunEnabled.
     // Persisted so the operator's preference survives a restart.
     public bool CtunEnabled { get; set; }

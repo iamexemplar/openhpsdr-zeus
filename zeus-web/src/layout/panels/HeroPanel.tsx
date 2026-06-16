@@ -155,6 +155,7 @@ export function HeroPanel({ onRemove, tile, layoutId }: HeroPanelProps = {}) {
     submitBeam,
   } = useWorkspace();
   const connected = useConnectionStore((s) => s.status === 'Connected');
+  const rx2Enabled = useConnectionStore((s) => s.rx2Enabled);
   const updateTileInstanceConfig = useLayoutStore(
     (s) => s.updateTileInstanceConfigInLayout,
   );
@@ -408,7 +409,24 @@ export function HeroPanel({ onRemove, tile, layoutId }: HeroPanelProps = {}) {
             zIndex: 1,
           }}
         >
-          {connected && <Panadapter />}
+          {connected && (
+            rx2Enabled ? (
+              <div
+                style={{
+                  minHeight: 0,
+                  height: '100%',
+                  display: 'grid',
+                  gridTemplateRows: '1fr 1px 1fr',
+                }}
+              >
+                <Panadapter receiver="A" />
+                <div style={{ background: 'var(--line)' }} />
+                <Panadapter receiver="B" />
+              </div>
+            ) : (
+              <Panadapter receiver="A" />
+            )
+          )}
           <div
             className={`spectrum-splitter ${splitDragging ? 'dragging' : ''}`}
             role="separator"
