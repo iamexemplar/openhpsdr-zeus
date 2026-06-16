@@ -51,7 +51,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { fetchState, setVfo } from '../api/client';
+import { fetchState, setVfo, setVfoB } from '../api/client';
 import { useConnectionStore } from '../state/connection-store';
 
 const MAX_HZ = 60_000_000;
@@ -102,9 +102,33 @@ function formatKhz(hz: number): string {
 // feedback, but only POST the last resting value to avoid flooding /api/vfo.
 const WHEEL_DEBOUNCE_MS = 80;
 
-export function VfoDisplay() {
-  const vfoHz = useConnectionStore((s) => s.vfoHz);
+type ReceiverId = 'A' | 'B';
+
+type VfoDisplayProps = {
+  receiver?: ReceiverId;
+  label?: string;
+  compact?: boolean;
+};
+
+function readReceiverVfo(receiver: ReceiverId): number {
+  const s = useConnectionStore.getState();
+  return receiver === 'B' ? s.vfoBHz : s.vfoHz;
+}
+
+function patchReceiverVfo(receiver: ReceiverId, hz: number) {
+  return receiver === 'B' ? { vfoBHz: hz } : { vfoHz: hz };
+}
+
+export function VfoDisplay({
+  receiver = 'A',
+  label = receiver === 'B' ? 'VFO B' : 'VFO A',
+  compact = false,
+}: VfoDisplayProps = {}) {
+  const vfoHz = useConnectionStore((s) =>
+    receiver === 'B' ? s.vfoBHz : s.vfoHz,
+  );
   const applyState = useConnectionStore((s) => s.applyState);
+  const postVfo = receiver === 'B' ? setVfoB : setVfo;
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -121,6 +145,7 @@ export function VfoDisplay() {
   }, []);
 
   useEffect(() => {
+    if (receiver !== 'A') return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const tick = async () => {
@@ -139,7 +164,7 @@ export function VfoDisplay() {
       cancelled = true;
       if (timer != null) clearTimeout(timer);
     };
-  }, [applyState, editing]);
+  }, [applyState, editing, receiver]);
 
   const beginEdit = useCallback(() => {
     setDraft(formatKhz(vfoHz));
@@ -156,13 +181,13 @@ export function VfoDisplay() {
     setEditing(false);
     setDraft('');
     if (next == null || next === vfoHz) return;
-    useConnectionStore.setState({ vfoHz: next });
-    setVfo(next)
+    useConnectionStore.setState(patchReceiverVfo(receiver, next));
+    postVfo(next)
       .then(applyState)
       .catch(() => {
         /* next poll will reconcile */
       });
-  }, [draft, vfoHz, applyState]);
+  }, [draft, vfoHz, applyState, postVfo, receiver]);
 
   useLayoutEffect(() => {
     if (editing && inputRef.current) {
@@ -213,10 +238,10 @@ export function VfoDisplay() {
       e.preventDefault();
 
       const direction = e.deltaY < 0 ? 1 : -1;
-      const current = useConnectionStore.getState().vfoHz;
+      const current = readReceiverVfo(receiver);
       const next = clampHz(current + direction * decade);
       if (next === current) return;
-      useConnectionStore.setState({ vfoHz: next });
+      useConnectionStore.setState(patchReceiverVfo(receiver, next));
       wheelPending.current = next;
 
       if (wheelTimer.current != null) clearTimeout(wheelTimer.current);
@@ -228,7 +253,7 @@ export function VfoDisplay() {
         wheelInflight.current?.abort();
         const ac = new AbortController();
         wheelInflight.current = ac;
-        setVfo(pending, ac.signal)
+        postVfo(pending, ac.signal)
           .then((reply) => {
             if (ac.signal.aborted) return;
             applyState(reply);
@@ -243,12 +268,15 @@ export function VfoDisplay() {
     // passive:false so preventDefault() actually stops the ancestor scroll.
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
-  }, [applyState, editing]);
+  }, [applyState, editing, postVfo, receiver]);
 
   const digits = useMemo(() => DIGIT_PLACES, []);
 
   return (
-    <div className="freq-display">
+    <div
+      className={`freq-display${compact ? ' compact' : ''}`}
+      style={compact ? { padding: '14px 12px 12px', minHeight: 72 } : undefined}
+    >
       {editing ? (
         <div className="freq-digits mono" style={{ gap: 6 }}>
           <input
@@ -259,7 +287,7 @@ export function VfoDisplay() {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKeyDown}
             onBlur={cancelEdit}
-            aria-label="Frequency in kHz"
+            aria-label={`${label} frequency in kHz`}
             style={{
               width: 220,
               background: 'transparent',
@@ -283,7 +311,7 @@ export function VfoDisplay() {
           type="button"
           onClick={beginEdit}
           aria-label="Edit frequency"
-          title="Click to enter frequency in kHz — scroll the wheel over a digit to tune it"
+          title={`${label}: click to enter frequency in kHz - scroll the wheel over a digit to tune it`}
           className="freq-digits mono"
           style={{ background: 'none', border: 'none', cursor: 'text', width: '100%' }}
         >
@@ -309,7 +337,8 @@ export function VfoDisplay() {
           })}
         </button>
       )}
-      <div className="freq-bot" style={{ justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
+      <div className="freq-bot" style={{ justifyContent: 'space-between', gap: 6, marginTop: 4 }}>
+        <span className="label-xs">{label}</span>
         <span className="label-xs">MHz · click to type · wheel on a digit to step</span>
       </div>
     </div>

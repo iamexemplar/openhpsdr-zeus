@@ -411,6 +411,12 @@ public sealed class RadioService : IDisposable
             RadioLoHz: (rsSnap?.RadioLoHz ?? 0L) != 0L
                 ? rsSnap!.RadioLoHz
                 : (rsSnap?.VfoHz ?? 14_200_000),
+            Rx2Enabled: rsSnap?.Rx2Enabled ?? false,
+            VfoBHz: (rsSnap?.VfoBHz ?? 0L) != 0L
+                ? rsSnap!.VfoBHz
+                : (rsSnap?.VfoHz ?? 14_200_000),
+            Rx2AudioMode: rsSnap?.Rx2AudioMode ?? Zeus.Contracts.Rx2AudioMode.Both,
+            Rx2AfGainDb: Math.Clamp(rsSnap?.Rx2AfGainDb ?? 0.0, -50.0, 20.0),
             CwPitchHz: CwOffset.CwPitchHz,
             CtunEnabled: rsSnap?.CtunEnabled ?? false,
             PreampOn: rsSnap?.PreampOn ?? false);
@@ -802,6 +808,64 @@ public sealed class RadioService : IDisposable
     }
 
     public StateDto SetVfo(long hz) => SetVfo(hz, fromExternal: false);
+
+    public StateDto SetVfoB(long hz)
+    {
+        long clamped = Math.Clamp(hz, 0L, 60_000_000L);
+        Mutate(s => s with { VfoBHz = clamped });
+        return Snapshot();
+    }
+
+    public StateDto SetRx2(Rx2SetRequest req)
+    {
+        ArgumentNullException.ThrowIfNull(req);
+        Mutate(s =>
+        {
+            long nextVfoB = req.VfoBHz.HasValue
+                ? Math.Clamp(req.VfoBHz.Value, 0L, 60_000_000L)
+                : s.VfoBHz > 0
+                    ? s.VfoBHz
+                    : s.VfoHz;
+            var nextMode = req.AudioMode ?? s.Rx2AudioMode;
+            double nextGain = req.AfGainDb.HasValue
+                ? Math.Clamp(req.AfGainDb.Value, -50.0, 20.0)
+                : s.Rx2AfGainDb;
+            bool nextEnabled = req.Enabled ?? s.Rx2Enabled;
+            return s with
+            {
+                Rx2Enabled = nextEnabled,
+                VfoBHz = nextVfoB,
+                Rx2AudioMode = nextMode,
+                Rx2AfGainDb = nextGain,
+            };
+        });
+        return Snapshot();
+    }
+
+    public StateDto SwapVfos()
+    {
+        long previousA = 0;
+        long newA = 0;
+        RxMode mode = RxMode.USB;
+        Mutate(s =>
+        {
+            previousA = s.VfoHz;
+            newA = Math.Clamp(s.VfoBHz, 0L, 60_000_000L);
+            mode = s.Mode;
+            return s with
+            {
+                VfoHz = newA,
+                VfoBHz = Math.Clamp(s.VfoHz, 0L, 60_000_000L),
+                RadioLoHz = CwOffset.EffectiveLoHz(mode, newA),
+            };
+        });
+        ActiveClient?.SetVfoAHz(CwOffset.EffectiveLoHz(mode, newA));
+        if (BandUtils.FreqToBand(previousA) != BandUtils.FreqToBand(newA))
+        {
+            RecomputePaAndPush();
+        }
+        return Snapshot();
+    }
 
     /// <summary>
     /// Set the VFO (dial) frequency.
@@ -2495,6 +2559,10 @@ public sealed class RadioService : IDisposable
                 TunePct = snap.TunePct,
                 TxMoxPreKeyDelayMs = snap.TxMoxPreKeyDelayMs,
                 RadioLoHz = snap.RadioLoHz,
+                Rx2Enabled = snap.Rx2Enabled,
+                VfoBHz = snap.VfoBHz,
+                Rx2AudioMode = snap.Rx2AudioMode,
+                Rx2AfGainDb = snap.Rx2AfGainDb,
                 CtunEnabled = snap.CtunEnabled,
                 Notches = notches.Select(n => new RadioStateNotchEntry
                 {

@@ -43,7 +43,7 @@
 // License for details.
 
 import { createContext, useContext, useEffect, type RefObject } from 'react';
-import { setVfo, setZoom, ZOOM_MAX, ZOOM_MIN, type ZoomLevel } from '../api/client';
+import { setVfo, setVfoB, setZoom, ZOOM_MAX, ZOOM_MIN, type ZoomLevel } from '../api/client';
 import { useConnectionStore } from '../state/connection-store';
 import { useDisplayStore } from '../state/display-store';
 import { computeSnapToLineHz, getSnapHistorySpectrum, useSignalEnhanceStore } from '../dsp/signal-estimator';
@@ -103,6 +103,8 @@ export type SpectrumWheelActions = {
 
 export const SpectrumWheelActionsContext = createContext<SpectrumWheelActions>({});
 
+export type SpectrumReceiver = 'A' | 'B';
+
 function readView(): { centerHz: number; spanHz: number } | null {
   const s = useDisplayStore.getState();
   if (!s.panDb || s.hzPerPixel <= 0) return null;
@@ -121,11 +123,13 @@ function readView(): { centerHz: number; spanHz: number } | null {
  */
 export function usePanTuneGesture(
   canvasRef: RefObject<HTMLCanvasElement | null>,
+  receiver: SpectrumReceiver = 'A',
 ) {
   const wheelActions = useContext(SpectrumWheelActionsContext);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const receiverIsB = receiver === 'B';
 
     type Drag = { startX: number; startHz: number; spanHz: number; moved: boolean };
     type MapDrag = { lastX: number; lastY: number };
@@ -182,7 +186,18 @@ export function usePanTuneGesture(
     // target always mirrors exactly what was commanded — including clamp
     // effects at the band edges — and CW pitch offsets cancel (issue #597
     // adversary #2/#12).
-    const commandedHz = () => pendingHz ?? useConnectionStore.getState().vfoHz;
+    const readVfo = () => {
+      const s = useConnectionStore.getState();
+      return receiverIsB ? s.vfoBHz : s.vfoHz;
+    };
+    const writeVfo = (hz: number) => {
+      useConnectionStore.setState(receiverIsB ? { vfoBHz: hz } : { vfoHz: hz });
+    };
+    const postVfo = (hz: number, signal?: AbortSignal) =>
+      receiverIsB ? setVfoB(hz, signal) : setVfo(hz, signal);
+    const tunesOffCenter = () => receiverIsB || useConnectionStore.getState().ctunEnabled;
+
+    const commandedHz = () => pendingHz ?? readVfo();
 
     const flushPending = () => {
       pendingRaf = 0;
@@ -190,11 +205,11 @@ export function usePanTuneGesture(
       pendingHz = null;
       if (hz == null) return;
       viewCenter.markOptimisticTune();
-      useConnectionStore.setState({ vfoHz: hz });
+      writeVfo(hz);
       pendingAbort?.abort();
       const ctrl = new AbortController();
       pendingAbort = ctrl;
-      setVfo(hz, ctrl.signal).catch(() => {});
+      postVfo(hz, ctrl.signal).catch(() => {});
     };
 
     const scheduleFlush = () => {
@@ -210,7 +225,7 @@ export function usePanTuneGesture(
       // the dial marker (vfo − targetCenter) roams off the zero line. We stamp
       // the optimistic-tune clock (poll-guard) but deliberately skip the
       // view-center nudge that would recentre the display.
-      if (useConnectionStore.getState().ctunEnabled) {
+      if (tunesOffCenter()) {
         viewCenter.markOptimisticTune();
       } else {
         // Delta against the commanded chain — NOT an absolute write into the
@@ -218,7 +233,7 @@ export function usePanTuneGesture(
         // would oscillate the display by ±pitch on every CW commit).
         viewCenter.nudgeTargetHz(snapped - commandedHz());
       }
-      useConnectionStore.setState({ vfoHz: snapped });
+      writeVfo(snapped);
       pendingAbort?.abort();
       pendingAbort = null;
       if (pendingRaf !== 0) {
@@ -226,7 +241,7 @@ export function usePanTuneGesture(
         pendingRaf = 0;
       }
       pendingHz = null;
-      setVfo(snapped)
+      postVfo(snapped)
         .then((s) => useConnectionStore.getState().applyState(s))
         .catch(() => {});
     };
@@ -242,12 +257,12 @@ export function usePanTuneGesture(
       // edge; the optimistic store write happens in the SAME synchronous block
       // as the target nudge so the dial marker's (vfo − target) offset is never
       // transiently stale (it is pinned to the center line during glides).
-      if (useConnectionStore.getState().ctunEnabled) {
+      if (tunesOffCenter()) {
         viewCenter.markOptimisticTune();
       } else {
         viewCenter.nudgeTargetHz(next - cur);
       }
-      useConnectionStore.setState({ vfoHz: next });
+      writeVfo(next);
       pendingHz = next;
       scheduleFlush();
     };
@@ -387,16 +402,16 @@ export function usePanTuneGesture(
       drag.moved = true;
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0) return;
-      // CTUN: drag sweeps the dial across the frozen spectrum. The frame center
+      // CTUN/RX2: drag sweeps the selected dial across the frozen spectrum. The frame center
       // doesn't move (NCO frozen on the backend), so drag.startHz — the view
       // center captured at grab — is stationary; resolve the live pointer X to
       // a frequency against it and tune there, leaving the view put.
-      if (useConnectionStore.getState().ctunEnabled) {
+      if (tunesOffCenter()) {
         const frac = (e.clientX - rect.left) / rect.width;
         const cursorHz = snapHz(drag.startHz + (frac - 0.5) * drag.spanHz);
         if (cursorHz !== pendingHz) {
           viewCenter.markOptimisticTune();
-          useConnectionStore.setState({ vfoHz: cursorHz });
+          writeVfo(cursorHz);
           pendingHz = cursorHz;
           scheduleFlush();
         }
@@ -413,7 +428,7 @@ export function usePanTuneGesture(
         viewCenter.nudgeTargetHz(newHz - commandedHz());
         // Atomic with the nudge — keeps the marker's (vfo − target) offset
         // consistent within the frame (see nudgeVfo).
-        useConnectionStore.setState({ vfoHz: newHz });
+        writeVfo(newHz);
         pendingHz = newHz;
         scheduleFlush();
       }
@@ -475,8 +490,8 @@ export function usePanTuneGesture(
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0) return;
       if (d.moved) {
-        if (useConnectionStore.getState().ctunEnabled) {
-          // CTUN: commit the dial at the release-point frequency (cursor-
+        if (tunesOffCenter()) {
+          // CTUN/RX2: commit the selected dial at the release-point frequency (cursor-
           // relative against the frozen view center), matching the drag-move
           // sweep above.
           const frac = (e.clientX - rect.left) / rect.width;
@@ -539,7 +554,7 @@ export function usePanTuneGesture(
               // Engage the self-correcting lock so the dial follows this signal as
               // it drifts. clickHz sits inside the signal body — the tracker's
               // anchor. Disengages itself on manual tune / mode change / signal loss.
-              if (fromLive) armSnapLock({ dialHz: stepped, anchorBodyHz: clickHz, mode });
+              if (fromLive && !receiverIsB) armSnapLock({ dialHz: stepped, anchorBodyHz: clickHz, mode });
               return;
             }
           }
@@ -605,5 +620,5 @@ export function usePanTuneGesture(
       canvas.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('wheel', onWheel);
     };
-  }, [canvasRef, wheelActions]);
+  }, [canvasRef, receiver, wheelActions]);
 }

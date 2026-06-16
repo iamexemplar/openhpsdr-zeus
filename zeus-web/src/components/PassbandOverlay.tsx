@@ -74,6 +74,7 @@ type PassbandOverlayProps = {
   resizable?: boolean;
   /** The spectrum surface container, for mapping a pointer X to a frequency. */
   containerRef?: RefObject<HTMLElement | null>;
+  receiver?: 'A' | 'B';
 };
 
 type EdgeDrag = {
@@ -86,13 +87,20 @@ type EdgeDrag = {
   pointerId: number;
 };
 
-export function PassbandOverlay({ resizable = false, containerRef }: PassbandOverlayProps = {}) {
+export function PassbandOverlay({
+  resizable = false,
+  containerRef,
+  receiver = 'A',
+}: PassbandOverlayProps = {}) {
   const centerHz = useDisplayStore((s) => s.centerHz);
   const hzPerPixel = useDisplayStore((s) => s.hzPerPixel);
   // Header width — survives frames whose pan payload is invalid.
   const width = useDisplayStore((s) => s.width);
   const filterLowHz = useConnectionStore((s) => s.filterLowHz);
   const filterHighHz = useConnectionStore((s) => s.filterHighHz);
+  const selectedVfoHz = useConnectionStore((s) =>
+    receiver === 'B' ? s.vfoBHz : s.vfoHz,
+  );
 
   const rectRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<EdgeDrag | null>(null);
@@ -113,7 +121,8 @@ export function PassbandOverlay({ resizable = false, containerRef }: PassbandOve
     const span = len * s.hzPerPixel;
     const frac = (clientX - rect.left) / rect.width;
     const absHz = Number(s.centerHz) - span / 2 + frac * span;
-    return absHz - Number(useConnectionStore.getState().vfoHz);
+    const c = useConnectionStore.getState();
+    return absHz - Number(receiver === 'B' ? c.vfoBHz : c.vfoHz);
   };
 
   // Throttled live write while dragging (50 ms), so a drag resizes the real
@@ -210,7 +219,7 @@ export function PassbandOverlay({ resizable = false, containerRef }: PassbandOve
       const dialOffsetHz = viewCenter.isInitialized()
         ? conn.vfoHz - viewCenter.getTargetCenterHz()
         : 0;
-      const passCenter = view + dialOffsetHz;
+      const passCenter = receiver === 'B' ? conn.vfoBHz : view + dialOffsetHz;
       const startHz = view - spanHz / 2;
       const leftPct = ((passCenter + conn.filterLowHz - startHz) / spanHz) * 100;
       const rightPct = ((passCenter + conn.filterHighHz - startHz) / spanHz) * 100;
@@ -228,7 +237,8 @@ export function PassbandOverlay({ resizable = false, containerRef }: PassbandOve
       if (
         s.filterLowHz !== prev.filterLowHz ||
         s.filterHighHz !== prev.filterHighHz ||
-        s.vfoHz !== prev.vfoHz
+        s.vfoHz !== prev.vfoHz ||
+        s.vfoBHz !== prev.vfoBHz
       ) {
         schedule();
       }
@@ -243,7 +253,7 @@ export function PassbandOverlay({ resizable = false, containerRef }: PassbandOve
       unsubFrame();
       cancelDrawBusFrame(update);
     };
-  }, []);
+  }, [receiver]);
 
   if (!width || hzPerPixel <= 0) return null;
 
@@ -252,8 +262,8 @@ export function PassbandOverlay({ resizable = false, containerRef }: PassbandOve
   const startHz = center - spanHz / 2;
 
   // Initial (pre-draw-bus) geometry; the callback refines it next frame.
-  const passLowHz = center + filterLowHz;
-  const passHighHz = center + filterHighHz;
+  const passLowHz = selectedVfoHz + filterLowHz;
+  const passHighHz = selectedVfoHz + filterHighHz;
   const leftPct = ((passLowHz - startHz) / spanHz) * 100;
   const rightPct = ((passHighHz - startHz) / spanHz) * 100;
   const widthPct = rightPct - leftPct;

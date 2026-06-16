@@ -80,7 +80,11 @@ function formatMHz(hz: number, strideHz: number): string {
 // commits per display frame (issue #597; ticks are rigid under a pure pan).
 // The amber dial-marker line tracks VfoHz, which equals centerHz outside CW
 // and sits ±cw_pitch from centre in CWU/CWL.
-export function FreqAxis() {
+type FreqAxisProps = {
+  receiver?: 'A' | 'B';
+};
+
+export function FreqAxis({ receiver = 'A' }: FreqAxisProps = {}) {
   const centerHz = useDisplayStore((s) => s.centerHz);
   const hzPerPixel = useDisplayStore((s) => s.hzPerPixel);
   // Header width — present even on frames whose pan payload is invalid, so
@@ -122,17 +126,21 @@ export function FreqAxis() {
         // marker PINNED to the zero line during a glide (vfo and target
         // move in lockstep at input time) instead of leading off it and
         // easing back (operator feedback, 2026-06-12).
-        const vfoHz = useConnectionStore.getState().vfoHz;
-        const dialOffsetHz = viewCenter.isInitialized()
-          ? vfoHz - viewCenter.getTargetCenterHz()
-          : vfoHz - layoutCenter;
+        const conn = useConnectionStore.getState();
+        const vfoHz = receiver === 'B' ? conn.vfoBHz : conn.vfoHz;
+        const dialOffsetHz =
+          receiver === 'B'
+            ? vfoHz - view
+            : viewCenter.isInitialized()
+            ? vfoHz - viewCenter.getTargetCenterHz()
+            : vfoHz - layoutCenter;
         marker.style.left = `${((spanHz / 2 + dialOffsetHz) / spanHz) * 100}%`;
       }
     };
     const schedule = () => requestDrawBusFrame(update);
     const unsubVc = viewCenter.subscribe(schedule);
     const unsubVfo = useConnectionStore.subscribe((s, prev) => {
-      if (s.vfoHz !== prev.vfoHz) schedule();
+      if (s.vfoHz !== prev.vfoHz || s.vfoBHz !== prev.vfoBHz) schedule();
     });
     const unsubFrame = useDisplayStore.subscribe((s, prev) => {
       if (s.lastSeq !== prev.lastSeq) schedule();
@@ -144,7 +152,7 @@ export function FreqAxis() {
       unsubFrame();
       cancelDrawBusFrame(update);
     };
-  }, []);
+  }, [receiver]);
 
   if (!width || hzPerPixel <= 0) return null;
 
@@ -155,8 +163,9 @@ export function FreqAxis() {
   const endHz = center + spanHz / 2;
   // Initial (pre-draw-bus) marker position; the callback refines it against
   // the animated view-center on the next frame.
-  const dialPct =
-    ((useConnectionStore.getState().vfoHz - startHz) / spanHz) * 100;
+  const conn = useConnectionStore.getState();
+  const selectedVfoHz = receiver === 'B' ? conn.vfoBHz : conn.vfoHz;
+  const dialPct = ((selectedVfoHz - startHz) / spanHz) * 100;
 
   // Lay ticks out one full stride beyond each edge so a glide can't expose
   // a label-less gap before the next 30 Hz relayout catches up.

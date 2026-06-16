@@ -662,8 +662,22 @@ public static class ZeusEndpoints
 
         app.MapPost("/api/vfo", (VfoSetRequest req, RadioService r) =>
         {
-            log.LogInformation("api.vfo hz={Hz}", req.Hz);
-            return r.SetVfo(req.Hz);
+            log.LogInformation("api.vfo receiver={Receiver} hz={Hz}", req.Receiver, req.Hz);
+            return req.Receiver == 1 ? r.SetVfoB(req.Hz) : r.SetVfo(req.Hz);
+        });
+
+        app.MapPost("/api/vfo/swap", (RadioService r) =>
+        {
+            log.LogInformation("api.vfo.swap");
+            return r.SwapVfos();
+        });
+
+        app.MapPost("/api/rx2", (Rx2SetRequest req, RadioService r) =>
+        {
+            log.LogInformation(
+                "api.rx2 enabled={Enabled} vfoBHz={VfoBHz} audioMode={AudioMode} afGainDb={AfGainDb}",
+                req.Enabled, req.VfoBHz, req.AudioMode, req.AfGainDb);
+            return r.SetRx2(req);
         });
 
         // Set the radio's hardware NCO (LO) frequency directly. Does not
