@@ -104,47 +104,47 @@ export function VfoPanel() {
     const label = receiver === 'A' ? 'VFO A' : 'VFO B';
     return (
       <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '34px minmax(0, 1fr) auto',
-          alignItems: 'center',
-          gap: 8,
-          minWidth: 0,
-          padding: 6,
-          border: `1px solid ${focused ? 'var(--accent)' : 'var(--line)'}`,
-          borderRadius: 6,
-          background: focused ? 'rgba(35,126,255,0.08)' : 'rgba(255,255,255,0.018)',
-          opacity: enabled ? 1 : 0.55,
+        className={`vfo-lane ${focused ? 'is-focused' : ''} ${txSelected ? 'is-tx' : ''} ${
+          enabled ? '' : 'is-disabled'
+        }`}
+        onClick={() => {
+          if (enabled) setRxFocus(receiver);
         }}
       >
         <button
           type="button"
-          className={`btn sm ${focused ? 'active' : ''}`}
+          className="vfo-focus-key"
           disabled={!enabled}
-          onClick={() => setRxFocus(receiver)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setRxFocus(receiver);
+          }}
           title={`Focus ${title}`}
           aria-label={`Focus ${title}`}
-          style={{ width: 30, minWidth: 30, padding: 0, justifyContent: 'center' }}
+          aria-pressed={focused}
         >
           {receiver}
         </button>
-        <div style={{ display: 'grid', gap: 4, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
-            <span className="label-xs" style={{ color: enabled ? 'var(--fg-0)' : 'var(--fg-3)' }}>
+        <div className="vfo-lane-body">
+          <div className="vfo-lane-meta">
+            <span className="vfo-lane-title">
               {title}
             </span>
-            <span className="label-xs mono">{bandOf(freqHz)}</span>
+            <span className="vfo-lane-band mono">{bandOf(freqHz)}</span>
           </div>
           <VfoDisplay receiver={receiver} label={label} compact />
         </div>
         <button
           type="button"
-          className={`btn sm ${txSelected ? 'tx' : ''}`}
+          className={`vfo-tx-key ${txSelected ? 'is-selected' : ''}`}
           disabled={!enabled}
-          onClick={() => chooseTxVfo(receiver)}
+          onClick={(e) => {
+            e.stopPropagation();
+            chooseTxVfo(receiver);
+          }}
           title={`Transmit on VFO ${receiver}`}
           aria-label={`Transmit on VFO ${receiver}`}
-          style={{ minWidth: 46, padding: '0 7px', justifyContent: 'center' }}
+          aria-pressed={txSelected}
         >
           <Send size={13} />
           <span>TX</span>
@@ -154,50 +154,44 @@ export function VfoPanel() {
   };
 
   return (
-    <div className="freq-panel" style={{ flex: 1, overflow: 'auto', display: 'grid', gap: 8 }}>
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 6,
-          flexWrap: 'wrap',
-        }}
-      >
+    <div className="freq-panel vfo-dual-panel">
+      <div className="vfo-command-strip">
         <button
           type="button"
-          className={`btn sm ${rx2Enabled ? 'active' : ''}`}
+          className={`vfo-rx2-pill ${rx2Enabled ? 'is-on' : ''}`}
           onClick={toggleRx2}
           aria-pressed={rx2Enabled}
           title={rx2Enabled ? 'Disable RX2' : 'Enable RX2'}
-          style={{ minWidth: 64, justifyContent: 'center' }}
         >
           <Headphones size={13} />
           <span>RX2</span>
+          <span className="vfo-status-dot" aria-hidden="true" />
         </button>
-        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className="vfo-copy-bank" role="group" aria-label="VFO copy and swap">
           <button
             type="button"
-            className="btn sm"
+            className="vfo-tool-key"
             onClick={() => patchRx2({ vfoBHz: vfoHz })}
             title="Copy VFO A to VFO B"
+            aria-label="Copy VFO A to VFO B"
           >
             <Copy size={13} />
-            <span>A to B</span>
+            <span>A&gt;B</span>
           </button>
           <button
             type="button"
-            className="btn sm"
+            className="vfo-tool-key"
             onClick={copyBToA}
             disabled={!rx2Enabled}
             title="Copy VFO B to VFO A"
+            aria-label="Copy VFO B to VFO A"
           >
             <Copy size={13} />
-            <span>B to A</span>
+            <span>B&gt;A</span>
           </button>
           <button
             type="button"
-            className="btn sm"
+            className="vfo-tool-key"
             onClick={() => swapVfos().then(applyState).catch(() => {})}
             title="Swap VFO A and VFO B"
             aria-label="Swap VFO A and VFO B"
@@ -208,53 +202,47 @@ export function VfoPanel() {
         </div>
       </div>
 
-      {receiverRow('A', vfoHz)}
-      {receiverRow('B', vfoBHz, rx2Enabled)}
+      <div className="vfo-stack">
+        {receiverRow('A', vfoHz)}
+        {receiverRow('B', vfoBHz, rx2Enabled)}
+      </div>
 
-      <div style={{ display: 'grid', gap: 8 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span className="label-xs" style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}>
-            <Headphones size={12} />
-            Listen
+      <div className="vfo-audio-strip">
+        <div className="vfo-listen-bank" role="group" aria-label="RX2 listen mode">
+          <span className="vfo-audio-mark" title="Listen mode" aria-hidden="true">
+            <Headphones size={13} />
           </span>
-        {AUDIO_MODES.map((m) => (
-          <button
-            key={m.mode}
-            type="button"
-            className={`btn sm ${rx2AudioMode === m.mode ? 'active' : ''}`}
-            disabled={!rx2Enabled}
-            onClick={() => {
-              if (m.mode === 'rx1') setRxFocus('A');
-              if (m.mode === 'rx2') setRxFocus('B');
-              patchRx2({ audioMode: m.mode });
-            }}
-            title={m.title}
-          >
-            {m.label}
-          </button>
-        ))}
+          {AUDIO_MODES.map((m) => (
+            <button
+              key={m.mode}
+              type="button"
+              className={`vfo-segment ${rx2AudioMode === m.mode ? 'is-active' : ''}`}
+              disabled={!rx2Enabled}
+              onClick={() => {
+                if (m.mode === 'rx1') setRxFocus('A');
+                if (m.mode === 'rx2') setRxFocus('B');
+                patchRx2({ audioMode: m.mode });
+              }}
+              title={m.title}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
-      <label
-        className="chip mono"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'auto 1fr auto',
-          gap: 8,
-        }}
-      >
-        <span className="k">RX2 AF</span>
-        <input
-          type="range"
-          min={-30}
-          max={12}
-          step={1}
-          value={rx2AfGainDb}
-          disabled={!rx2Enabled}
-          onChange={(e) => patchRx2({ afGainDb: Number(e.currentTarget.value) })}
-          aria-label="RX2 audio gain"
-        />
-        <span className="v">{rx2AfGainDb.toFixed(0)} dB</span>
-      </label>
+        <label className="vfo-af-control mono">
+          <span className="vfo-af-label">AF</span>
+          <input
+            type="range"
+            min={-30}
+            max={12}
+            step={1}
+            value={rx2AfGainDb}
+            disabled={!rx2Enabled}
+            onChange={(e) => patchRx2({ afGainDb: Number(e.currentTarget.value) })}
+            aria-label="RX2 audio gain"
+          />
+          <span className="vfo-af-value">{rx2AfGainDb.toFixed(0)} dB</span>
+        </label>
       </div>
     </div>
   );

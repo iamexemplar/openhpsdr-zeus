@@ -50,7 +50,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
 } from 'react';
 import { fetchState, setVfo, setVfoB } from '../api/client';
 import { useConnectionStore } from '../state/connection-store';
@@ -272,29 +271,10 @@ export function VfoDisplay({
   }, [applyState, editing, postVfo, receiver]);
 
   const digits = useMemo(() => DIGIT_PLACES, []);
-  const compactDisplayStyle: CSSProperties | undefined = compact
-    ? {
-        padding: '8px 10px 7px',
-        minHeight: 54,
-        borderRadius: 6,
-        flex: '0 0 auto',
-      }
-    : undefined;
-  const compactDigitsStyle: CSSProperties | undefined = compact
-    ? {
-        fontSize: 'clamp(27px, 7.5cqw, 42px)',
-        lineHeight: 1,
-        margin: 0,
-      }
-    : undefined;
-
   return (
-    <div
-      className={`freq-display${compact ? ' compact' : ''}`}
-      style={compactDisplayStyle}
-    >
+    <div className={`freq-display${compact ? ' compact' : ''}`}>
       {editing ? (
-        <div className="freq-digits mono" style={{ gap: compact ? 4 : 6, ...compactDigitsStyle }}>
+        <div className="freq-digits mono" style={{ gap: compact ? 3 : 6 }}>
           <input
             ref={inputRef}
             type="text"
@@ -305,7 +285,8 @@ export function VfoDisplay({
             onBlur={cancelEdit}
             aria-label={`${label} frequency in kHz`}
             style={{
-              width: 220,
+              width: compact ? '100%' : 220,
+              minWidth: 0,
               background: 'transparent',
               border: 'none',
               borderBottom: '1px solid var(--accent)',
@@ -334,7 +315,6 @@ export function VfoDisplay({
             border: 'none',
             cursor: 'text',
             width: '100%',
-            ...compactDigitsStyle,
           }}
         >
           {digits.map((place) => {
@@ -359,7 +339,7 @@ export function VfoDisplay({
           })}
         </button>
       )}
-      <div className="freq-bot" style={{ justifyContent: 'space-between', gap: 6, marginTop: 4 }}>
+      <div className="freq-bot">
         <span className="label-xs">{label}</span>
         <span className="label-xs">{compact ? 'MHz' : 'MHz · click to type · wheel on a digit to step'}</span>
       </div>

@@ -291,54 +291,23 @@ export function HeroPanel({ onRemove, tile, layoutId }: HeroPanelProps = {}) {
         </span>
         {rx2Enabled && (
           <div
+            className="hero-vfo-switch"
             onPointerDown={stopDrag}
             onMouseDown={stopDrag}
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: 3,
-              transform: 'translateX(-50%)',
-              zIndex: 4,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              padding: 2,
-              maxWidth: '34%',
-              overflow: 'hidden',
-              background: 'rgba(0,0,0,0.48)',
-              border: '1px solid rgba(255,255,255,0.10)',
-              borderRadius: 5,
-              cursor: 'default',
-            }}
             aria-label="Select active VFO"
           >
             {(['A', 'B'] as const).map((receiver) => (
               <button
                 key={receiver}
                 type="button"
-                className={`btn sm ${rxFocus === receiver ? 'active' : ''}`}
+                className={`hero-vfo-switch__key ${rxFocus === receiver ? 'is-active' : ''}`}
                 onClick={() => setRxFocus(receiver)}
                 aria-pressed={rxFocus === receiver}
                 title={`Move VFO ${receiver} from spectrum clicks`}
-                style={{
-                  minHeight: 18,
-                  height: 18,
-                  minWidth: 42,
-                  padding: '0 7px',
-                  justifyContent: 'center',
-                  gap: 4,
-                  borderRadius: 4,
-                }}
               >
-                <span>VFO {receiver}</span>
+                <span>{receiver}</span>
                 {txVfo === receiver && (
-                  <span
-                    style={{
-                      color: 'var(--tx)',
-                      fontSize: 8,
-                      fontWeight: 800,
-                    }}
-                  >
+                  <span className="hero-vfo-switch__tx">
                     TX
                   </span>
                 )}
