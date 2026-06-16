@@ -267,6 +267,73 @@ function Get-ArtifactIndexFilePath {
     return [string](Get-JsonValue $FileEntry "path")
 }
 
+function Get-ArtifactIndexFileSummaryPath {
+    param($FileEntry)
+
+    if ($FileEntry -is [string]) {
+        return ""
+    }
+
+    foreach ($name in @("summaryPath", "reportPath", "watchSummaryPath", "diagnosticsSummaryPath")) {
+        $summaryPath = [string](Get-JsonValue $FileEntry $name)
+        if (-not [string]::IsNullOrWhiteSpace($summaryPath)) {
+            return $summaryPath
+        }
+    }
+
+    return ""
+}
+
+function Add-AbsolutePathIfPresent {
+    param(
+        [System.Collections.Generic.List[object]]$Target,
+        [string]$Name,
+        $Value
+    )
+
+    $path = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        return
+    }
+
+    if ([System.IO.Path]::IsPathRooted($path)) {
+        $Target.Add([ordered]@{
+            name = $Name
+            path = $path
+        }) | Out-Null
+    }
+}
+
+function Get-LiveTraceComparisonAbsolutePaths {
+    param($Report)
+
+    $absolutePaths = New-Object System.Collections.Generic.List[object]
+    foreach ($name in @("baselineIndexPath", "candidateIndexPath", "reportPath", "markdownPath", "outputDir")) {
+        Add-AbsolutePathIfPresent $absolutePaths $name (Get-JsonValue $Report $name)
+    }
+
+    foreach ($collectionName in @("scenarioComparisons", "metricRegressionDetails", "hardConstraintRegressionDetails", "gateFailureDetails", "missingMetricDetails")) {
+        foreach ($item in (Get-JsonArray $Report $collectionName)) {
+            foreach ($name in @("baselineInputPath", "candidateInputPath", "reportPath")) {
+                Add-AbsolutePathIfPresent $absolutePaths "$collectionName.$name" (Get-JsonValue $item $name)
+            }
+        }
+    }
+
+    return @($absolutePaths.ToArray())
+}
+
+function Get-PathExampleText {
+    param($Items)
+
+    $examples = @($Items | Select-Object -First 3 | ForEach-Object { "$($_.name)=$($_.path)" })
+    if ($examples.Count -eq 0) {
+        return ""
+    }
+
+    return $examples -join "; "
+}
+
 function Get-ArtifactIndexFileScenarioIds {
     param($FileEntry)
 
@@ -370,6 +437,42 @@ function ConvertTo-MetricId {
     }
 
     return ($Value.Trim().ToLowerInvariant() -replace "[^a-z0-9]+", "")
+}
+
+function ConvertTo-CandidateId {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+
+    return ($Value.Trim().ToLowerInvariant() -replace "[^a-z0-9]+", "-").Trim("-")
+}
+
+function Get-ExternalEngineCandidateEntries {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return @()
+    }
+
+    if ($Value -is [System.Array]) {
+        return @($Value)
+    }
+
+    foreach ($name in @("externalEngineCandidates", "candidates", "items", "engines")) {
+        $items = @(Get-JsonArray $Value $name)
+        if ($items.Count -gt 0) {
+            return @($items)
+        }
+    }
+
+    $id = ConvertTo-CandidateId ([string](Get-JsonValue $Value "id"))
+    if (-not [string]::IsNullOrWhiteSpace($id)) {
+        return @($Value)
+    }
+
+    return @()
 }
 
 function Get-MetricIdsFromValue {
@@ -595,6 +698,12 @@ $liveTraceComparisonEvidence = [ordered]@{
     hardConstraintRegressionCount = 0
     gateFailureCount = 0
     missingMetricValueCount = 0
+    metricRegressionDetailCount = 0
+    hardConstraintRegressionDetailCount = 0
+    gateFailureDetailCount = 0
+    missingMetricDetailCount = 0
+    bundleRelativePaths = $false
+    absolutePathCount = 0
     status = "not-evaluated"
 }
 $nativeSymbolAuditArtifactId = "wdsp-native-symbol-audit"
@@ -610,12 +719,33 @@ $nativeSymbolAuditEvidence = [ordered]@{
     binaryExportStatus = ""
     status = "not-evaluated"
 }
+$nativeRuntimeArtifactAuditId = "wdsp-runtime-artifact-audit"
+$nativeRuntimeArtifactAuditEvidence = [ordered]@{
+    present = $false
+    readyForWinX64Package = $false
+    pendingRidCount = 0
+    pendingRids = @()
+    artifactCount = 0
+    status = "not-evaluated"
+}
 $metricCatalogEvidence = [ordered]@{
     present = $false
     metricCount = 0
     requiredMetricCount = 0
     missingRequiredMetricCount = 0
     invalidDirectionCount = 0
+    status = "not-evaluated"
+}
+$requiredExternalCandidateIds = @("rnnoise", "deepfilternet", "speexdsp", "webrtc-apm")
+$externalEngineCandidateEvidence = [ordered]@{
+    present = $false
+    snapshotPresent = $false
+    candidateCount = 0
+    snapshotCandidateCount = 0
+    candidateIds = @()
+    missingCandidateIds = @()
+    unsafeCandidateCount = 0
+    snapshotMismatchCount = 0
     status = "not-evaluated"
 }
 
@@ -678,6 +808,7 @@ $manifest = $parsedFiles["benchmark-capture-manifest"]
 $plan = $parsedFiles["benchmark-plan"]
 $metricCatalog = $parsedFiles["benchmark-metric-catalog"]
 $hardware = $parsedFiles["hardware-diagnostics"]
+$externalCandidates = $parsedFiles["external-engine-candidates"]
 
 $hardwareEvidence = [ordered]@{
     planTarget = $null
@@ -772,6 +903,152 @@ else {
     $metricCatalogEvidence["missingRequiredMetricCount"] = $missingCatalogMetricIds.Count
     $metricCatalogEvidence["invalidDirectionCount"] = $invalidDirectionCount
     $metricCatalogEvidence["status"] = if ($missingCatalogMetricIds.Count -eq 0 -and $invalidDirectionCount -eq 0) { "ready" } else { "not-ready" }
+}
+
+if ($null -eq $externalCandidates) {
+    $externalEngineCandidateEvidence["status"] = "missing"
+    Add-AcceptanceIssue $errors $warnings -AllowPreflight:$AllowPreflight "external-engine-candidates-missing" "external-engine-candidates.json is required so optional RNNoise/DeepFilterNet/SpeexDSP/WebRTC candidates remain opt-in and evidence-gated."
+}
+else {
+    $externalEngineCandidateEvidence["present"] = $true
+    $candidateEntries = @(Get-ExternalEngineCandidateEntries $externalCandidates)
+    $candidateIds = New-Object System.Collections.Generic.List[string]
+    $seenCandidateIds = @{}
+    $unsafeCandidateCount = 0
+
+    foreach ($candidate in $candidateEntries) {
+        $candidateUnsafe = $false
+        $id = ConvertTo-CandidateId ([string](Get-JsonValue $candidate "id"))
+        if ([string]::IsNullOrWhiteSpace($id)) {
+            Add-ValidationIssue $errors "error" "external-candidate-id-missing" "External DSP candidate entry is missing an id."
+            $candidateUnsafe = $true
+        }
+        else {
+            $candidateIds.Add($id) | Out-Null
+            $seenCandidateIds[$id] = $true
+        }
+
+        $schemaVersion = [int](Get-JsonValue $candidate "schemaVersion")
+        if ($schemaVersion -ne 1) {
+            Add-ValidationIssue $errors "error" "external-candidate-schema-unsupported" "External DSP candidate '$id' must use schemaVersion=1."
+            $candidateUnsafe = $true
+        }
+
+        $defaultState = [string](Get-JsonValue $candidate "defaultState")
+        if ($defaultState -ine "off") {
+            Add-ValidationIssue $errors "error" "external-candidate-default-not-off" "External DSP candidate '$id' must default to off; found '$defaultState'."
+            $candidateUnsafe = $true
+        }
+
+        $rolloutPolicy = [string](Get-JsonValue $candidate "rolloutPolicy")
+        if ($rolloutPolicy -notlike "*opt-in*" -or $rolloutPolicy -notlike "*bakeoff*") {
+            Add-ValidationIssue $errors "error" "external-candidate-rollout-not-gated" "External DSP candidate '$id' must remain opt-in bakeoff only; rolloutPolicy='$rolloutPolicy'."
+            $candidateUnsafe = $true
+        }
+
+        $integrationPoint = [string](Get-JsonValue $candidate "integrationPoint")
+        if ($integrationPoint -notlike "*post-demod*") {
+            Add-ValidationIssue $errors "error" "external-candidate-integration-not-post-demod" "External DSP candidate '$id' must stay post-demod until benchmark proof exists; integrationPoint='$integrationPoint'."
+            $candidateUnsafe = $true
+        }
+
+        foreach ($field in @("license", "packagingStatus", "runtimeRisk", "latencyRisk", "radioSafetyRisk")) {
+            $value = [string](Get-JsonValue $candidate $field)
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                Add-ValidationIssue $errors "error" "external-candidate-required-field-missing" "External DSP candidate '$id' must declare '$field'."
+                $candidateUnsafe = $true
+            }
+        }
+
+        $requiredBenchmarks = @(Get-JsonArray $candidate "requiredBenchmarks")
+        $requiredEvidence = @(Get-JsonArray $candidate "requiredEvidence")
+        $blockers = @(Get-JsonArray $candidate "blockers")
+        $referenceUrls = @(Get-JsonArray $candidate "referenceUrls")
+
+        if ($requiredBenchmarks.Count -lt 3) {
+            Add-ValidationIssue $errors "error" "external-candidate-benchmarks-incomplete" "External DSP candidate '$id' must list at least three required benchmark scenarios."
+            $candidateUnsafe = $true
+        }
+        if ($requiredEvidence.Count -lt 3) {
+            Add-ValidationIssue $errors "error" "external-candidate-evidence-incomplete" "External DSP candidate '$id' must list licensing/package/runtime/fallback evidence requirements before integration."
+            $candidateUnsafe = $true
+        }
+        if ($blockers.Count -le 0) {
+            Add-ValidationIssue $errors "error" "external-candidate-blockers-missing" "External DSP candidate '$id' must keep explicit blockers until evidence clears them."
+            $candidateUnsafe = $true
+        }
+        if ($referenceUrls.Count -le 0) {
+            Add-ValidationIssue $errors "error" "external-candidate-references-missing" "External DSP candidate '$id' must include reference URLs for review."
+            $candidateUnsafe = $true
+        }
+
+        if ($id -eq "webrtc-apm") {
+            $webrtcSafetyText = "$((Get-JsonArray $candidate "requiredEvidence") -join ' ') $((Get-JsonValue $candidate "radioSafetyRisk"))"
+            if ($webrtcSafetyText -notlike "*AGC*" -or $webrtcSafetyText -notlike "*AEC*" -or $webrtcSafetyText -notlike "*disabled*") {
+                Add-ValidationIssue $errors "error" "external-candidate-webrtc-safety-gate-missing" "WebRTC APM candidate must explicitly keep AEC/AGC disabled unless separately approved."
+                $candidateUnsafe = $true
+            }
+        }
+
+        if ($candidateUnsafe) {
+            $unsafeCandidateCount++
+        }
+    }
+
+    $missingCandidateIds = New-Object System.Collections.Generic.List[string]
+    foreach ($requiredCandidateId in $requiredExternalCandidateIds) {
+        if (-not $seenCandidateIds.ContainsKey($requiredCandidateId)) {
+            $missingCandidateIds.Add($requiredCandidateId) | Out-Null
+        }
+    }
+    if ($missingCandidateIds.Count -gt 0) {
+        Add-AcceptanceIssue $errors $warnings -AllowPreflight:$AllowPreflight "external-engine-candidates-incomplete" "External DSP candidate catalog is missing required candidate(s): $($missingCandidateIds.ToArray() -join ', ')."
+    }
+
+    $externalEngineCandidateEvidence["candidateCount"] = $candidateEntries.Count
+    $externalEngineCandidateEvidence["candidateIds"] = @($candidateIds.ToArray() | Select-Object -Unique)
+    $externalEngineCandidateEvidence["missingCandidateIds"] = @($missingCandidateIds.ToArray())
+    $externalEngineCandidateEvidence["unsafeCandidateCount"] = $unsafeCandidateCount
+
+    if ($null -ne $snapshot) {
+        $snapshotCandidateEntries = @(Get-ExternalEngineCandidateEntries (Get-JsonValue $snapshot "externalEngineCandidates"))
+        $externalEngineCandidateEvidence["snapshotPresent"] = ($snapshotCandidateEntries.Count -gt 0)
+        $externalEngineCandidateEvidence["snapshotCandidateCount"] = $snapshotCandidateEntries.Count
+
+        $snapshotIds = @{}
+        foreach ($candidate in $snapshotCandidateEntries) {
+            $snapshotId = ConvertTo-CandidateId ([string](Get-JsonValue $candidate "id"))
+            if (-not [string]::IsNullOrWhiteSpace($snapshotId)) {
+                $snapshotIds[$snapshotId] = $true
+            }
+        }
+
+        $snapshotMismatchCount = 0
+        foreach ($id in @($seenCandidateIds.Keys)) {
+            if (-not $snapshotIds.ContainsKey($id)) {
+                $snapshotMismatchCount++
+                Add-ValidationIssue $errors "error" "external-candidate-snapshot-mismatch" "Modernization snapshot is missing external DSP candidate '$id' captured by /api/dsp/external-engine-candidates."
+            }
+        }
+        foreach ($id in @($snapshotIds.Keys)) {
+            if (-not $seenCandidateIds.ContainsKey($id)) {
+                $snapshotMismatchCount++
+                Add-ValidationIssue $errors "error" "external-candidate-snapshot-mismatch" "Modernization snapshot includes external DSP candidate '$id' not present in /api/dsp/external-engine-candidates."
+            }
+        }
+        $externalEngineCandidateEvidence["snapshotMismatchCount"] = $snapshotMismatchCount
+    }
+
+    if ($candidateEntries.Count -eq 0) {
+        $externalEngineCandidateEvidence["status"] = "empty"
+        Add-AcceptanceIssue $errors $warnings -AllowPreflight:$AllowPreflight "external-engine-candidates-empty" "External DSP candidate catalog is empty."
+    }
+    elseif ($missingCandidateIds.Count -eq 0 -and $unsafeCandidateCount -eq 0 -and [int]$externalEngineCandidateEvidence["snapshotMismatchCount"] -eq 0) {
+        $externalEngineCandidateEvidence["status"] = "opt-in-gated"
+    }
+    else {
+        $externalEngineCandidateEvidence["status"] = "not-ready"
+    }
 }
 
 $planHardwareTarget = ""
@@ -931,7 +1208,7 @@ else {
     $captureRequiredPhysicalArtifactIds[$metricComparisonArtifactId] = $true
     $captureArtifactScenarioIds[$metricComparisonArtifactId] = @(Get-JsonArray $manifest "scenarioIds")
 
-    foreach ($requiredArtifact in @("live-diagnostics-json", "benchmark-plan-json", $nativeSymbolAuditArtifactId, "offline-fixture-metrics")) {
+    foreach ($requiredArtifact in @("live-diagnostics-json", "benchmark-plan-json", $nativeSymbolAuditArtifactId, $nativeRuntimeArtifactAuditId, "offline-fixture-metrics")) {
         if (-not $artifactIds.ContainsKey($requiredArtifact)) {
             Add-ValidationIssue $errors "error" "manifest-required-artifact-missing" "Capture manifest is missing required artifact '$requiredArtifact'."
         }
@@ -1281,8 +1558,8 @@ else {
                 $liveTraceComparisonEvidence["present"] = $true
 
                 $tool = [string](Get-JsonValue $artifactJson "tool")
-                if ($tool -ne "compare-dsp-live-diagnostics-traces") {
-                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-tool-invalid" "Artifact '$artifactId' must be generated by compare-dsp-live-diagnostics-traces.ps1."
+                if ($tool -ne "compare-dsp-live-diagnostics-traces" -and $tool -ne "compare-dsp-live-diagnostics-matrix") {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-tool-invalid" "Artifact '$artifactId' must be generated by compare-dsp-live-diagnostics-traces.ps1 or compare-dsp-live-diagnostics-matrix.ps1."
                     $artifactValidationOk = $false
                 }
 
@@ -1291,13 +1568,59 @@ else {
                 $hardConstraintRegressions = [int](Get-JsonValue $artifactJson "hardConstraintRegressionCount")
                 $gateFailures = [int](Get-JsonValue $artifactJson "gateFailureCount")
                 $missingMetrics = [int](Get-JsonValue $artifactJson "missingMetricValueCount")
+                $candidateComparisonsValue = Get-JsonValue $artifactJson "candidateComparisonCount"
+                $candidateComparisons = if ($null -eq $candidateComparisonsValue) { 1 } else { [int]$candidateComparisonsValue }
+                $failedComparisons = [int](Get-JsonValue $artifactJson "failedComparisonCount")
+                $missingBaselines = [int](Get-JsonValue $artifactJson "missingBaselineCount")
+                $missingCandidates = [int](Get-JsonValue $artifactJson "missingCandidateCount")
+                $metricRegressionDetails = @(Get-JsonArray $artifactJson "metricRegressionDetails")
+                $hardConstraintRegressionDetails = @(Get-JsonArray $artifactJson "hardConstraintRegressionDetails")
+                $gateFailureDetails = @(Get-JsonArray $artifactJson "gateFailureDetails")
+                $missingMetricDetails = @(Get-JsonArray $artifactJson "missingMetricDetails")
+                $bundleRelativePaths = Test-Truthy (Get-JsonValue $artifactJson "bundleRelativePaths")
+                $absolutePaths = if ($tool -eq "compare-dsp-live-diagnostics-matrix") { @(Get-LiveTraceComparisonAbsolutePaths $artifactJson) } else { @() }
 
                 $liveTraceComparisonEvidence["readyForReview"] = $readyForReview
+                $liveTraceComparisonEvidence["candidateComparisonCount"] = $candidateComparisons
+                $liveTraceComparisonEvidence["failedComparisonCount"] = $failedComparisons
+                $liveTraceComparisonEvidence["missingBaselineCount"] = $missingBaselines
+                $liveTraceComparisonEvidence["missingCandidateCount"] = $missingCandidates
                 $liveTraceComparisonEvidence["regressionCount"] = $regressions
                 $liveTraceComparisonEvidence["hardConstraintRegressionCount"] = $hardConstraintRegressions
                 $liveTraceComparisonEvidence["gateFailureCount"] = $gateFailures
                 $liveTraceComparisonEvidence["missingMetricValueCount"] = $missingMetrics
+                $liveTraceComparisonEvidence["metricRegressionDetailCount"] = $metricRegressionDetails.Count
+                $liveTraceComparisonEvidence["hardConstraintRegressionDetailCount"] = $hardConstraintRegressionDetails.Count
+                $liveTraceComparisonEvidence["gateFailureDetailCount"] = $gateFailureDetails.Count
+                $liveTraceComparisonEvidence["missingMetricDetailCount"] = $missingMetricDetails.Count
+                $liveTraceComparisonEvidence["bundleRelativePaths"] = $bundleRelativePaths
+                $liveTraceComparisonEvidence["absolutePathCount"] = $absolutePaths.Count
 
+                if ($candidateComparisons -le 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-candidate-missing" "Artifact '$artifactId' does not compare any candidate live trace scenario."
+                    $artifactValidationOk = $false
+                }
+                if ($tool -eq "compare-dsp-live-diagnostics-matrix" -and -not $bundleRelativePaths) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-paths-not-bundle-relative" "Artifact '$artifactId' matrix report was not generated with bundleRelativePaths=true; rerun compare-dsp-live-diagnostics-matrix.ps1 with -BundleDir."
+                    $artifactValidationOk = $false
+                }
+                if ($absolutePaths.Count -gt 0) {
+                    $pathExamples = Get-PathExampleText $absolutePaths
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-absolute-paths" "Artifact '$artifactId' matrix report contains $($absolutePaths.Count) absolute path(s); rerun with -BundleDir so capture bundles are portable. Examples: $pathExamples"
+                    $artifactValidationOk = $false
+                }
+                if ($failedComparisons -gt 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-failed" "Artifact '$artifactId' reports $failedComparisons failed per-scenario comparison(s)."
+                    $artifactValidationOk = $false
+                }
+                if ($missingBaselines -gt 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-baseline-missing" "Artifact '$artifactId' is missing $missingBaselines baseline scenario trace(s)."
+                    $artifactValidationOk = $false
+                }
+                if ($missingCandidates -gt 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-candidate-scenario-missing" "Artifact '$artifactId' is missing $missingCandidates candidate scenario trace(s)."
+                    $artifactValidationOk = $false
+                }
                 if (-not $readyForReview) {
                     Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-comparison-not-ready" "Artifact '$artifactId' reports readyForReview=false."
                     $artifactValidationOk = $false
@@ -1391,6 +1714,51 @@ else {
                 }
             }
 
+            if ($artifactKind -ieq "runtime-audit-json" -or $artifactId -eq $nativeRuntimeArtifactAuditId) {
+                $nativeRuntimeArtifactAuditEvidence["present"] = $true
+
+                $tool = [string](Get-JsonValue $artifactJson "tool")
+                if ($tool -ne "audit-wdsp-runtime-artifacts") {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "native-runtime-audit-tool-invalid" "Artifact '$artifactId' must be generated by audit-wdsp-runtime-artifacts.ps1."
+                    $artifactValidationOk = $false
+                }
+
+                $readyForWinX64Package = Test-Truthy (Get-JsonValue $artifactJson "readyForWinX64Package")
+                $pendingRids = @(Get-JsonArray $artifactJson "pendingRids" | ForEach-Object { [string]$_ })
+                $pendingRidCount = [int](Get-JsonValue $artifactJson "pendingRidCount")
+                $runtimeArtifacts = @(Get-JsonArray $artifactJson "artifacts")
+
+                $nativeRuntimeArtifactAuditEvidence["readyForWinX64Package"] = $readyForWinX64Package
+                $nativeRuntimeArtifactAuditEvidence["pendingRidCount"] = $pendingRidCount
+                $nativeRuntimeArtifactAuditEvidence["pendingRids"] = @($pendingRids)
+                $nativeRuntimeArtifactAuditEvidence["artifactCount"] = $runtimeArtifacts.Count
+
+                if (-not $readyForWinX64Package) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "native-runtime-win-x64-not-ready" "Artifact '$artifactId' reports readyForWinX64Package=false."
+                    $artifactValidationOk = $false
+                }
+                if ($runtimeArtifacts.Count -le 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "native-runtime-audit-empty" "Artifact '$artifactId' did not audit any packaged runtime artifacts."
+                    $artifactValidationOk = $false
+                }
+                if ($pendingRidCount -ne $pendingRids.Count) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "native-runtime-pending-rid-count-mismatch" "Artifact '$artifactId' reports pendingRidCount=$pendingRidCount but lists $($pendingRids.Count) pending RID(s)."
+                    $artifactValidationOk = $false
+                }
+
+                if ($artifactValidationOk) {
+                    if ($pendingRidCount -gt 0) {
+                        $nativeRuntimeArtifactAuditEvidence["status"] = "win-x64-ready-pending-rids"
+                    }
+                    else {
+                        $nativeRuntimeArtifactAuditEvidence["status"] = "ready"
+                    }
+                }
+                else {
+                    $nativeRuntimeArtifactAuditEvidence["status"] = "not-ready"
+                }
+            }
+
             if (Test-ArtifactIndex $artifactKind $artifactPath) {
                 $indexedFiles = Get-JsonArray $artifactJson "files"
                 if ($indexedFiles.Count -eq 0) {
@@ -1403,17 +1771,28 @@ else {
                 $coveredComparisonsByScenario = @{}
                 foreach ($indexedFile in $indexedFiles) {
                     $indexedPath = Get-ArtifactIndexFilePath $indexedFile
+                    $indexedSummaryPath = Get-ArtifactIndexFileSummaryPath $indexedFile
                     $indexedScenarioIds = @(Get-ArtifactIndexFileScenarioIds $indexedFile)
                     $indexedComparisonIds = @(Get-ArtifactIndexFileComparisonIds $indexedFile)
                     $indexedRecord = [ordered]@{
                         artifactId = $artifactId
                         artifactKind = $artifactKind
                         path = $indexedPath
+                        summaryPath = $indexedSummaryPath
                         scenarioIds = @($indexedScenarioIds)
                         comparisonIds = @($indexedComparisonIds)
                         required = $effectiveRequired
                         ok = $false
                         bytes = 0
+                        summaryOk = $null
+                        summaryTrendStatus = $null
+                        readyForBenchmarkTrace = $null
+                        nr5SampleCount = $null
+                        nr5AgcDiagnosticSampleCount = $null
+                        nr5WeakInputSampleCount = $null
+                        nr5WeakRecoveredSampleCount = $null
+                        nr5WeakDropoutSampleCount = $null
+                        nr5HotMakeupSampleCount = $null
                     }
                     $artifactReferencedFiles.Add($indexedRecord) | Out-Null
 
@@ -1458,6 +1837,83 @@ else {
                     }
 
                     $indexedRecord["ok"] = $true
+                    if ($artifactId -eq "live-diagnostics-trace-index") {
+                        if ([string]::IsNullOrWhiteSpace($indexedSummaryPath)) {
+                            Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-summary-missing" "Artifact '$artifactId' index entry '$indexedPath' must include summaryPath for watch-dsp-live-diagnostics evidence validation."
+                            $artifactValidationOk = $false
+                            $indexedRecord["ok"] = $false
+                        }
+                        else {
+                            if ([System.IO.Path]::IsPathRooted($indexedSummaryPath)) {
+                                Add-ValidationIssue $warnings "warning" "live-trace-index-summary-path-absolute" "Artifact '$artifactId' index uses an absolute summary path; relative paths keep capture bundles portable."
+                            }
+
+                            $resolvedSummaryPath = Get-BundlePath $bundlePath $indexedSummaryPath
+                            if (-not (Test-Path -LiteralPath $resolvedSummaryPath -PathType Leaf)) {
+                                Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-summary-file-missing" "Artifact '$artifactId' index references a missing watch summary: $indexedSummaryPath"
+                                $artifactValidationOk = $false
+                                $indexedRecord["ok"] = $false
+                            }
+                            else {
+                                $summaryJson = $null
+                                try {
+                                    $summaryJson = Read-JsonFile $resolvedSummaryPath
+                                }
+                                catch {
+                                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-summary-json-invalid" $_.Exception.Message
+                                    $artifactValidationOk = $false
+                                    $indexedRecord["ok"] = $false
+                                }
+
+                                if ($null -ne $summaryJson) {
+                                    $summaryTool = [string](Get-JsonValue $summaryJson "tool")
+                                    $readyTrace = Test-Truthy (Get-JsonValue $summaryJson "readyForBenchmarkTrace")
+                                    $trendStatus = [string](Get-JsonValue $summaryJson "trendStatus")
+                                    $nr5SampleCount = [int](Get-JsonValue $summaryJson "nr5SampleCount")
+                                    $nr5AgcDiagnosticSampleCount = [int](Get-JsonValue $summaryJson "nr5AgcDiagnosticSampleCount")
+                                    $nr5Weak = Get-JsonValue $summaryJson "nr5WeakSignalWatch"
+                                    $nr5WeakInputSampleCount = [int](Get-JsonValue $nr5Weak "weakInputSampleCount")
+                                    $nr5WeakRecoveredSampleCount = [int](Get-JsonValue $nr5Weak "weakRecoveredSampleCount")
+                                    $nr5WeakDropoutSampleCount = [int](Get-JsonValue $nr5Weak "weakDropoutSampleCount")
+                                    $nr5HotMakeupSampleCount = [int](Get-JsonValue $nr5Weak "hotMakeupSampleCount")
+
+                                    $indexedRecord["summaryOk"] = ($summaryTool -eq "watch-dsp-live-diagnostics")
+                                    $indexedRecord["summaryTrendStatus"] = $trendStatus
+                                    $indexedRecord["readyForBenchmarkTrace"] = $readyTrace
+                                    $indexedRecord["nr5SampleCount"] = $nr5SampleCount
+                                    $indexedRecord["nr5AgcDiagnosticSampleCount"] = $nr5AgcDiagnosticSampleCount
+                                    $indexedRecord["nr5WeakInputSampleCount"] = $nr5WeakInputSampleCount
+                                    $indexedRecord["nr5WeakRecoveredSampleCount"] = $nr5WeakRecoveredSampleCount
+                                    $indexedRecord["nr5WeakDropoutSampleCount"] = $nr5WeakDropoutSampleCount
+                                    $indexedRecord["nr5HotMakeupSampleCount"] = $nr5HotMakeupSampleCount
+
+                                    if ($summaryTool -ne "watch-dsp-live-diagnostics") {
+                                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-summary-tool-invalid" "Artifact '$artifactId' summary '$indexedSummaryPath' must be generated by watch-dsp-live-diagnostics.ps1."
+                                        $artifactValidationOk = $false
+                                        $indexedRecord["ok"] = $false
+                                    }
+
+                                    if (-not $readyTrace) {
+                                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-not-ready" "Artifact '$artifactId' summary '$indexedSummaryPath' reports readyForBenchmarkTrace=false with trendStatus='$trendStatus'."
+                                        $artifactValidationOk = $false
+                                        $indexedRecord["ok"] = $false
+                                    }
+
+                                    if ($trendStatus -eq "nr5-agc-diagnostics-missing") {
+                                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-nr5-agc-diagnostics-missing" "Artifact '$artifactId' summary '$indexedSummaryPath' lacks NR5 AGC diagnostics; recapture after the backend exports GetRXASPNRAgcDiagnostics."
+                                        $artifactValidationOk = $false
+                                        $indexedRecord["ok"] = $false
+                                    }
+
+                                    if ($nr5SampleCount -gt 0 -and $nr5AgcDiagnosticSampleCount -lt $nr5SampleCount) {
+                                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "live-trace-index-nr5-agc-coverage-incomplete" "Artifact '$artifactId' summary '$indexedSummaryPath' has NR5 AGC diagnostics for $nr5AgcDiagnosticSampleCount of $nr5SampleCount NR5 sample(s)."
+                                        $artifactValidationOk = $false
+                                        $indexedRecord["ok"] = $false
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if ($expectedScenarioIds.Count -gt 0) {
@@ -1591,9 +2047,19 @@ $report = [ordered]@{
     metricComparisonGateFailureCount = $metricComparisonEvidence.gateFailureCount
     liveTraceComparisonPresent = $liveTraceComparisonEvidence.present
     liveTraceComparisonReady = $liveTraceComparisonEvidence.readyForReview
+    liveTraceComparisonCandidateComparisonCount = $liveTraceComparisonEvidence.candidateComparisonCount
+    liveTraceComparisonFailedComparisonCount = $liveTraceComparisonEvidence.failedComparisonCount
+    liveTraceComparisonMissingBaselineCount = $liveTraceComparisonEvidence.missingBaselineCount
+    liveTraceComparisonMissingCandidateCount = $liveTraceComparisonEvidence.missingCandidateCount
     liveTraceComparisonRegressionCount = $liveTraceComparisonEvidence.regressionCount
     liveTraceComparisonHardConstraintRegressionCount = $liveTraceComparisonEvidence.hardConstraintRegressionCount
     liveTraceComparisonGateFailureCount = $liveTraceComparisonEvidence.gateFailureCount
+    liveTraceComparisonMetricRegressionDetailCount = $liveTraceComparisonEvidence.metricRegressionDetailCount
+    liveTraceComparisonHardConstraintRegressionDetailCount = $liveTraceComparisonEvidence.hardConstraintRegressionDetailCount
+    liveTraceComparisonGateFailureDetailCount = $liveTraceComparisonEvidence.gateFailureDetailCount
+    liveTraceComparisonMissingMetricDetailCount = $liveTraceComparisonEvidence.missingMetricDetailCount
+    liveTraceComparisonBundleRelativePaths = $liveTraceComparisonEvidence.bundleRelativePaths
+    liveTraceComparisonAbsolutePathCount = $liveTraceComparisonEvidence.absolutePathCount
     nativeSymbolAuditPresent = $nativeSymbolAuditEvidence.present
     nativeSymbolAuditReady = $nativeSymbolAuditEvidence.readyForReview
     nativeSymbolAuditImportedSymbolCount = $nativeSymbolAuditEvidence.importedSymbolCount
@@ -1602,17 +2068,29 @@ $report = [ordered]@{
     nativeSymbolAuditBinaryExportsEvaluated = $nativeSymbolAuditEvidence.binaryExportsEvaluated
     nativeSymbolAuditBinaryExportCount = $nativeSymbolAuditEvidence.binaryExportCount
     nativeSymbolAuditBinaryMissingRequiredCount = $nativeSymbolAuditEvidence.binaryMissingRequiredCount
+    nativeRuntimeArtifactAuditPresent = $nativeRuntimeArtifactAuditEvidence.present
+    nativeRuntimeArtifactAuditReadyForWinX64Package = $nativeRuntimeArtifactAuditEvidence.readyForWinX64Package
+    nativeRuntimeArtifactAuditPendingRidCount = $nativeRuntimeArtifactAuditEvidence.pendingRidCount
+    nativeRuntimeArtifactAuditArtifactCount = $nativeRuntimeArtifactAuditEvidence.artifactCount
     metricCatalogPresent = $metricCatalogEvidence.present
     metricCatalogStatus = $metricCatalogEvidence.status
     metricCatalogMetricCount = $metricCatalogEvidence.metricCount
     metricCatalogMissingRequiredMetricCount = $metricCatalogEvidence.missingRequiredMetricCount
+    externalEngineCandidatesPresent = $externalEngineCandidateEvidence.present
+    externalEngineCandidateStatus = $externalEngineCandidateEvidence.status
+    externalEngineCandidateCount = $externalEngineCandidateEvidence.candidateCount
+    externalEngineCandidateMissingCount = $externalEngineCandidateEvidence.missingCandidateIds.Count
+    externalEngineCandidateUnsafeCount = $externalEngineCandidateEvidence.unsafeCandidateCount
+    externalEngineCandidateSnapshotMismatchCount = $externalEngineCandidateEvidence.snapshotMismatchCount
     errorCount = $errors.Count
     warningCount = $warnings.Count
     hardwareEvidence = $hardwareEvidence
     metricCatalogEvidence = $metricCatalogEvidence
+    externalEngineCandidateEvidence = $externalEngineCandidateEvidence
     metricComparisonEvidence = $metricComparisonEvidence
     liveTraceComparisonEvidence = $liveTraceComparisonEvidence
     nativeSymbolAuditEvidence = $nativeSymbolAuditEvidence
+    nativeRuntimeArtifactAuditEvidence = $nativeRuntimeArtifactAuditEvidence
     artifactFiles = @($artifactFiles.ToArray())
     artifactReferencedFiles = @($artifactReferencedFiles.ToArray())
     artifactScenarioCoverage = @($artifactScenarioCoverage.ToArray())

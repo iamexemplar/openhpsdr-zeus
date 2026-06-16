@@ -21,6 +21,12 @@ param(
 
     [switch]$JsonOnly,
 
+    [switch]$SkipCertificateCheck,
+
+    [switch]$Realtime,
+
+    [int]$RealtimeEvery = 1,
+
     [switch]$ContinueOnError
 )
 
@@ -33,6 +39,94 @@ function Get-RepoRoot {
 function Normalize-BaseUrl {
     param([Parameter(Mandatory = $true)][string]$Url)
     return $Url.TrimEnd("/")
+}
+
+function Enable-ModernTls {
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    }
+    catch {
+        # PowerShell 7+ uses platform defaults; older Windows PowerShell needs TLS 1.2 explicitly.
+    }
+}
+
+function Enable-CertificateBypass {
+    Enable-ModernTls
+
+    if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey("SkipCertificateCheck")) {
+        return
+    }
+
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback]{
+        param($sender, $certificate, $chain, $sslPolicyErrors)
+        return $true
+    }
+}
+
+function Invoke-PwshRelaunchIfNeeded {
+    param([Parameter(Mandatory = $true)][string]$ScriptPath)
+
+    if ($env:ZEUS_DSP_WATCH_PWSH_RELAUNCHED -eq "1") {
+        return
+    }
+
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        return
+    }
+
+    if (-not $SkipCertificateCheck -or -not $BaseUrl.StartsWith("https://", [StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
+
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if ($null -eq $pwsh) {
+        return
+    }
+
+    $args = New-Object System.Collections.Generic.List[string]
+    foreach ($item in @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $ScriptPath,
+        "-BaseUrl", $BaseUrl,
+        "-Samples", ([string]$Samples),
+        "-IntervalMs", ([string]$IntervalMs),
+        "-TimeoutSec", ([string]$TimeoutSec)
+    )) {
+        $args.Add($item) | Out-Null
+    }
+
+    foreach ($pair in @(
+        @{ Name = "-InputPath"; Value = $InputPath },
+        @{ Name = "-OutputRoot"; Value = $OutputRoot },
+        @{ Name = "-Label"; Value = $Label },
+        @{ Name = "-ReportPath"; Value = $ReportPath },
+        @{ Name = "-JsonlPath"; Value = $JsonlPath }
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($pair.Value)) {
+            $args.Add($pair.Name) | Out-Null
+            $args.Add($pair.Value) | Out-Null
+        }
+    }
+
+    $args.Add("-RealtimeEvery") | Out-Null
+    $args.Add([string]$RealtimeEvery) | Out-Null
+
+    foreach ($switchName in @("-PlanOnly", "-JsonOnly", "-SkipCertificateCheck", "-Realtime", "-ContinueOnError")) {
+        switch ($switchName) {
+            "-PlanOnly" { if ($PlanOnly) { $args.Add($switchName) | Out-Null } }
+            "-JsonOnly" { if ($JsonOnly) { $args.Add($switchName) | Out-Null } }
+            "-SkipCertificateCheck" { if ($SkipCertificateCheck) { $args.Add($switchName) | Out-Null } }
+            "-Realtime" { if ($Realtime) { $args.Add($switchName) | Out-Null } }
+            "-ContinueOnError" { if ($ContinueOnError) { $args.Add($switchName) | Out-Null } }
+        }
+    }
+
+    $env:ZEUS_DSP_WATCH_PWSH_RELAUNCHED = "1"
+    & $pwsh.Source @args
+    $exitCode = $LASTEXITCODE
+    Remove-Item Env:\ZEUS_DSP_WATCH_PWSH_RELAUNCHED -ErrorAction SilentlyContinue
+    exit $exitCode
 }
 
 function ConvertTo-SafeName {
@@ -265,6 +359,61 @@ function Get-NumberStats {
     }
 }
 
+function Get-PairStats {
+    param(
+        [System.Collections.Generic.List[double]]$X,
+        [System.Collections.Generic.List[double]]$Y
+    )
+
+    $count = [Math]::Min($X.Count, $Y.Count)
+    if ($count -lt 2) {
+        return [ordered]@{
+            count = $count
+            slope = $null
+            intercept = $null
+            correlation = $null
+        }
+    }
+
+    $sumX = 0.0
+    $sumY = 0.0
+    for ($i = 0; $i -lt $count; $i++) {
+        $sumX += [double]$X[$i]
+        $sumY += [double]$Y[$i]
+    }
+
+    $meanX = $sumX / $count
+    $meanY = $sumY / $count
+    $ssX = 0.0
+    $ssY = 0.0
+    $ssXY = 0.0
+    for ($i = 0; $i -lt $count; $i++) {
+        $dx = [double]$X[$i] - $meanX
+        $dy = [double]$Y[$i] - $meanY
+        $ssX += $dx * $dx
+        $ssY += $dy * $dy
+        $ssXY += $dx * $dy
+    }
+
+    $slope = $null
+    $intercept = $null
+    $correlation = $null
+    if ($ssX -gt 1.0e-12) {
+        $slope = $ssXY / $ssX
+        $intercept = $meanY - $slope * $meanX
+    }
+    if ($ssX -gt 1.0e-12 -and $ssY -gt 1.0e-12) {
+        $correlation = $ssXY / [Math]::Sqrt($ssX * $ssY)
+    }
+
+    return [ordered]@{
+        count = $count
+        slope = if ($null -eq $slope) { $null } else { [Math]::Round($slope, 3) }
+        intercept = if ($null -eq $intercept) { $null } else { [Math]::Round($intercept, 3) }
+        correlation = if ($null -eq $correlation) { $null } else { [Math]::Round($correlation, 3) }
+    }
+}
+
 function Test-HardConstraint {
     param([string]$Constraint)
 
@@ -424,6 +573,9 @@ function Invoke-LiveSamples {
         [string]$LinePath
     )
 
+    $webRequestCommand = Get-Command Invoke-WebRequest
+    $webRequestSupportsCertificateSkip = $webRequestCommand.Parameters.ContainsKey("SkipCertificateCheck")
+    $webRequestSupportsBasicParsing = $webRequestCommand.Parameters.ContainsKey("UseBasicParsing")
     $records = New-Object System.Collections.Generic.List[object]
     for ($i = 1; $i -le $Count; $i++) {
         $sampledUtc = [DateTimeOffset]::UtcNow
@@ -431,7 +583,19 @@ function Invoke-LiveSamples {
         $record = $null
 
         try {
-            $response = Invoke-WebRequest -Uri $Endpoint -Method Get -Headers @{ Accept = "application/json" } -TimeoutSec $RequestTimeoutSec
+            $requestArgs = @{
+                Uri = $Endpoint
+                Method = "Get"
+                Headers = @{ Accept = "application/json" }
+                TimeoutSec = $RequestTimeoutSec
+            }
+            if ($SkipCertificateCheck -and $webRequestSupportsCertificateSkip) {
+                $requestArgs["SkipCertificateCheck"] = $true
+            }
+            if ($webRequestSupportsBasicParsing) {
+                $requestArgs["UseBasicParsing"] = $true
+            }
+            $response = Invoke-WebRequest @requestArgs
             $watch.Stop()
             $diagnostics = Read-JsonText -Text $response.Content -Source $Endpoint
             $record = New-SampleRecord `
@@ -468,6 +632,9 @@ function Invoke-LiveSamples {
         if (-not [string]::IsNullOrWhiteSpace($LinePath)) {
             Add-JsonLine -Path $LinePath -Value $record
         }
+        if ($Realtime -and $RealtimeEvery -gt 0 -and (($i % $RealtimeEvery) -eq 0 -or $i -eq $Count)) {
+            Write-RealtimeSample $record
+        }
 
         if ($i -lt $Count -and $DelayMs -gt 0) {
             Start-Sleep -Milliseconds $DelayMs
@@ -482,6 +649,14 @@ function New-SampleSummary {
 
     $diagnostics = Get-JsonValue $Sample "diagnostics"
     $runtime = Get-JsonValue $diagnostics "runtimeEvidence"
+    $nr5 = Get-JsonValue $diagnostics "nr5SpnrDiagnostics"
+    $nr5InputDbfs = Get-NumericValue (Get-JsonValue $nr5 "inputDbfs")
+    $nr5OutputDbfs = Get-NumericValue (Get-JsonValue $nr5 "outputDbfs")
+    $nr5OutputMinusInputDb = $null
+    if ($null -ne $nr5InputDbfs -and $null -ne $nr5OutputDbfs) {
+        $nr5OutputMinusInputDb = [Math]::Round($nr5OutputDbfs - $nr5InputDbfs, 1)
+    }
+    $nr5Tuning = Get-Nr5TuningReadiness $diagnostics
 
     return [ordered]@{
         sampleIndex = Get-JsonValue $Sample "sampleIndex"
@@ -492,17 +667,141 @@ function New-SampleSummary {
         qualityTone = [string](Get-JsonValue $diagnostics "qualityTone")
         readinessScore = Get-JsonValue $diagnostics "readinessScore"
         readyForLiveBenchmark = Test-Truthy (Get-JsonValue $diagnostics "readyForLiveBenchmark")
+        readyForNr5Tuning = Test-Truthy $nr5Tuning["ready"]
+        nr5TuningStatus = [string]$nr5Tuning["status"]
+        nr5TuningReadinessSource = [string]$nr5Tuning["source"]
+        nr5TuningConstraints = @($nr5Tuning["constraints"])
+        frontendSceneStatus = [string](Get-JsonValue $diagnostics "frontendSceneStatus")
+        frontendSceneFresh = Test-Truthy (Get-JsonValue $diagnostics "frontendSceneFresh")
+        frontendSceneAgeMs = Get-JsonValue $diagnostics "frontendSceneAgeMs"
         runtimeStatus = [string](Get-JsonValue $runtime "status")
         audioStatus = [string](Get-JsonValue $runtime "audioStatus")
         rxMetersFresh = Test-Truthy (Get-JsonValue $runtime "rxMetersFresh")
         audioFresh = Test-Truthy (Get-JsonValue $runtime "audioFresh")
+        rxMetersAgeMs = Get-JsonValue $runtime "rxMetersAgeMs"
+        audioAgeMs = Get-JsonValue $runtime "audioAgeMs"
         agcGainDb = Get-JsonValue $runtime "agcGainDb"
         adcHeadroomDb = Get-JsonValue $runtime "adcHeadroomDb"
         audioRmsDbfs = Get-JsonValue $runtime "audioRmsDbfs"
         audioPeakDbfs = Get-JsonValue $runtime "audioPeakDbfs"
         squelchOpen = Test-Truthy (Get-JsonValue $runtime "squelchOpen")
         monitorBacklogSamples = Get-JsonValue $runtime "monitorBacklogSamples"
+        requestedNrMode = [string](Get-JsonValue $diagnostics "requestedNrMode")
+        effectiveNrMode = [string](Get-JsonValue $diagnostics "effectiveNrMode")
+        nr5LearnedFrames = Get-JsonValue $nr5 "learnedFrames"
+        nr5InputDbfs = $nr5InputDbfs
+        nr5OutputDbfs = $nr5OutputDbfs
+        nr5OutputMinusInputDb = $nr5OutputMinusInputDb
+        nr5MeanGain = Get-JsonValue $nr5 "meanGain"
+        nr5SignalConfidence = Get-JsonValue $nr5 "signalConfidence"
+        nr5AgcGate = Get-JsonValue $nr5 "agcGate"
+        nr5LevelDrive = Get-JsonValue $nr5 "levelDrive"
+        nr5RecoveryDrive = Get-JsonValue $nr5 "recoveryDrive"
+        nr5MakeupGainDb = Get-JsonValue $nr5 "makeupGainDb"
         constraints = @(Get-JsonArray $diagnostics "constraints")
+    }
+}
+
+function Write-RealtimeSample {
+    param($Sample)
+
+    if ($JsonOnly) {
+        return
+    }
+
+    $summary = New-SampleSummary $Sample
+    $okText = if (Test-Truthy (Get-JsonValue $Sample "ok")) { "ok" } else { "fail" }
+    $modeText = "$($summary["requestedNrMode"])->$($summary["effectiveNrMode"])"
+    $nr5ReadyText = if (Test-Truthy $summary["readyForNr5Tuning"]) { "nr5-tune=yes" } else { "nr5-tune=no" }
+    $benchmarkText = if (Test-Truthy $summary["readyForLiveBenchmark"]) { "bench=yes" } else { "bench=no" }
+    $weakText = ""
+    $inputDb = Get-NumericValue $summary["nr5InputDbfs"]
+    $outputDb = Get-NumericValue $summary["nr5OutputDbfs"]
+    if ($null -ne $inputDb -and $null -ne $outputDb) {
+        $delta = Get-NumericValue $summary["nr5OutputMinusInputDb"]
+        $weakText = " in=$([Math]::Round($inputDb, 1)) out=$([Math]::Round($outputDb, 1)) delta=$delta"
+    }
+    $makeup = Get-NumericValue $summary["nr5MakeupGainDb"]
+    $makeupText = if ($null -eq $makeup) { "" } else { " makeup=$([Math]::Round($makeup, 1))dB" }
+    Write-Host ("[{0}] {1} {2} {3} {4}{5}{6}" -f
+        $summary["sampleIndex"],
+        $okText,
+        $modeText,
+        $nr5ReadyText,
+        $benchmarkText,
+        $weakText,
+        $makeupText)
+}
+
+function Get-Nr5TuningReadiness {
+    param($Diagnostics)
+
+    $endpointReady = Get-JsonValue $Diagnostics "readyForNr5Tuning"
+    $endpointStatus = [string](Get-JsonValue $Diagnostics "nr5TuningStatus")
+    $endpointConstraints = @(Get-JsonArray $Diagnostics "nr5TuningConstraints")
+    if ($null -ne $endpointReady -or -not [string]::IsNullOrWhiteSpace($endpointStatus) -or $endpointConstraints.Count -gt 0) {
+        return [ordered]@{
+            ready = Test-Truthy $endpointReady
+            status = if ([string]::IsNullOrWhiteSpace($endpointStatus)) { "nr5-tuning-watch" } else { $endpointStatus }
+            constraints = $endpointConstraints
+            source = "endpoint"
+        }
+    }
+
+    $constraints = New-Object System.Collections.Generic.List[string]
+    $requested = [string](Get-JsonValue $Diagnostics "requestedNrMode")
+    $effective = [string](Get-JsonValue $Diagnostics "effectiveNrMode")
+    $nr5 = Get-JsonValue $Diagnostics "nr5SpnrDiagnostics"
+    $runtime = Get-JsonValue $Diagnostics "runtimeEvidence"
+
+    if ($requested -ne "Nr5") {
+        $constraints.Add("nr5-not-requested") | Out-Null
+    }
+    if ($effective -ne "Nr5") {
+        $constraints.Add("nr5-not-effective") | Out-Null
+    }
+    if ($null -eq $nr5) {
+        $constraints.Add("nr5-diagnostics-missing") | Out-Null
+    }
+    else {
+        if (-not (Test-Truthy (Get-JsonValue $nr5 "run"))) {
+            $constraints.Add("nr5-not-running") | Out-Null
+        }
+        $learned = Get-NumericValue (Get-JsonValue $nr5 "learnedFrames")
+        if ($null -eq $learned -or $learned -lt 20) {
+            $constraints.Add("nr5-learning") | Out-Null
+        }
+        $agcRunValue = Get-JsonValue $nr5 "agcRun"
+        if ($null -ne $agcRunValue -and -not (Test-Truthy $agcRunValue)) {
+            $constraints.Add("nr5-agc-disabled") | Out-Null
+        }
+    }
+
+    if ($null -eq $runtime) {
+        $constraints.Add("runtime-evidence-missing") | Out-Null
+    }
+    else {
+        if (-not (Test-Truthy (Get-JsonValue $runtime "rxMetersFresh"))) {
+            $constraints.Add("rx-meters-not-fresh") | Out-Null
+        }
+        if (-not (Test-Truthy (Get-JsonValue $runtime "audioFresh"))) {
+            $constraints.Add("final-audio-not-fresh") | Out-Null
+        }
+        switch ([string](Get-JsonValue $runtime "status")) {
+            "audio-clipping-risk" { $constraints.Add("final-audio-clipping-risk") | Out-Null }
+            "audio-muted-by-squelch" { $constraints.Add("final-audio-muted-by-squelch") | Out-Null }
+            "audio-monitor-backlog" { $constraints.Add("monitor-audio-backlog") | Out-Null }
+            "audio-tx-monitor" { $constraints.Add("tx-monitor-audio-active") | Out-Null }
+            "adc-headroom-low" { $constraints.Add("adc-headroom-low") | Out-Null }
+        }
+    }
+
+    $uniqueConstraints = @($constraints.ToArray() | Select-Object -Unique)
+    return [ordered]@{
+        ready = ($uniqueConstraints.Count -eq 0)
+        status = if ($uniqueConstraints.Count -eq 0) { "ready-for-nr5-live-tuning" } else { "nr5-tuning-preflight-required" }
+        constraints = $uniqueConstraints
+        source = "watcher-fallback"
     }
 }
 
@@ -521,6 +820,8 @@ function Build-Report {
     $toneCounts = @{}
     $runtimeStatusCounts = @{}
     $audioStatusCounts = @{}
+    $nr5TuningStatusCounts = @{}
+    $nr5TuningConstraintCounts = @{}
     $constraintCounts = @{}
     $hardConstraintCounts = @{}
     $latencies = New-Object System.Collections.Generic.List[double]
@@ -530,8 +831,28 @@ function Build-Report {
     $rmsValues = New-Object System.Collections.Generic.List[double]
     $peakValues = New-Object System.Collections.Generic.List[double]
     $backlogValues = New-Object System.Collections.Generic.List[double]
+    $frontendSceneAgeValues = New-Object System.Collections.Generic.List[double]
+    $rxMetersAgeValues = New-Object System.Collections.Generic.List[double]
+    $audioAgeValues = New-Object System.Collections.Generic.List[double]
+    $nr5InputValues = New-Object System.Collections.Generic.List[double]
+    $nr5OutputValues = New-Object System.Collections.Generic.List[double]
+    $nr5InputOutputXValues = New-Object System.Collections.Generic.List[double]
+    $nr5InputOutputYValues = New-Object System.Collections.Generic.List[double]
+    $nr5OutputMinusInputValues = New-Object System.Collections.Generic.List[double]
+    $nr5WeakOutputValues = New-Object System.Collections.Generic.List[double]
+    $nr5StrongOutputValues = New-Object System.Collections.Generic.List[double]
+    $nr5MeanGainValues = New-Object System.Collections.Generic.List[double]
+    $nr5FloorReductionValues = New-Object System.Collections.Generic.List[double]
+    $nr5DynamicRangeValues = New-Object System.Collections.Generic.List[double]
+    $nr5SignalConfidenceValues = New-Object System.Collections.Generic.List[double]
+    $nr5AgcGateValues = New-Object System.Collections.Generic.List[double]
+    $nr5LevelDriveValues = New-Object System.Collections.Generic.List[double]
+    $nr5RecoveryDriveValues = New-Object System.Collections.Generic.List[double]
+    $nr5MakeupGainDbValues = New-Object System.Collections.Generic.List[double]
     $sampleSummaries = New-Object System.Collections.Generic.List[object]
     $recommendations = New-Object System.Collections.Generic.List[string]
+    $nr5WeakDropoutSamples = New-Object System.Collections.Generic.List[object]
+    $nr5HotMakeupSamples = New-Object System.Collections.Generic.List[object]
 
     $okCount = 0
     $failedCount = 0
@@ -544,6 +865,17 @@ function Build-Report {
     $squelchClosedCount = 0
     $squelchTailCount = 0
     $hardBlockerSampleCount = 0
+    $nr5SampleCount = 0
+    $nr5AlignedCount = 0
+    $nr5TuningReadyCount = 0
+    $nr5AgcDiagnosticCount = 0
+    $nr5WeakInputCount = 0
+    $nr5WeakRecoveredCount = 0
+    $nr5WeakDropoutCount = 0
+    $nr5WeakBelowInputCount = 0
+    $nr5WeakNearTargetCount = 0
+    $nr5StrongInputCount = 0
+    $nr5HotMakeupCount = 0
 
     foreach ($sample in @($SampleRecords)) {
         if (-not (Test-Truthy (Get-JsonValue $sample "ok"))) {
@@ -556,6 +888,7 @@ function Build-Report {
         Add-Number $latencies (Get-JsonValue $sample "latencyMs")
         $diagnostics = Get-JsonValue $sample "diagnostics"
         $runtime = Get-JsonValue $diagnostics "runtimeEvidence"
+        $nr5 = Get-JsonValue $diagnostics "nr5SpnrDiagnostics"
         $status = [string](Get-JsonValue $diagnostics "status")
         $tone = [string](Get-JsonValue $diagnostics "qualityTone")
         Add-Count $statusCounts $status
@@ -564,6 +897,15 @@ function Build-Report {
 
         if (Test-Truthy (Get-JsonValue $diagnostics "readyForLiveBenchmark")) {
             $readyCount++
+        }
+        $nr5Tuning = Get-Nr5TuningReadiness $diagnostics
+        if (Test-Truthy $nr5Tuning["ready"]) {
+            $nr5TuningReadyCount++
+        }
+        Add-Count $nr5TuningStatusCounts ([string]$nr5Tuning["status"])
+        Add-Number $frontendSceneAgeValues (Get-JsonValue $diagnostics "frontendSceneAgeMs")
+        foreach ($constraint in @($nr5Tuning["constraints"])) {
+            Add-Count $nr5TuningConstraintCounts ([string]$constraint)
         }
 
         $sampleHasHardBlocker = $false
@@ -587,6 +929,92 @@ function Build-Report {
             }
         }
 
+        if ($null -ne $nr5) {
+            $nr5SampleCount++
+            Add-Number $nr5InputValues (Get-JsonValue $nr5 "inputDbfs")
+            Add-Number $nr5OutputValues (Get-JsonValue $nr5 "outputDbfs")
+            Add-Number $nr5MeanGainValues (Get-JsonValue $nr5 "meanGain")
+            Add-Number $nr5FloorReductionValues (Get-JsonValue $nr5 "floorReductionDb")
+            Add-Number $nr5DynamicRangeValues (Get-JsonValue $nr5 "dynamicRangeDb")
+            $nr5SignalConfidence = Get-JsonValue $nr5 "signalConfidence"
+            $nr5AgcGate = Get-JsonValue $nr5 "agcGate"
+            Add-Number $nr5SignalConfidenceValues $nr5SignalConfidence
+            Add-Number $nr5AgcGateValues $nr5AgcGate
+            $nr5LevelDrive = Get-JsonValue $nr5 "levelDrive"
+            $nr5RecoveryDrive = Get-JsonValue $nr5 "recoveryDrive"
+            $nr5MakeupGainDb = Get-JsonValue $nr5 "makeupGainDb"
+            Add-Number $nr5LevelDriveValues $nr5LevelDrive
+            Add-Number $nr5RecoveryDriveValues $nr5RecoveryDrive
+            Add-Number $nr5MakeupGainDbValues $nr5MakeupGainDb
+            if ($null -ne $nr5LevelDrive -and $null -ne $nr5RecoveryDrive -and $null -ne $nr5MakeupGainDb) {
+                $nr5AgcDiagnosticCount++
+            }
+
+            $requestedNrMode = [string](Get-JsonValue $diagnostics "requestedNrMode")
+            $effectiveNrMode = [string](Get-JsonValue $diagnostics "effectiveNrMode")
+            if ($requestedNrMode -eq "Nr5" -and $effectiveNrMode -eq "Nr5" -and
+                (Test-Truthy (Get-JsonValue $nr5 "run"))) {
+                $nr5AlignedCount++
+            }
+
+            $nr5InputDbfs = Get-NumericValue (Get-JsonValue $nr5 "inputDbfs")
+            $nr5OutputDbfs = Get-NumericValue (Get-JsonValue $nr5 "outputDbfs")
+            $nr5ConfidenceNumber = Get-NumericValue $nr5SignalConfidence
+            $nr5AgcGateNumber = Get-NumericValue $nr5AgcGate
+            $nr5RecoveryDriveNumber = Get-NumericValue $nr5RecoveryDrive
+            $nr5MakeupGainDbNumber = Get-NumericValue $nr5MakeupGainDb
+            if ($null -ne $nr5InputDbfs -and $null -ne $nr5OutputDbfs) {
+                $nr5InputOutputXValues.Add([double]$nr5InputDbfs) | Out-Null
+                $nr5InputOutputYValues.Add([double]$nr5OutputDbfs) | Out-Null
+                $nr5OutputMinusInputValues.Add([double]($nr5OutputDbfs - $nr5InputDbfs)) | Out-Null
+            }
+            if ($null -ne $nr5InputDbfs -and $nr5InputDbfs -le -30.0) {
+                $nr5WeakInputCount++
+                if ($null -ne $nr5OutputDbfs) {
+                    $nr5WeakOutputValues.Add([double]$nr5OutputDbfs) | Out-Null
+                }
+                if ($null -ne $nr5OutputDbfs -and $nr5OutputDbfs -ge -30.0) {
+                    $nr5WeakRecoveredCount++
+                }
+                if ($null -ne $nr5OutputDbfs -and $nr5OutputDbfs -lt ($nr5InputDbfs - 1.0)) {
+                    $nr5WeakBelowInputCount++
+                }
+                if ($null -ne $nr5OutputDbfs -and $nr5OutputDbfs -ge -31.5 -and $nr5OutputDbfs -le -20.0) {
+                    $nr5WeakNearTargetCount++
+                }
+                if ($null -ne $nr5OutputDbfs -and $nr5OutputDbfs -le -35.0) {
+                    $nr5WeakDropoutCount++
+                    $nr5WeakDropoutSamples.Add([ordered]@{
+                        sampleIndex = [int](Get-JsonValue $sample "sampleIndex")
+                        inputDbfs = $nr5InputDbfs
+                        outputDbfs = $nr5OutputDbfs
+                        signalConfidence = $nr5ConfidenceNumber
+                        agcGate = $nr5AgcGateNumber
+                        recoveryDrive = $nr5RecoveryDriveNumber
+                        makeupGainDb = $nr5MakeupGainDbNumber
+                    }) | Out-Null
+                }
+            }
+            elseif ($null -ne $nr5InputDbfs -and $nr5InputDbfs -ge -22.0) {
+                $nr5StrongInputCount++
+                if ($null -ne $nr5OutputDbfs) {
+                    $nr5StrongOutputValues.Add([double]$nr5OutputDbfs) | Out-Null
+                }
+            }
+            if ($null -ne $nr5MakeupGainDbNumber -and $nr5MakeupGainDbNumber -ge 12.0) {
+                $nr5HotMakeupCount++
+                $nr5HotMakeupSamples.Add([ordered]@{
+                    sampleIndex = [int](Get-JsonValue $sample "sampleIndex")
+                    inputDbfs = $nr5InputDbfs
+                    outputDbfs = $nr5OutputDbfs
+                    signalConfidence = $nr5ConfidenceNumber
+                    agcGate = $nr5AgcGateNumber
+                    recoveryDrive = $nr5RecoveryDriveNumber
+                    makeupGainDb = $nr5MakeupGainDbNumber
+                }) | Out-Null
+            }
+        }
+
         if ($null -ne $runtime) {
             $runtimeCount++
             Add-Count $runtimeStatusCounts ([string](Get-JsonValue $runtime "status"))
@@ -596,6 +1024,8 @@ function Build-Report {
             Add-Number $rmsValues (Get-JsonValue $runtime "audioRmsDbfs")
             Add-Number $peakValues (Get-JsonValue $runtime "audioPeakDbfs")
             Add-Number $backlogValues (Get-JsonValue $runtime "monitorBacklogSamples")
+            Add-Number $rxMetersAgeValues (Get-JsonValue $runtime "rxMetersAgeMs")
+            Add-Number $audioAgeValues (Get-JsonValue $runtime "audioAgeMs")
 
             if (Test-Truthy (Get-JsonValue $runtime "rxMetersFresh")) {
                 $rxMetersFreshCount++
@@ -625,6 +1055,33 @@ function Build-Report {
     $rmsStats = Get-NumberStats $rmsValues
     $peakStats = Get-NumberStats $peakValues
     $backlogStats = Get-NumberStats $backlogValues
+    $frontendSceneAgeStats = Get-NumberStats $frontendSceneAgeValues
+    $rxMetersAgeStats = Get-NumberStats $rxMetersAgeValues
+    $audioAgeStats = Get-NumberStats $audioAgeValues
+    $nr5InputStats = Get-NumberStats $nr5InputValues
+    $nr5OutputStats = Get-NumberStats $nr5OutputValues
+    $nr5InputOutputStats = Get-PairStats $nr5InputOutputXValues $nr5InputOutputYValues
+    $nr5OutputMinusInputStats = Get-NumberStats $nr5OutputMinusInputValues
+    $nr5WeakOutputStats = Get-NumberStats $nr5WeakOutputValues
+    $nr5StrongOutputStats = Get-NumberStats $nr5StrongOutputValues
+    $nr5MeanGainStats = Get-NumberStats $nr5MeanGainValues
+    $nr5FloorReductionStats = Get-NumberStats $nr5FloorReductionValues
+    $nr5DynamicRangeStats = Get-NumberStats $nr5DynamicRangeValues
+    $nr5SignalConfidenceStats = Get-NumberStats $nr5SignalConfidenceValues
+    $nr5AgcGateStats = Get-NumberStats $nr5AgcGateValues
+    $nr5LevelDriveStats = Get-NumberStats $nr5LevelDriveValues
+    $nr5RecoveryDriveStats = Get-NumberStats $nr5RecoveryDriveValues
+    $nr5MakeupGainDbStats = Get-NumberStats $nr5MakeupGainDbValues
+    $nr5WeakDropoutTopSamples = @($nr5WeakDropoutSamples.ToArray() | Sort-Object outputDbfs | Select-Object -First 8)
+    $nr5HotMakeupTopSamples = @($nr5HotMakeupSamples.ToArray() | Sort-Object makeupGainDb -Descending | Select-Object -First 8)
+    $nr5NormalizationCompressionDb = $null
+    $nr5WeakStrongOutputGapDb = $null
+    if ($null -ne $nr5InputStats["movement"] -and $null -ne $nr5OutputStats["movement"]) {
+        $nr5NormalizationCompressionDb = [Math]::Round([double]$nr5InputStats["movement"] - [double]$nr5OutputStats["movement"], 3)
+    }
+    if ($null -ne $nr5WeakOutputStats["average"] -and $null -ne $nr5StrongOutputStats["average"]) {
+        $nr5WeakStrongOutputGapDb = [Math]::Round([double]$nr5StrongOutputStats["average"] - [double]$nr5WeakOutputStats["average"], 3)
+    }
 
     $summaryRecommendations = New-Object System.Collections.Generic.List[string]
     if ($okCount -eq 0) {
@@ -639,6 +1096,12 @@ function Build-Report {
     if ($runtimeCount -lt $okCount) {
         $summaryRecommendations.Add("Upgrade or restart the backend so every live diagnostics sample includes runtimeEvidence.") | Out-Null
     }
+    if ($nr5SampleCount -gt 0 -and $nr5AlignedCount -lt $nr5SampleCount) {
+        $summaryRecommendations.Add("Not every NR5 diagnostics sample was requested/effective NR5; reassert NR5 before judging NR5 DSP behavior.") | Out-Null
+    }
+    if ($nr5SampleCount -gt 0 -and $nr5AgcDiagnosticCount -lt $nr5SampleCount) {
+        $summaryRecommendations.Add("Recapture this NR5 trace after restarting a backend that exports GetRXASPNRAgcDiagnostics; recovery-drive and makeup-gain evidence is missing.") | Out-Null
+    }
     if ($audioFreshCount -lt $runtimeCount) {
         $summaryRecommendations.Add("Restore fresh final audio before judging NR/AGC or external speech engines.") | Out-Null
     }
@@ -650,6 +1113,40 @@ function Build-Report {
     }
     if ([int]$rmsStats["count"] -gt 1 -and [double]$rmsStats["movement"] -gt 10.0) {
         $summaryRecommendations.Add("Final audio RMS moved more than 10 dB during the trace; pair this JSONL with audio render evidence before approving changes.") | Out-Null
+    }
+    $nr5OutputMotionNeedsReview = $false
+    if ([int]$nr5OutputStats["count"] -gt 1 -and [double]$nr5OutputStats["movement"] -gt 6.0) {
+        $nr5OutputMotionNeedsReview = ($nr5WeakDropoutCount -gt 0 `
+            -or $nr5HotMakeupCount -gt 0 `
+            -or ($null -ne $nr5NormalizationCompressionDb -and [double]$nr5NormalizationCompressionDb -lt -2.0) `
+            -or ([int]$rmsStats["count"] -gt 1 -and [double]$rmsStats["movement"] -gt 6.0))
+    }
+    if ($nr5OutputMotionNeedsReview) {
+        $summaryRecommendations.Add("NR5 output RMS moved more than 6 dB during the trace; inspect nr5RecoveryDrive and nr5MakeupGainDb before tuning mask thresholds.") | Out-Null
+    }
+    if ($null -ne $nr5NormalizationCompressionDb -and [double]$nr5NormalizationCompressionDb -lt -2.0) {
+        $summaryRecommendations.Add("NR5 output moved more than input during the trace; reduce makeup/recovery memory before increasing weak-signal gain.") | Out-Null
+    }
+    if ($null -ne $nr5WeakStrongOutputGapDb -and [Math]::Abs([double]$nr5WeakStrongOutputGapDb) -gt 6.0) {
+        $summaryRecommendations.Add("NR5 weak and strong outputs differ by more than 6 dB on average; tune normalization before judging faint-signal fidelity.") | Out-Null
+    }
+    if ($nr5WeakDropoutCount -gt 0) {
+        $summaryRecommendations.Add("NR5 weak-input dropouts were observed; inspect nr5WeakSignalWatch.topWeakDropouts before increasing global makeup gain.") | Out-Null
+    }
+    if ($nr5WeakBelowInputCount -gt 0) {
+        $summaryRecommendations.Add("Some weak NR5 samples left the output below the input; prefer bounded weak-frame rescue over persistent makeup gain.") | Out-Null
+    }
+    if ($nr5HotMakeupCount -gt 0) {
+        $summaryRecommendations.Add("NR5 makeup exceeded 12 dB on one or more samples; inspect nr5WeakSignalWatch.topHotMakeup before changing recovery attack/release.") | Out-Null
+    }
+    if ([int]$nr5RecoveryDriveStats["count"] -gt 1 -and [double]$nr5RecoveryDriveStats["max"] -lt 0.20 -and
+        [int]$rmsStats["count"] -gt 1 -and [double]$rmsStats["movement"] -gt 6.0) {
+        $summaryRecommendations.Add("Final audio moved but NR5 recovery drive stayed low; improve confidence/gating before increasing makeup gain.") | Out-Null
+    }
+    if ([int]$nr5RecoveryDriveStats["count"] -gt 1 -and [double]$nr5RecoveryDriveStats["max"] -ge 0.20 -and
+        [int]$nr5MakeupGainDbStats["count"] -gt 1 -and [double]$nr5MakeupGainDbStats["max"] -lt 1.5 -and
+        [int]$rmsStats["count"] -gt 1 -and [double]$rmsStats["movement"] -gt 6.0) {
+        $summaryRecommendations.Add("NR5 recovery drive engaged but makeup gain stayed low; tune the fast makeup path rather than the spectral mask.") | Out-Null
     }
     if ([int]$backlogStats["count"] -gt 0 -and [double]$backlogStats["max"] -gt 0) {
         $summaryRecommendations.Add("Monitor backlog appeared during the trace; drain or stop monitor injection before judging live audio fidelity.") | Out-Null
@@ -674,8 +1171,14 @@ function Build-Report {
     elseif ($rxMetersFreshCount -lt $runtimeCount) {
         $trendStatus = "rx-meters-not-fresh"
     }
+    elseif ($nr5SampleCount -gt 0 -and $nr5AgcDiagnosticCount -lt $nr5SampleCount) {
+        $trendStatus = "nr5-agc-diagnostics-missing"
+    }
     elseif ([int]$agcStats["count"] -gt 1 -and [double]$agcStats["movement"] -gt 12.0) {
         $trendStatus = "agc-movement-watch"
+    }
+    elseif ($nr5OutputMotionNeedsReview) {
+        $trendStatus = "nr5-output-level-watch"
     }
     elseif ([int]$rmsStats["count"] -gt 1 -and [double]$rmsStats["movement"] -gt 10.0) {
         $trendStatus = "audio-level-watch"
@@ -689,7 +1192,29 @@ function Build-Report {
         $hardBlockerSampleCount -eq 0 -and
         $runtimeCount -eq $okCount -and
         $audioFreshCount -eq $runtimeCount -and
-        $rxMetersFreshCount -eq $runtimeCount)
+        $rxMetersFreshCount -eq $runtimeCount -and
+        ($nr5SampleCount -eq 0 -or $nr5AgcDiagnosticCount -eq $nr5SampleCount))
+    $nr5TuningReadyTrace = ($okCount -gt 0 -and
+        $failedCount -eq 0 -and
+        $nr5SampleCount -eq $okCount -and
+        $nr5AlignedCount -eq $okCount -and
+        $nr5TuningReadyCount -eq $okCount -and
+        $nr5AgcDiagnosticCount -eq $nr5SampleCount)
+    $nr5TuningTraceStatus = if ($nr5TuningReadyTrace) {
+        "ready-for-nr5-live-tuning"
+    }
+    elseif ($nr5SampleCount -eq 0) {
+        "nr5-diagnostics-missing"
+    }
+    elseif ($nr5AlignedCount -lt $nr5SampleCount) {
+        "nr5-mode-not-aligned"
+    }
+    elseif ($nr5TuningReadyCount -lt $okCount) {
+        "nr5-tuning-preflight-required"
+    }
+    else {
+        "nr5-tuning-watch"
+    }
 
     $durationMs = [int]($CompletedUtc - $StartedUtc).TotalMilliseconds
     $squelchClosedPct = 0.0
@@ -714,6 +1239,9 @@ function Build-Report {
         readySampleCount = $readyCount
         readyForBenchmarkTrace = $readyTrace
         trendStatus = $trendStatus
+        nr5TuningReadySampleCount = $nr5TuningReadyCount
+        nr5TuningReadyTrace = $nr5TuningReadyTrace
+        nr5TuningTraceStatus = $nr5TuningTraceStatus
         hardBlockerSampleCount = $hardBlockerSampleCount
         runtimeEvidenceSampleCount = $runtimeCount
         rxMetersFreshSampleCount = $rxMetersFreshCount
@@ -730,10 +1258,48 @@ function Build-Report {
         audioRmsDbfs = $rmsStats
         audioPeakDbfs = $peakStats
         monitorBacklogSamples = $backlogStats
+        frontendSceneAgeMs = $frontendSceneAgeStats
+        rxMetersAgeMs = $rxMetersAgeStats
+        audioAgeMs = $audioAgeStats
+        nr5SampleCount = $nr5SampleCount
+        nr5AlignedSampleCount = $nr5AlignedCount
+        nr5AgcDiagnosticSampleCount = $nr5AgcDiagnosticCount
+        nr5InputDbfs = $nr5InputStats
+        nr5OutputDbfs = $nr5OutputStats
+        nr5OutputMinusInputDb = $nr5OutputMinusInputStats
+        nr5InputToOutput = $nr5InputOutputStats
+        nr5MeanGain = $nr5MeanGainStats
+        nr5FloorReductionDb = $nr5FloorReductionStats
+        nr5DynamicRangeDb = $nr5DynamicRangeStats
+        nr5SignalConfidence = $nr5SignalConfidenceStats
+        nr5AgcGate = $nr5AgcGateStats
+        nr5LevelDrive = $nr5LevelDriveStats
+        nr5RecoveryDrive = $nr5RecoveryDriveStats
+        nr5MakeupGainDb = $nr5MakeupGainDbStats
+        nr5WeakSignalWatch = [ordered]@{
+            weakInputThresholdDbfs = -30.0
+            weakInputSampleCount = $nr5WeakInputCount
+            weakRecoveredSampleCount = $nr5WeakRecoveredCount
+            weakNearTargetSampleCount = $nr5WeakNearTargetCount
+            weakDropoutSampleCount = $nr5WeakDropoutCount
+            weakBelowInputSampleCount = $nr5WeakBelowInputCount
+            strongInputThresholdDbfs = -22.0
+            strongInputSampleCount = $nr5StrongInputCount
+            weakOutputDbfs = $nr5WeakOutputStats
+            strongOutputDbfs = $nr5StrongOutputStats
+            weakStrongOutputGapDb = $nr5WeakStrongOutputGapDb
+            normalizationCompressionDb = $nr5NormalizationCompressionDb
+            hotMakeupThresholdDb = 12.0
+            hotMakeupSampleCount = $nr5HotMakeupCount
+            topWeakDropouts = @($nr5WeakDropoutTopSamples)
+            topHotMakeup = @($nr5HotMakeupTopSamples)
+        }
         statusCounts = @(ConvertTo-CountArray $statusCounts)
         qualityToneCounts = @(ConvertTo-CountArray $toneCounts)
         runtimeStatusCounts = @(ConvertTo-CountArray $runtimeStatusCounts)
         audioStatusCounts = @(ConvertTo-CountArray $audioStatusCounts)
+        nr5TuningStatusCounts = @(ConvertTo-CountArray $nr5TuningStatusCounts)
+        nr5TuningConstraintCounts = @(ConvertTo-CountArray $nr5TuningConstraintCounts)
         constraintCounts = @(ConvertTo-CountArray $constraintCounts)
         hardConstraintCounts = @(ConvertTo-CountArray $hardConstraintCounts)
         recommendations = @($summaryRecommendations.ToArray())
@@ -751,9 +1317,18 @@ if ($IntervalMs -lt 0) {
 if ($TimeoutSec -lt 1) {
     throw "TimeoutSec must be at least 1."
 }
+if ($RealtimeEvery -lt 1) {
+    throw "RealtimeEvery must be at least 1."
+}
 
 $base = Normalize-BaseUrl $BaseUrl
 $endpoint = "$base/api/dsp/live-diagnostics"
+
+Invoke-PwshRelaunchIfNeeded -ScriptPath $PSCommandPath
+
+if ($SkipCertificateCheck) {
+    Enable-CertificateBypass
+}
 
 if ($PlanOnly) {
     [ordered]@{
@@ -765,9 +1340,12 @@ if ($PlanOnly) {
         intervalMs = $IntervalMs
         outputs = @(
             "JSONL per-sample diagnostics trace",
-            "JSON summary with runtime evidence, blockers, and AGC/audio/headroom movement"
+            "JSON summary with runtime evidence, blockers, and AGC/audio/headroom movement",
+            "NR5-specific input/output, confidence, gate, level-drive, recovery-drive, makeup-gain, weak/strong normalization, and live tuning-readiness trends when NR5 diagnostics are present"
         )
         example = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl $base -Samples 60 -IntervalMs 1000 -Label g2-nr5-weak-cw"
+        desktopExample = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl https://localhost:6443 -SkipCertificateCheck -Samples 60 -IntervalMs 500 -Label nr5-live"
+        realtimeExample = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl https://localhost:6443 -SkipCertificateCheck -Samples 120 -IntervalMs 250 -Realtime -RealtimeEvery 4 -Label nr5-live-tune"
         offlineExample = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -InputPath captures\dsp-live-diagnostics\trace.jsonl -JsonOnly"
         notes = @(
             "Read-only: the tool only calls GET /api/dsp/live-diagnostics.",
@@ -845,8 +1423,10 @@ else {
         Write-Host "Trace: $JsonlPath"
     }
     Write-Host "Status: $($report["trendStatus"])"
+    Write-Host "NR5 tuning: $($report["nr5TuningTraceStatus"]) ($($report["nr5TuningReadySampleCount"])/$($report["okSampleCount"]) ready)"
     Write-Host "Samples: $($report["okSampleCount"]) ok, $($report["failedSampleCount"]) failed, $($report["hardBlockerSampleCount"]) with hard blockers"
     Write-Host "AGC movement dB: $($report["agcGainDb"]["movement"]), audio RMS movement dB: $($report["audioRmsDbfs"]["movement"]), min ADC headroom dB: $($report["adcHeadroomDb"]["min"])"
+    Write-Host "NR5 normalization: input movement dB $($report["nr5InputDbfs"]["movement"]), output movement dB $($report["nr5OutputDbfs"]["movement"]), weak/strong output gap dB $($report["nr5WeakSignalWatch"]["weakStrongOutputGapDb"])"
 }
 
 if (-not $ContinueOnError -and [int]$report["okSampleCount"] -eq 0) {

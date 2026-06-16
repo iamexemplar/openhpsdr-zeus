@@ -504,6 +504,14 @@ internal static partial class NativeMethods
 
     [LibraryImport(LibraryName)]
     [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
+    internal static partial int GetRXASPNRAgcDiagnostics(
+        int channel,
+        out double levelDrive,
+        out double recoveryDrive,
+        out double makeupGain);
+
+    [LibraryImport(LibraryName)]
+    [UnmanagedCallConv(CallConvs = [typeof(CallConvCdecl)])]
     internal static partial void SetRXASNBARun(int channel, int run);
 
     [LibraryImport(LibraryName)]

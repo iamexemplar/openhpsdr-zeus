@@ -121,6 +121,26 @@ Note: the symbol is `DestroyAnalyzer` (capital D), not `destroy_analyzer`.
 `Spectrum`, `Spectrum0`, and `Spectrum2` are all exported; `Spectrum0` is the
 one `fexchange0`-driven callers use.
 
+## NR5 / SPNR artifact audit
+
+NR5 adds the `SetRXASPNR*` and `GetRXASPNR*Diagnostics` native export family.
+Before claiming packaged NR5 support for a RID, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\audit-wdsp-runtime-artifacts.ps1 -FailOnMissingWinX64Nr5
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\audit-wdsp-native-symbols.ps1 -BinaryPath Zeus.Dsp\runtimes\win-x64\native\wdsp.dll -RequireBinaryExports
+```
+
+Current checked-in NR5 rollout status:
+
+- `win-x64` is NR5-ready: `wdsp.dll` exports NR4/SBNR and NR5/SPNR symbols, and
+  the required FFTW runtime DLLs are bundled side-by-side in
+  `Zeus.Dsp/runtimes/win-x64/native/`.
+- `win-arm64`, `linux-x64`, `linux-arm64`, and `osx-arm64` are present but do
+  not yet carry NR5/SPNR exports in their checked-in WDSP artifact. They must be
+  rebuilt through the normal native artifact workflow before NR5 is advertised
+  as available on those platforms.
+
 ## Source modifications vs. upstream
 
 Diff against upstream WDSP 1.29 is intentionally tiny:

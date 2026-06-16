@@ -9,6 +9,8 @@ param(
 
     [switch]$PlanOnly,
 
+    [switch]$SkipCertificateCheck,
+
     [switch]$ContinueOnError
 )
 
@@ -21,6 +23,28 @@ function Get-RepoRoot {
 function Normalize-BaseUrl {
     param([Parameter(Mandatory = $true)][string]$Url)
     return $Url.TrimEnd("/")
+}
+
+function Enable-ModernTls {
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    }
+    catch {
+        # PowerShell 7+ uses platform defaults; older Windows PowerShell needs TLS 1.2 explicitly.
+    }
+}
+
+function Enable-CertificateBypass {
+    Enable-ModernTls
+
+    if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey("SkipCertificateCheck")) {
+        return
+    }
+
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback]{
+        param($sender, $certificate, $chain, $sslPolicyErrors)
+        return $true
+    }
 }
 
 function ConvertTo-SafeName {
@@ -129,6 +153,9 @@ if ([string]::IsNullOrWhiteSpace($OutputRoot)) {
 }
 
 $base = Normalize-BaseUrl $BaseUrl
+if ($SkipCertificateCheck) {
+    Enable-CertificateBypass
+}
 $endpoints = Get-CaptureEndpoints
 
 if ($PlanOnly) {
@@ -137,8 +164,10 @@ if ($PlanOnly) {
         mode = "plan-only"
         baseUrl = $base
         outputRoot = $OutputRoot
+        skipCertificateCheck = [bool]$SkipCertificateCheck
         endpoints = $endpoints
         example = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-dsp-modernization-bundle.ps1 -BaseUrl $base -Label g2-nr5-before"
+        desktopExample = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-dsp-modernization-bundle.ps1 -BaseUrl https://localhost:6443 -SkipCertificateCheck -Label g2-nr5-before"
     } | ConvertTo-Json -Depth 16
     exit 0
 }
@@ -165,7 +194,21 @@ foreach ($endpoint in $endpoints) {
     $capturedUtc = [DateTimeOffset]::UtcNow
 
     try {
-        $response = Invoke-WebRequest -Uri $uri -Method Get -Headers @{ Accept = "application/json" } -TimeoutSec $TimeoutSec
+        $webRequestCommand = Get-Command Invoke-WebRequest
+        $requestArgs = @{
+            Uri = $uri
+            Method = "Get"
+            Headers = @{ Accept = "application/json" }
+            TimeoutSec = $TimeoutSec
+        }
+        if ($SkipCertificateCheck -and $webRequestCommand.Parameters.ContainsKey("SkipCertificateCheck")) {
+            $requestArgs["SkipCertificateCheck"] = $true
+        }
+        if ($webRequestCommand.Parameters.ContainsKey("UseBasicParsing")) {
+            $requestArgs["UseBasicParsing"] = $true
+        }
+
+        $response = Invoke-WebRequest @requestArgs
         Set-Content -LiteralPath $target -Value $response.Content -Encoding UTF8
 
         $results.Add([ordered]@{
@@ -211,6 +254,7 @@ $index = [ordered]@{
     startedUtc = $startedUtc
     completedUtc = $completedUtc
     baseUrl = $base
+    skipCertificateCheck = [bool]$SkipCertificateCheck
     bundleName = $bundleName
     bundleDir = $bundleDir
     label = $Label
@@ -225,6 +269,8 @@ $index = [ordered]@{
 }
 
 Write-JsonFile -Path (Join-Path $bundleDir "bundle-index.json") -Value $index
+
+$certArg = if ($SkipCertificateCheck) { " -SkipCertificateCheck" } else { "" }
 
 $readme = @"
 # DSP Modernization Capture Bundle
@@ -243,14 +289,20 @@ Next steps:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\new-dsp-artifact-manifest.ps1 -BundleDir "$bundleDir"
 2. Audit Zeus NativeMethods against vendored WDSP source and the native binary export table:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\audit-wdsp-native-symbols.ps1 -ReportPath "$bundleDir\artifacts\wdsp-native-symbol-audit.json" -RequireBinaryExports
-3. Capture optional live runtime trends during scenario windows:
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl $base -Samples 60 -IntervalMs 1000 -JsonlPath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-watch.json"
-4. Or capture a repeatable multi-scenario live diagnostics matrix:
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BundleDir "$bundleDir" -ComparisonId current-zeus -Samples 60 -IntervalMs 1000
-5. Compare a candidate live trace against a baseline trace before accepting the window:
+3. Audit packaged WDSP runtime artifacts and side-by-side native dependencies:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\audit-wdsp-runtime-artifacts.ps1 -ReportPath "$bundleDir\artifacts\wdsp-runtime-artifact-audit.json" -FailOnMissingWinX64Nr5
+4. Capture optional live runtime trends during scenario windows:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl $base$certArg -Samples 60 -IntervalMs 1000 -JsonlPath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-watch.json"
+5. Or capture repeatable baseline and candidate multi-scenario live diagnostics matrices:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BaseUrl $base$certArg -BundleDir "$bundleDir" -ComparisonId current-zeus -IndexPath "$bundleDir\artifacts\live-diagnostics-trace-index.baseline.json" -ReportPath "$bundleDir\artifacts\live-diagnostics-matrix-report.baseline.json" -Samples 60 -IntervalMs 1000
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BaseUrl $base$certArg -BundleDir "$bundleDir" -ComparisonId nr5-spnr -IndexPath "$bundleDir\artifacts\live-diagnostics-trace-index.candidate.json" -ReportPath "$bundleDir\artifacts\live-diagnostics-matrix-report.candidate.json" -Samples 60 -IntervalMs 1000
+6. Compare a candidate live trace against a baseline trace before accepting the window:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\compare-dsp-live-diagnostics-traces.ps1 -BaselinePath "$bundleDir\artifacts\live-diagnostics-baseline.jsonl" -CandidatePath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-trace-comparison.json" -FailOnRegression
-6. Fill the required files listed in artifact-manifest.template.json.
-7. Copy or regenerate the scaffold as artifact-manifest.json, then validate with:
+7. Compare candidate matrix windows against baseline matrix windows before accepting the scenario set:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\compare-dsp-live-diagnostics-matrix.ps1 -BundleDir "$bundleDir" -BaselineIndexPath "$bundleDir\artifacts\live-diagnostics-trace-index.baseline.json" -CandidateIndexPath "$bundleDir\artifacts\live-diagnostics-trace-index.candidate.json" -BaselineComparisonId current-zeus -CandidateComparisonId nr5-spnr -ReportPath "$bundleDir\artifacts\live-diagnostics-trace-comparison.json" -FailOnRegression
+8. For acceptance review, mark live-diagnostics-trace-comparison required=true in artifact-manifest.json after the comparison report is captured.
+9. Fill the required files listed in artifact-manifest.template.json.
+10. Copy or regenerate the scaffold as artifact-manifest.json, then validate with:
    powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir "$bundleDir" -RequireArtifactFiles
 "@
 Set-Content -LiteralPath (Join-Path $bundleDir "README.md") -Value $readme -Encoding UTF8

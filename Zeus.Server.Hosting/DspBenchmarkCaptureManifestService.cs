@@ -125,9 +125,9 @@ public static class DspBenchmarkCaptureManifestService
             Artifact(
                 "live-diagnostics-trace-comparison",
                 "diagnostics-comparison-json",
-                "tools/compare-dsp-live-diagnostics-traces.ps1",
-                "Compare baseline and candidate live diagnostics traces to reject regressions in blockers, readiness, AGC movement, audio stability, ADC headroom, squelch, monitor backlog, and diagnostics latency.",
-                "once-per-candidate-live-trace",
+                "tools/compare-dsp-live-diagnostics-traces.ps1 or tools/compare-dsp-live-diagnostics-matrix.ps1",
+                "Compare baseline and candidate live diagnostics traces or trace indexes to reject regressions in blockers, readiness, AGC movement, audio stability, ADC headroom, squelch, monitor backlog, and diagnostics latency.",
+                "once-per-candidate-live-trace-or-matrix",
                 false,
                 all),
             Artifact(
@@ -183,6 +183,14 @@ public static class DspBenchmarkCaptureManifestService
                 "native-audit-json",
                 "tools/audit-wdsp-native-symbols.ps1",
                 "Audit Zeus NativeMethods bindings against vendored WDSP source and native exports before accepting DSP changes.",
+                "once-per-native-build-and-candidate",
+                true,
+                all),
+            Artifact(
+                "wdsp-runtime-artifact-audit",
+                "runtime-audit-json",
+                "tools/audit-wdsp-runtime-artifacts.ps1",
+                "Audit packaged WDSP runtime artifacts by RID for NR4/NR5 symbol presence and side-by-side native dependencies.",
                 "once-per-native-build-and-candidate",
                 true,
                 all),

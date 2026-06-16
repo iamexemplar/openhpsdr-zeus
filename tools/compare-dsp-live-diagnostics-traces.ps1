@@ -160,6 +160,37 @@ function Get-StatValue {
     return Get-NumericValue (Get-JsonValue $stats $Name)
 }
 
+function Get-Nr5WeakSignalValue {
+    param(
+        $Report,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $watch = Get-JsonValue $Report "nr5WeakSignalWatch"
+    if ($null -eq $watch) {
+        return 0.0
+    }
+
+    $value = Get-NumericValue (Get-JsonValue $watch $Name)
+    if ($null -eq $value) {
+        return 0.0
+    }
+
+    return $value
+}
+
+function Get-Nr5WeakRecoveryPct {
+    param($Report)
+
+    $weakInputs = Get-Nr5WeakSignalValue $Report "weakInputSampleCount"
+    $weakRecovered = Get-Nr5WeakSignalValue $Report "weakRecoveredSampleCount"
+    if ($weakInputs -le 0.0) {
+        return 100.0
+    }
+
+    return [Math]::Round(100.0 * $weakRecovered / $weakInputs, 3)
+}
+
 function Get-Percent {
     param(
         $Numerator,
@@ -199,8 +230,10 @@ function Get-TraceSeverity {
         "final-audio-not-fresh" { return 60 }
         "rx-meters-not-fresh" { return 50 }
         "runtime-evidence-missing" { return 50 }
+        "nr5-agc-diagnostics-missing" { return 45 }
         "agc-movement-watch" { return 35 }
         "audio-level-watch" { return 35 }
+        "nr5-output-level-watch" { return 35 }
         "evidence-trace" { return 20 }
         "ready-trace" { return 0 }
         default { return 25 }
@@ -289,6 +322,30 @@ function Get-TraceMetricDefinitions {
             rationale = "Lower movement reduces the risk of audible AGC pumping during NR/AGC tuning."
         },
         [ordered]@{
+            id = "nr5WeakDropoutSampleCount"
+            label = "NR5 weak-input dropout samples"
+            direction = "lower"
+            threshold = 0.0
+            safetyClass = "weak-signal"
+            rationale = "Candidate NR5 live traces must not increase weak-input dropouts against the baseline window."
+        },
+        [ordered]@{
+            id = "nr5WeakRecoveryPct"
+            label = "NR5 weak-input recovery percent"
+            direction = "higher"
+            threshold = 5.0
+            safetyClass = "weak-signal"
+            rationale = "Weak-signal preservation should improve or stay within 5 percentage points of the baseline recovery rate."
+        },
+        [ordered]@{
+            id = "nr5HotMakeupSampleCount"
+            label = "NR5 hot makeup samples"
+            direction = "lower"
+            threshold = 0.0
+            safetyClass = "pumping"
+            rationale = "Candidate NR5 live traces must not add samples with makeup gain above the watcher hot-makeup threshold."
+        },
+        [ordered]@{
             id = "audioRmsMovementDb"
             label = "Audio RMS movement dB"
             direction = "lower"
@@ -375,6 +432,9 @@ function Get-MetricValue {
         "readySamplePct" { return Get-Percent (Get-JsonValue $Report "readySampleCount") (Get-JsonValue $Report "okSampleCount") }
         "readinessScoreAverage" { return Get-StatValue $Report "readinessScore" "average" }
         "agcGainMovementDb" { return Get-StatValue $Report "agcGainDb" "movement" }
+        "nr5WeakDropoutSampleCount" { return Get-Nr5WeakSignalValue $Report "weakDropoutSampleCount" }
+        "nr5WeakRecoveryPct" { return Get-Nr5WeakRecoveryPct $Report }
+        "nr5HotMakeupSampleCount" { return Get-Nr5WeakSignalValue $Report "hotMakeupSampleCount" }
         "audioRmsMovementDb" { return Get-StatValue $Report "audioRmsDbfs" "movement" }
         "audioPeakMaxDbfs" { return Get-StatValue $Report "audioPeakDbfs" "max" }
         "adcHeadroomMinDb" { return Get-StatValue $Report "adcHeadroomDb" "min" }

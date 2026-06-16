@@ -287,7 +287,7 @@ public class NoiseReductionTests
             Assert.True(diag.LearnedFrames > 55, $"expected learned NR5 frames, got {diag.LearnedFrames}");
             Assert.True(diag.InputRms > 0.0, $"expected input RMS, got {diag.InputRms}");
             Assert.True(diag.OutputRms > 0.0, $"expected output RMS, got {diag.OutputRms}");
-            Assert.Equal(3, diag.SchemaVersion);
+            Assert.Equal(4, diag.SchemaVersion);
             Assert.InRange(diag.CoherencePeak, 0.0, 1.0);
             Assert.InRange(diag.RidgePeak, 0.0, 1.0);
             Assert.InRange(diag.SignalConfidence, 0.0, 1.0);
@@ -307,6 +307,12 @@ public class NoiseReductionTests
             {
                 Assert.True(diag.SignalConfidence > 0.0, $"expected NR5 signal confidence, got {diag.SignalConfidence}");
                 Assert.True(diag.AgcGate > 0.0, $"expected NR5 AGC signal gate, got {DescribeNr5(diag)}");
+            }
+            if (WdspDspEngine.Nr5SpnrAgcDiagnosticsAvailable)
+            {
+                Assert.InRange(diag.LevelDrive, 0.0, 1.0);
+                Assert.InRange(diag.RecoveryDrive, 0.0, 1.0);
+                Assert.True(diag.MakeupGain > 0.0, $"expected NR5 makeup gain, got {DescribeNr5(diag)}");
             }
             Assert.True(diag.AgcGain > 0.0, $"expected AGC gain, got {diag.AgcGain}");
         }
@@ -371,6 +377,13 @@ public class NoiseReductionTests
             Assert.InRange(diag.SignalConfidence, 0.0, 1.0);
             Assert.InRange(diag.SignalConfidence, 0.0, 0.45);
             Assert.InRange(diag.AgcGate, 0.0, 0.45);
+            if (WdspDspEngine.Nr5SpnrAgcDiagnosticsAvailable)
+            {
+                Assert.InRange(diag.LevelDrive, 0.0, 0.45);
+                Assert.InRange(diag.RecoveryDrive, 0.0, 0.45);
+                Assert.True(diag.MakeupGain > 0.0, $"expected positive NR5 makeup gain on noise-only frames, got {DescribeNr5(diag)}");
+                AssertFinite(diag.MakeupGainDb, "NR5 noise-only makeup gain dB");
+            }
         }
         finally
         {
@@ -464,7 +477,14 @@ public class NoiseReductionTests
         $"presence={diag.PresencePeak:F3} salience={diag.SaliencePeak:F3} " +
         $"coherence={diag.CoherencePeak:F3} ridge={diag.RidgePeak:F3} " +
         $"meanGain={diag.MeanGain:F3} minGain={diag.MinGain:F3} " +
+        $"levelDrive={diag.LevelDrive:F3} recovery={diag.RecoveryDrive:F3} makeup={diag.MakeupGainDb:F1}dB " +
         $"floor={diag.FloorReductionDb:F1}dB dr={diag.DynamicRangeDb:F1}dB";
+
+    private static void AssertFinite(double value, string label)
+    {
+        Assert.False(double.IsNaN(value), $"{label} is NaN");
+        Assert.False(double.IsInfinity(value), $"{label} is infinite");
+    }
 
     // REST contract round-trip. The server registers a JsonStringEnumConverter
     // in Program.cs so NrMode/NbMode go on the wire as "Anr"/"Nb1" etc.; this

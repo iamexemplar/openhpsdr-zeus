@@ -50,6 +50,8 @@ typedef struct _spnr {
   double* noise;
   double* smooth;
   double* presence;
+  double* signal_prob;
+  double* signal_prob_smooth;
   double* salience;
   double* prev_phase;
   double* prev_phase_delta;
@@ -58,6 +60,8 @@ typedef struct _spnr {
   double* floor_bias;
   double* gain;
   double* prev_gain;
+  double* gain_smooth;
+  double* prior_snr;
   int learned_frames;
   double aggressiveness;
   int agc_run;
@@ -68,6 +72,7 @@ typedef struct _spnr {
   double agc_env;
   double agc_level_drive;
   double agc_makeup_gain;
+  double agc_recovery_hold;
   double agc_attack;
   double agc_release;
   double diag_input_rms;
@@ -81,8 +86,12 @@ typedef struct _spnr {
   double diag_noise_floor_db;
   double diag_floor_reduction_db;
   double diag_dynamic_range_db;
+  double diag_signal_probability;
   double diag_signal_confidence;
   double diag_agc_gate;
+  double diag_level_drive;
+  double diag_recovery_drive;
+  double diag_makeup_gain;
 } spnr, *SPNR;
 
 extern SPNR create_spnr(int run, int position, int size, double* in, double* out,

@@ -1296,6 +1296,9 @@ describe('POST helpers', () => {
       qualityTone: 'ready',
       readinessScore: 91,
       readyForLiveBenchmark: true,
+      readyForNr5Tuning: true,
+      nr5TuningStatus: 'ready-for-nr5-live-tuning',
+      nr5TuningConstraints: [],
       rolloutGate: 'opt-in-only-until-benchmark-and-g2-on-air-acceptance',
       wdspActive: true,
       wdspNativeLoadable: true,
@@ -1393,6 +1396,8 @@ describe('POST helpers', () => {
     expect(diag.status).toBe('ready-for-live-benchmark');
     expect(diag.readinessScore).toBe(91);
     expect(diag.readyForLiveBenchmark).toBe(true);
+    expect(diag.readyForNr5Tuning).toBe(true);
+    expect(diag.nr5TuningStatus).toBe('ready-for-nr5-live-tuning');
     expect(diag.wdspNr5SpnrAvailable).toBe(true);
     expect(diag.frontendSceneFresh).toBe(true);
     expect(diag.runtimeAligned).toBe(true);

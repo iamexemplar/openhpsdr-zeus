@@ -898,6 +898,8 @@ extern int GetRXASPNRDiagnostics(int channel, int* run, int* position, int* lear
 extern int GetRXASPNRAdvancedDiagnostics(int channel, double* coherence_peak, double* ridge_peak,
                                          double* floor_reduction_db, double* dynamic_range_db);
 extern int GetRXASPNRDeepDiagnostics(int channel, double* signal_confidence, double* agc_gate);
+extern int GetRXASPNRAgcDiagnostics(int channel, double* level_drive, double* recovery_drive,
+                                    double* makeup_gain);
 
 //
 // Interfaces from sender.c

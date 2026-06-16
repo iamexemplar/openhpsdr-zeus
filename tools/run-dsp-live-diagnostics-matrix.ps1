@@ -27,6 +27,8 @@ param(
 
     [switch]$JsonOnly,
 
+    [switch]$SkipCertificateCheck,
+
     [switch]$ContinueOnError
 )
 
@@ -39,6 +41,28 @@ function Get-RepoRoot {
 function Normalize-BaseUrl {
     param([Parameter(Mandatory = $true)][string]$Url)
     return $Url.TrimEnd("/")
+}
+
+function Enable-ModernTls {
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    }
+    catch {
+        # PowerShell 7+ uses platform defaults; older Windows PowerShell needs TLS 1.2 explicitly.
+    }
+}
+
+function Enable-CertificateBypass {
+    Enable-ModernTls
+
+    if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey("SkipCertificateCheck")) {
+        return
+    }
+
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = [System.Net.Security.RemoteCertificateValidationCallback]{
+        param($sender, $certificate, $chain, $sslPolicyErrors)
+        return $true
+    }
 }
 
 function ConvertTo-SafeName {
@@ -191,6 +215,25 @@ function Test-Truthy {
     return [bool]$Value
 }
 
+function Get-IntValue {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return 0
+    }
+
+    if ($Value -is [byte] -or $Value -is [int] -or $Value -is [long]) {
+        return [int]$Value
+    }
+
+    $parsed = 0
+    if ([int]::TryParse([string]$Value, [ref]$parsed)) {
+        return $parsed
+    }
+
+    return 0
+}
+
 function Resolve-RelativePath {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -226,11 +269,24 @@ function ConvertTo-PortablePath {
 function Invoke-JsonGet {
     param(
         [Parameter(Mandatory = $true)][string]$Uri,
-        [Parameter(Mandatory = $true)][int]$RequestTimeoutSec
+        [Parameter(Mandatory = $true)][int]$RequestTimeoutSec,
+        [switch]$SkipCertificateCheck
     )
 
     try {
-        $response = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec $RequestTimeoutSec
+        $webRequestCommand = Get-Command Invoke-WebRequest
+        $requestArgs = @{
+            Uri = $Uri
+            TimeoutSec = $RequestTimeoutSec
+        }
+        if ($webRequestCommand.Parameters.ContainsKey("UseBasicParsing")) {
+            $requestArgs["UseBasicParsing"] = $true
+        }
+        if ($SkipCertificateCheck -and $webRequestCommand.Parameters.ContainsKey("SkipCertificateCheck")) {
+            $requestArgs["SkipCertificateCheck"] = $true
+        }
+
+        $response = Invoke-WebRequest @requestArgs
         if ($response.StatusCode -lt 200 -or $response.StatusCode -gt 299) {
             throw "HTTP $($response.StatusCode)"
         }
@@ -245,10 +301,11 @@ function Invoke-JsonGet {
 function Get-ManifestScenarioIds {
     param(
         [Parameter(Mandatory = $true)][string]$Base,
-        [Parameter(Mandatory = $true)][int]$RequestTimeoutSec
+        [Parameter(Mandatory = $true)][int]$RequestTimeoutSec,
+        [switch]$SkipCertificateCheck
     )
 
-    $manifest = Invoke-JsonGet -Uri "$Base/api/dsp/benchmark-capture-manifest" -RequestTimeoutSec $RequestTimeoutSec
+    $manifest = Invoke-JsonGet -Uri "$Base/api/dsp/benchmark-capture-manifest" -RequestTimeoutSec $RequestTimeoutSec -SkipCertificateCheck:$SkipCertificateCheck
     $ids = New-Object System.Collections.Generic.List[string]
     foreach ($scenarioId in (Get-JsonArray $manifest "scenarioIds")) {
         $value = [string]$scenarioId
@@ -287,22 +344,32 @@ function Invoke-Watch {
         [Parameter(Mandatory = $true)][int]$DelayMs,
         [Parameter(Mandatory = $true)][int]$RequestTimeoutSec,
         [Parameter(Mandatory = $true)][string]$JsonlPath,
-        [Parameter(Mandatory = $true)][string]$SummaryPath
+        [Parameter(Mandatory = $true)][string]$SummaryPath,
+        [switch]$SkipCertificateCheck
     )
 
     $labelParts = @($ScenarioId, $Comparison, $RunLabel) |
         Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
     $watchLabel = ($labelParts -join "-")
 
-    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath `
-        -BaseUrl $Base `
-        -Samples $SampleCount `
-        -IntervalMs $DelayMs `
-        -TimeoutSec $RequestTimeoutSec `
-        -Label $watchLabel `
-        -ReportPath $SummaryPath `
-        -JsonlPath $JsonlPath `
-        -JsonOnly 2>&1
+    $watchArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $ScriptPath,
+        "-BaseUrl", $Base,
+        "-Samples", ([string]$SampleCount),
+        "-IntervalMs", ([string]$DelayMs),
+        "-TimeoutSec", ([string]$RequestTimeoutSec),
+        "-Label", $watchLabel,
+        "-ReportPath", $SummaryPath,
+        "-JsonlPath", $JsonlPath,
+        "-JsonOnly"
+    )
+    if ($SkipCertificateCheck) {
+        $watchArgs += "-SkipCertificateCheck"
+    }
+
+    $output = & powershell @watchArgs 2>&1
     $exitCode = $LASTEXITCODE
 
     if ($exitCode -ne 0) {
@@ -337,6 +404,9 @@ if ($TimeoutSec -lt 1) {
 
 $repoRoot = Get-RepoRoot
 $base = Normalize-BaseUrl $BaseUrl
+if ($SkipCertificateCheck) {
+    Enable-CertificateBypass
+}
 $comparison = ConvertTo-ComparisonId $ComparisonId
 $comparisons = @($comparison)
 $safeComparison = ConvertTo-SafeName $comparison
@@ -352,6 +422,7 @@ if ($PlanOnly) {
         schemaVersion = 1
         tool = "run-dsp-live-diagnostics-matrix"
         mode = "plan-only"
+        baseUrl = $base
         endpoint = "$base/api/dsp/live-diagnostics"
         captureManifestEndpoint = "$base/api/dsp/benchmark-capture-manifest"
         scenarios = if ($ScenarioIds.Count -gt 0) { @($ScenarioIds) } else { @("from /api/dsp/benchmark-capture-manifest") }
@@ -359,16 +430,20 @@ if ($PlanOnly) {
         comparisonIds = @($comparisons)
         samples = $Samples
         intervalMs = $IntervalMs
+        skipCertificateCheck = [bool]$SkipCertificateCheck
         outputs = @(
             "JSONL trace per scenario",
             "watch-dsp-live-diagnostics summary per scenario",
             "bundle-compatible trace index JSON",
             "matrix summary JSON"
         )
-        example = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BundleDir captures\dsp-modernization\<timestamp> -ComparisonId current-zeus -Samples 60 -IntervalMs 1000"
+        example = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BundleDir captures\dsp-modernization\<timestamp> -ComparisonId current-zeus -IndexPath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-trace-index.baseline.json -ReportPath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-matrix-report.baseline.json -Samples 60 -IntervalMs 1000"
+        candidateExample = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BundleDir captures\dsp-modernization\<timestamp> -ComparisonId nr5-spnr -IndexPath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-trace-index.candidate.json -ReportPath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-matrix-report.candidate.json -Samples 60 -IntervalMs 1000"
+        desktopExample = "powershell -NoProfile -ExecutionPolicy Bypass -File tools\run-dsp-live-diagnostics-matrix.ps1 -BaseUrl https://localhost:6443 -SkipCertificateCheck -BundleDir captures\dsp-modernization\<timestamp> -ComparisonId current-zeus -IndexPath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-trace-index.baseline.json -ReportPath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-matrix-report.baseline.json -Samples 60 -IntervalMs 500"
         notes = @(
             "Read-only: delegates to watch-dsp-live-diagnostics.ps1, which only calls GET /api/dsp/live-diagnostics.",
             "Use one ComparisonId per invocation; switch DSP state between baseline and candidate windows and run the tool again.",
+            "When BundleDir is reused, pass separate IndexPath and ReportPath values for baseline and candidate runs to avoid overwriting evidence.",
             "The trace index is suitable for artifact-manifest entries with kind=trace."
         )
     } | ConvertTo-Json -Depth 16
@@ -384,7 +459,7 @@ foreach ($scenarioId in (Expand-ScenarioIds $ScenarioIds)) {
 }
 
 if ($scenarioList.Count -eq 0) {
-    foreach ($scenarioId in (Get-ManifestScenarioIds -Base $base -RequestTimeoutSec $TimeoutSec)) {
+    foreach ($scenarioId in (Get-ManifestScenarioIds -Base $base -RequestTimeoutSec $TimeoutSec -SkipCertificateCheck:$SkipCertificateCheck)) {
         $scenarioList.Add([string]$scenarioId) | Out-Null
     }
 }
@@ -455,7 +530,8 @@ foreach ($scenarioId in $scenarios) {
             -DelayMs $IntervalMs `
             -RequestTimeoutSec $TimeoutSec `
             -JsonlPath $jsonlPath `
-            -SummaryPath $summaryPath
+            -SummaryPath $summaryPath `
+            -SkipCertificateCheck:$SkipCertificateCheck
 
         $watchOk = Test-Truthy $watch.ok
         if ((-not $watchOk) -and -not $ContinueOnError) {
@@ -468,6 +544,11 @@ foreach ($scenarioId in $scenarios) {
         $okSamples = if ($null -eq $report) { 0 } else { [int](Get-JsonValue $report "okSampleCount") }
         $failedSamples = if ($null -eq $report) { $Samples } else { [int](Get-JsonValue $report "failedSampleCount") }
         $hardBlockers = if ($null -eq $report) { 0 } else { [int](Get-JsonValue $report "hardBlockerSampleCount") }
+        $nr5Weak = if ($null -eq $report) { $null } else { Get-JsonValue $report "nr5WeakSignalWatch" }
+        $nr5WeakInputs = Get-IntValue (Get-JsonValue $nr5Weak "weakInputSampleCount")
+        $nr5WeakRecovered = Get-IntValue (Get-JsonValue $nr5Weak "weakRecoveredSampleCount")
+        $nr5WeakDropouts = Get-IntValue (Get-JsonValue $nr5Weak "weakDropoutSampleCount")
+        $nr5HotMakeup = Get-IntValue (Get-JsonValue $nr5Weak "hotMakeupSampleCount")
 
         $relativeRoot = if (-not [string]::IsNullOrWhiteSpace($bundlePath)) { $bundlePath } else { Split-Path -Parent $IndexPath }
         $jsonlRelative = ConvertTo-PortablePath -Root $relativeRoot -Path $jsonlPath
@@ -482,6 +563,10 @@ foreach ($scenarioId in $scenarios) {
             sampleCount = $Samples
             intervalMs = $IntervalMs
             summaryPath = $summaryRelative
+            nr5WeakInputSampleCount = $nr5WeakInputs
+            nr5WeakRecoveredSampleCount = $nr5WeakRecovered
+            nr5WeakDropoutSampleCount = $nr5WeakDropouts
+            nr5HotMakeupSampleCount = $nr5HotMakeup
         }) | Out-Null
 
         $runs.Add([ordered]@{
@@ -498,6 +583,10 @@ foreach ($scenarioId in $scenarios) {
             okSampleCount = $okSamples
             failedSampleCount = $failedSamples
             hardBlockerSampleCount = $hardBlockers
+            nr5WeakInputSampleCount = $nr5WeakInputs
+            nr5WeakRecoveredSampleCount = $nr5WeakRecovered
+            nr5WeakDropoutSampleCount = $nr5WeakDropouts
+            nr5HotMakeupSampleCount = $nr5HotMakeup
         }) | Out-Null
     }
 }
@@ -507,6 +596,16 @@ $runArray = @($runs.ToArray())
 $failedRunCount = @($runArray | Where-Object { -not (Test-Truthy $_.ok) }).Count
 $notReadyTraceCount = @($runArray | Where-Object { -not (Test-Truthy $_.readyForBenchmarkTrace) }).Count
 $hardBlockerRunCount = @($runArray | Where-Object { [int]$_.hardBlockerSampleCount -gt 0 }).Count
+$nr5WeakInputSampleCount = 0
+$nr5WeakRecoveredSampleCount = 0
+$nr5WeakDropoutSampleCount = 0
+$nr5HotMakeupSampleCount = 0
+foreach ($run in $runArray) {
+    $nr5WeakInputSampleCount += Get-IntValue $run.nr5WeakInputSampleCount
+    $nr5WeakRecoveredSampleCount += Get-IntValue $run.nr5WeakRecoveredSampleCount
+    $nr5WeakDropoutSampleCount += Get-IntValue $run.nr5WeakDropoutSampleCount
+    $nr5HotMakeupSampleCount += Get-IntValue $run.nr5HotMakeupSampleCount
+}
 
 $recommendations = New-Object System.Collections.Generic.List[string]
 if ($failedRunCount -gt 0) {
@@ -517,6 +616,12 @@ if ($hardBlockerRunCount -gt 0) {
 }
 if ($notReadyTraceCount -gt 0) {
     $recommendations.Add("Pair not-ready traces with operator notes; they are useful preflight evidence but not acceptance evidence.") | Out-Null
+}
+if ($nr5WeakDropoutSampleCount -gt 0) {
+    $recommendations.Add("NR5 weak-input dropouts appeared in the matrix; compare these windows against baseline traces before tuning recovery/makeup further.") | Out-Null
+}
+if ($nr5HotMakeupSampleCount -gt 0) {
+    $recommendations.Add("NR5 hot-makeup samples appeared in the matrix; inspect the watch summaries before changing recovery attack/release.") | Out-Null
 }
 if ($recommendations.Count -eq 0) {
     $recommendations.Add("Store this trace index with the modernization bundle and compare candidate windows against baseline traces before changing DSP defaults.") | Out-Null
@@ -550,10 +655,15 @@ $reportObject = [ordered]@{
     label = $Label
     samples = $Samples
     intervalMs = $IntervalMs
+    skipCertificateCheck = [bool]$SkipCertificateCheck
     scenarioCount = $scenarios.Count
     failedRunCount = $failedRunCount
     notReadyTraceCount = $notReadyTraceCount
     hardBlockerRunCount = $hardBlockerRunCount
+    nr5WeakInputSampleCount = $nr5WeakInputSampleCount
+    nr5WeakRecoveredSampleCount = $nr5WeakRecoveredSampleCount
+    nr5WeakDropoutSampleCount = $nr5WeakDropoutSampleCount
+    nr5HotMakeupSampleCount = $nr5HotMakeupSampleCount
     collectionReady = ($failedRunCount -eq 0)
     acceptanceReady = ($failedRunCount -eq 0 -and $notReadyTraceCount -eq 0 -and $hardBlockerRunCount -eq 0)
     indexPath = if (-not [string]::IsNullOrWhiteSpace($bundlePath)) { Resolve-RelativePath -Root $bundlePath -Path $IndexPath } else { $IndexPath }

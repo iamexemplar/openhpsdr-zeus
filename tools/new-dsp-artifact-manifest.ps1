@@ -143,6 +143,40 @@ function Get-EndpointFilesByPath {
     return $result
 }
 
+function Add-ArtifactRecord {
+    param(
+        [System.Collections.Generic.List[object]]$Artifacts,
+        [hashtable]$SeenArtifactIds,
+        [Parameter(Mandatory = $true)][string]$Id,
+        [Parameter(Mandatory = $true)][string]$Kind,
+        [string]$Source = "",
+        [string]$Purpose = "",
+        [string]$Cadence = "",
+        [Parameter(Mandatory = $true)][string]$Path,
+        [bool]$Required = $false,
+        [object[]]$ScenarioIds = @(),
+        [object[]]$ComparisonIds = @()
+    )
+
+    $SeenArtifactIds[$Id] = $true
+    $record = [ordered]@{
+        id = $Id
+        kind = $Kind
+        source = $Source
+        purpose = $Purpose
+        cadence = $Cadence
+        path = $Path
+        required = $Required
+        scenarioIds = @($ScenarioIds)
+    }
+
+    if ($ComparisonIds.Count -gt 0) {
+        $record["comparisonIds"] = @($ComparisonIds)
+    }
+
+    $Artifacts.Add($record) | Out-Null
+}
+
 $bundlePath = (Resolve-Path -LiteralPath $BundleDir).Path
 $captureManifestPath = Join-Path $bundlePath "benchmark-capture-manifest.json"
 if (-not (Test-Path -LiteralPath $captureManifestPath -PathType Leaf)) {
@@ -205,43 +239,78 @@ foreach ($artifact in (Get-JsonArray $captureManifest "requiredArtifacts")) {
         $path = [string]$endpointFilesByPath[$source]
     }
 
-    $seenArtifactIds[$id] = $true
-    $artifacts.Add([ordered]@{
-        id = $id
-        kind = $kind
-        source = $source
-        purpose = [string](Get-JsonValue $artifact "purpose")
-        cadence = [string](Get-JsonValue $artifact "cadence")
-        path = $path
-        required = $required
-        scenarioIds = @(Get-JsonArray $artifact "scenarioIds")
-    }) | Out-Null
+    $scenarioIds = @(Get-JsonArray $artifact "scenarioIds")
+    $purpose = [string](Get-JsonValue $artifact "purpose")
+    $cadence = [string](Get-JsonValue $artifact "cadence")
+
+    if ($id -eq "live-diagnostics-trace-index") {
+        Add-ArtifactRecord `
+            -Artifacts $artifacts `
+            -SeenArtifactIds $seenArtifactIds `
+            -Id $id `
+            -Kind $kind `
+            -Source $source `
+            -Purpose "$purpose Baseline matrix index." `
+            -Cadence $cadence `
+            -Path "artifacts/live-diagnostics-trace-index.baseline.json" `
+            -Required $required `
+            -ScenarioIds $scenarioIds `
+            -ComparisonIds @("current-zeus")
+
+        Add-ArtifactRecord `
+            -Artifacts $artifacts `
+            -SeenArtifactIds $seenArtifactIds `
+            -Id $id `
+            -Kind $kind `
+            -Source $source `
+            -Purpose "$purpose Candidate matrix index." `
+            -Cadence $cadence `
+            -Path "artifacts/live-diagnostics-trace-index.candidate.json" `
+            -Required $required `
+            -ScenarioIds $scenarioIds `
+            -ComparisonIds @("nr5-spnr")
+        continue
+    }
+
+    Add-ArtifactRecord `
+        -Artifacts $artifacts `
+        -SeenArtifactIds $seenArtifactIds `
+        -Id $id `
+        -Kind $kind `
+        -Source $source `
+        -Purpose $purpose `
+        -Cadence $cadence `
+        -Path $path `
+        -Required $required `
+        -ScenarioIds $scenarioIds
 }
 
 if (-not $seenArtifactIds.ContainsKey("fixture-metric-comparison-report")) {
-    $artifacts.Add([ordered]@{
-        id = "fixture-metric-comparison-report"
-        kind = "comparison-json"
-        source = "tools/compare-dsp-fixture-metrics.ps1"
-        purpose = "Summarize candidate-vs-current-Zeus and candidate-vs-Thetis metric deltas, regressions, missing baselines, and gate failures before strict bundle acceptance."
-        cadence = "once-after-offline-fixture-metrics"
-        path = "dsp-fixture-metric-comparison.json"
-        required = $true
-        scenarioIds = @(Get-JsonArray $captureManifest "scenarioIds")
-    }) | Out-Null
+    Add-ArtifactRecord `
+        -Artifacts $artifacts `
+        -SeenArtifactIds $seenArtifactIds `
+        -Id "fixture-metric-comparison-report" `
+        -Kind "comparison-json" `
+        -Source "tools/compare-dsp-fixture-metrics.ps1" `
+        -Purpose "Summarize candidate-vs-current-Zeus and candidate-vs-Thetis metric deltas, regressions, missing baselines, and gate failures before strict bundle acceptance." `
+        -Cadence "once-after-offline-fixture-metrics" `
+        -Path "dsp-fixture-metric-comparison.json" `
+        -Required $true `
+        -ScenarioIds @(Get-JsonArray $captureManifest "scenarioIds")
 }
 
 if (-not $seenArtifactIds.ContainsKey("operator-notes")) {
-    $artifacts.Add([ordered]@{
-        id = "operator-notes"
-        kind = "notes"
-        source = "operator-session-notes"
-        purpose = "Record mode, band, filter width, sample rate, AGC mode/top, attenuator state, squelch state, NR mode, listening impressions, and on-air observations."
-        cadence = "once-per-capture-bundle"
-        path = "artifacts/operator-notes.md"
-        required = $true
-        scenarioIds = @(Get-JsonArray $captureManifest "scenarioIds")
-    }) | Out-Null
+    Add-ArtifactRecord `
+        -Artifacts $artifacts `
+        -SeenArtifactIds $seenArtifactIds `
+        -Id "operator-notes" `
+        -Kind "notes" `
+        -Source "operator-session-notes" `
+        -Purpose "Record mode, band, filter width, sample rate, AGC mode/top, attenuator state, squelch state, NR mode, listening impressions, and on-air observations." `
+        -Cadence "once-per-capture-bundle" `
+        -Path "artifacts/operator-notes.md" `
+        -Required $true `
+        -ScenarioIds @(Get-JsonArray $captureManifest "scenarioIds")
 }
 
 $output = [ordered]@{
@@ -255,10 +324,13 @@ $output = [ordered]@{
         "This scaffold is derived from benchmark-capture-manifest.json.",
         "Endpoint JSON is validated through bundle-index.json unless -IncludeEndpointJson is used.",
         "Use watch-dsp-live-diagnostics.ps1 for optional diagnostics-jsonl traces across live scenario windows.",
-        "Use run-dsp-live-diagnostics-matrix.ps1 for optional multi-scenario trace indexes; pass -IncludeOptionalArtifacts when this scaffold should include live-diagnostics-trace-index.",
+        "Use run-dsp-live-diagnostics-matrix.ps1 for optional multi-scenario trace indexes; pass separate -IndexPath values for baseline and candidate runs. With -IncludeOptionalArtifacts, this scaffold emits separate baseline and candidate live-diagnostics-trace-index entries.",
         "Use compare-dsp-live-diagnostics-traces.ps1 to compare baseline and candidate live traces before accepting a candidate window.",
+        "Use compare-dsp-live-diagnostics-matrix.ps1 with -BundleDir to compare baseline and candidate trace indexes across all captured live scenarios while keeping report paths portable.",
+        "For acceptance review, set the live-diagnostics-trace-comparison artifact required=true after the comparison report is captured so regressions fail strict validation.",
         "For single-comparison artifact indexes, add comparisonIds to the artifact entry so validation checks only the captured comparison scope.",
         "Run audit-wdsp-native-symbols.ps1 with -RequireBinaryExports for the required wdsp-native-symbol-audit.json before accepting native or P/Invoke changes.",
+        "Run audit-wdsp-runtime-artifacts.ps1 for the required wdsp-runtime-artifact-audit.json before claiming packaged NR4/NR5 support for any RID.",
         "For plural audio, spectrum, and trace evidence, store an index JSON at the generated path with a files array of bundle-relative evidence file paths plus scenario/candidate metadata.",
         "Run compare-dsp-fixture-metrics.ps1 after offline-fixture-metrics.json is filled; strict validation requires dsp-fixture-metric-comparison.json.",
         "Run validate-dsp-modernization-bundle.ps1 with -RequireArtifactFiles only after every required path exists and is non-empty."

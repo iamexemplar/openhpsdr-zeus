@@ -278,6 +278,12 @@ public static class DspLiveDiagnosticsService
         string status = Status(condition, constraints, score);
         string tone = QualityTone(status, condition, score);
         var nextBenchmarkScenarios = DspBenchmarkPlanCatalog.NextScenarioIds(condition);
+        var nr5Tuning = Nr5TuningReadiness(condition, runtimeEvidence);
+        if (nr5Tuning.Status != "nr5-not-active")
+            tools.Add("nr5-live-tuning-watch");
+        if (nr5Tuning.Ready)
+            evidence.Add("ready-for-nr5-live-tuning");
+
         bool ready = score >= 85
             && condition.WdspActive
             && condition.WdspNativeLoadable
@@ -302,6 +308,9 @@ public static class DspLiveDiagnosticsService
             QualityTone: tone,
             ReadinessScore: score,
             ReadyForLiveBenchmark: ready,
+            ReadyForNr5Tuning: nr5Tuning.Ready,
+            Nr5TuningStatus: nr5Tuning.Status,
+            Nr5TuningConstraints: nr5Tuning.Constraints,
             RolloutGate: "opt-in-only-until-benchmark-and-g2-on-air-acceptance",
             WdspActive: condition.WdspActive,
             WdspNativeLoadable: condition.WdspNativeLoadable,
@@ -414,6 +423,83 @@ public static class DspLiveDiagnosticsService
             or "final-audio-clipping-risk"
             or "adc-headroom-low";
 
+    private static Nr5LiveTuningReadiness Nr5TuningReadiness(
+        SmartNrConditionDto condition,
+        DspLiveRuntimeEvidenceDto? runtimeEvidence)
+    {
+        bool nr5Relevant = ModeEquals(condition.RequestedNrMode, "Nr5")
+            || ModeEquals(condition.EffectiveNrMode, "Nr5")
+            || condition.Nr5SpnrDiagnostics is not null;
+        if (!nr5Relevant)
+            return new(false, "nr5-not-active", ["nr5-not-active"]);
+
+        var constraints = new List<string>();
+        if (!condition.WdspNativeLoadable)
+            constraints.Add("wdsp-native-unloadable");
+        if (!condition.WdspActive)
+            constraints.Add("wdsp-inactive");
+        if (!condition.WdspNr5SpnrAvailable)
+            constraints.Add("nr5-spnr-exports-missing");
+        if (!ModeEquals(condition.RequestedNrMode, "Nr5"))
+            constraints.Add("nr5-not-requested");
+        if (!ModeEquals(condition.EffectiveNrMode, "Nr5"))
+            constraints.Add("nr5-not-effective");
+        if (condition.RuntimeAligned == false
+            && !string.Equals(condition.RuntimeAlignmentStatus, "apply-pending", StringComparison.OrdinalIgnoreCase))
+            constraints.Add("smart-nr-runtime-misaligned");
+
+        var nr5 = condition.Nr5SpnrDiagnostics;
+        if (nr5 is null)
+        {
+            constraints.Add("nr5-diagnostics-missing");
+        }
+        else
+        {
+            if (!nr5.Run)
+                constraints.Add("nr5-not-running");
+            if (nr5.LearnedFrames < 20)
+                constraints.Add("nr5-learning");
+            if (!nr5.AgcRun)
+                constraints.Add("nr5-agc-disabled");
+        }
+
+        if (runtimeEvidence is null)
+        {
+            constraints.Add("runtime-evidence-missing");
+        }
+        else
+        {
+            if (!runtimeEvidence.RxMetersFresh)
+                constraints.Add("rx-meters-not-fresh");
+            if (!runtimeEvidence.AudioFresh)
+                constraints.Add("final-audio-not-fresh");
+
+            switch (runtimeEvidence.Status)
+            {
+                case "audio-clipping-risk":
+                    constraints.Add("final-audio-clipping-risk");
+                    break;
+                case "audio-muted-by-squelch":
+                    constraints.Add("final-audio-muted-by-squelch");
+                    break;
+                case "audio-monitor-backlog":
+                    constraints.Add("monitor-audio-backlog");
+                    break;
+                case "audio-tx-monitor":
+                    constraints.Add("tx-monitor-audio-active");
+                    break;
+                case "adc-headroom-low":
+                    constraints.Add("adc-headroom-low");
+                    break;
+            }
+        }
+
+        var unique = Unique(constraints);
+        return unique.Length == 0
+            ? new(true, "ready-for-nr5-live-tuning", [])
+            : new(false, "nr5-tuning-preflight-required", unique);
+    }
+
     private static bool ModeEquals(string? left, string right) =>
         string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
@@ -422,4 +508,9 @@ public static class DspLiveDiagnosticsService
             .Where(static value => !string.IsNullOrWhiteSpace(value))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+    private sealed record Nr5LiveTuningReadiness(
+        bool Ready,
+        string Status,
+        string[] Constraints);
 }

@@ -163,6 +163,10 @@ public sealed class WdspDspEngine : IDspEngine
         WdspNativeLoader.TryProbe() &&
         WdspNativeLoader.TryProbeExport(nameof(NativeMethods.GetRXASPNRDeepDiagnostics));
 
+    internal static bool Nr5SpnrAgcDiagnosticsAvailable =>
+        WdspNativeLoader.TryProbe() &&
+        WdspNativeLoader.TryProbeExport(nameof(NativeMethods.GetRXASPNRAgcDiagnostics));
+
     private static bool AllNativeExportsAvailable(string[] symbolNames)
     {
         if (!WdspNativeLoader.TryProbe()) return false;
@@ -1110,6 +1114,9 @@ public sealed class WdspDspEngine : IDspEngine
             double dynamicRangeDb = 0.0;
             double signalConfidence = 0.0;
             double agcGate = 0.0;
+            double levelDrive = 0.0;
+            double recoveryDrive = 0.0;
+            double makeupGain = 1.0;
             if (Nr5SpnrAdvancedDiagnosticsAvailable)
             {
                 try
@@ -1156,9 +1163,32 @@ public sealed class WdspDspEngine : IDspEngine
                     agcGate = 0.0;
                 }
             }
+            if (Nr5SpnrAgcDiagnosticsAvailable)
+            {
+                try
+                {
+                    int agcOk = NativeMethods.GetRXASPNRAgcDiagnostics(
+                        channelId,
+                        out levelDrive,
+                        out recoveryDrive,
+                        out makeupGain);
+                    if (agcOk == 0)
+                    {
+                        levelDrive = 0.0;
+                        recoveryDrive = 0.0;
+                        makeupGain = 1.0;
+                    }
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    levelDrive = 0.0;
+                    recoveryDrive = 0.0;
+                    makeupGain = 1.0;
+                }
+            }
 
             return new Nr5SpnrDiagnosticsDto(
-                SchemaVersion: 3,
+                SchemaVersion: 4,
                 ChannelId: channelId,
                 Run: run != 0,
                 Position: position,
@@ -1181,6 +1211,10 @@ public sealed class WdspDspEngine : IDspEngine
                 DynamicRangeDb: RoundDiag(dynamicRangeDb, 1),
                 SignalConfidence: RoundDiag(signalConfidence, 3),
                 AgcGate: RoundDiag(agcGate, 3),
+                LevelDrive: RoundDiag(levelDrive, 3),
+                RecoveryDrive: RoundDiag(recoveryDrive, 3),
+                MakeupGain: RoundDiag(makeupGain, 3),
+                MakeupGainDb: RoundDiag(LinearToDb(makeupGain), 1),
                 InputRms: RoundDiag(inputRms, 6),
                 InputDbfs: RoundDiag(LinearToDb(inputRms), 1),
                 OutputRms: RoundDiag(outputRms, 6),

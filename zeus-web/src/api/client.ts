@@ -833,6 +833,9 @@ export type DspLiveDiagnosticsDto = {
   qualityTone: string;
   readinessScore: number;
   readyForLiveBenchmark: boolean;
+  readyForNr5Tuning: boolean;
+  nr5TuningStatus: string;
+  nr5TuningConstraints: string[];
   rolloutGate: string;
   wdspActive: boolean;
   wdspNativeLoadable: boolean;
@@ -2524,6 +2527,9 @@ function normalizeDspLiveDiagnostics(raw: unknown): DspLiveDiagnosticsDto {
     qualityTone: diagString(r.qualityTone) ?? 'standby',
     readinessScore: diagNumber(r.readinessScore) ?? 0,
     readyForLiveBenchmark: Boolean(r.readyForLiveBenchmark),
+    readyForNr5Tuning: Boolean(r.readyForNr5Tuning),
+    nr5TuningStatus: diagString(r.nr5TuningStatus) ?? 'nr5-not-active',
+    nr5TuningConstraints: diagStringArray(r.nr5TuningConstraints),
     rolloutGate: diagString(r.rolloutGate) ?? 'opt-in-only',
     wdspActive: Boolean(r.wdspActive),
     wdspNativeLoadable: Boolean(r.wdspNativeLoadable),

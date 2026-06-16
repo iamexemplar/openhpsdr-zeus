@@ -1,0 +1,278 @@
+﻿{
+    "schemaVersion":  1,
+    "tool":  "watch-dsp-live-diagnostics",
+    "generatedUtc":  "\/Date(1781576440698)\/",
+    "sourceMode":  "live-endpoint",
+    "endpoint":  "https://localhost:6443/api/dsp/live-diagnostics",
+    "inputPath":  null,
+    "jsonlPath":  "tmp\\20260616T022039786Z-nr5-live-transport-check\\live-diagnostics-trace.jsonl",
+    "startedUtc":  "\/Date(1781576439786)\/",
+    "completedUtc":  "\/Date(1781576440698)\/",
+    "durationMs":  912,
+    "sampleCount":  3,
+    "okSampleCount":  0,
+    "failedSampleCount":  3,
+    "readySampleCount":  0,
+    "readyForBenchmarkTrace":  false,
+    "trendStatus":  "endpoint-unreachable",
+    "hardBlockerSampleCount":  0,
+    "runtimeEvidenceSampleCount":  0,
+    "rxMetersFreshSampleCount":  0,
+    "audioFreshSampleCount":  0,
+    "txMonitorSampleCount":  0,
+    "squelchEnabledSampleCount":  0,
+    "squelchClosedSampleCount":  0,
+    "squelchClosedPct":  0,
+    "squelchTailSampleCount":  0,
+    "latencyMs":  {
+                      "count":  0,
+                      "min":  null,
+                      "max":  null,
+                      "average":  null,
+                      "movement":  null
+                  },
+    "readinessScore":  {
+                           "count":  0,
+                           "min":  null,
+                           "max":  null,
+                           "average":  null,
+                           "movement":  null
+                       },
+    "agcGainDb":  {
+                      "count":  0,
+                      "min":  null,
+                      "max":  null,
+                      "average":  null,
+                      "movement":  null
+                  },
+    "adcHeadroomDb":  {
+                          "count":  0,
+                          "min":  null,
+                          "max":  null,
+                          "average":  null,
+                          "movement":  null
+                      },
+    "audioRmsDbfs":  {
+                         "count":  0,
+                         "min":  null,
+                         "max":  null,
+                         "average":  null,
+                         "movement":  null
+                     },
+    "audioPeakDbfs":  {
+                          "count":  0,
+                          "min":  null,
+                          "max":  null,
+                          "average":  null,
+                          "movement":  null
+                      },
+    "monitorBacklogSamples":  {
+                                  "count":  0,
+                                  "min":  null,
+                                  "max":  null,
+                                  "average":  null,
+                                  "movement":  null
+                              },
+    "nr5SampleCount":  0,
+    "nr5AlignedSampleCount":  0,
+    "nr5AgcDiagnosticSampleCount":  0,
+    "nr5InputDbfs":  {
+                         "count":  0,
+                         "min":  null,
+                         "max":  null,
+                         "average":  null,
+                         "movement":  null
+                     },
+    "nr5OutputDbfs":  {
+                          "count":  0,
+                          "min":  null,
+                          "max":  null,
+                          "average":  null,
+                          "movement":  null
+                      },
+    "nr5MeanGain":  {
+                        "count":  0,
+                        "min":  null,
+                        "max":  null,
+                        "average":  null,
+                        "movement":  null
+                    },
+    "nr5FloorReductionDb":  {
+                                "count":  0,
+                                "min":  null,
+                                "max":  null,
+                                "average":  null,
+                                "movement":  null
+                            },
+    "nr5DynamicRangeDb":  {
+                              "count":  0,
+                              "min":  null,
+                              "max":  null,
+                              "average":  null,
+                              "movement":  null
+                          },
+    "nr5SignalConfidence":  {
+                                "count":  0,
+                                "min":  null,
+                                "max":  null,
+                                "average":  null,
+                                "movement":  null
+                            },
+    "nr5AgcGate":  {
+                       "count":  0,
+                       "min":  null,
+                       "max":  null,
+                       "average":  null,
+                       "movement":  null
+                   },
+    "nr5LevelDrive":  {
+                          "count":  0,
+                          "min":  null,
+                          "max":  null,
+                          "average":  null,
+                          "movement":  null
+                      },
+    "nr5RecoveryDrive":  {
+                             "count":  0,
+                             "min":  null,
+                             "max":  null,
+                             "average":  null,
+                             "movement":  null
+                         },
+    "nr5MakeupGainDb":  {
+                            "count":  0,
+                            "min":  null,
+                            "max":  null,
+                            "average":  null,
+                            "movement":  null
+                        },
+    "statusCounts":  [
+
+                     ],
+    "qualityToneCounts":  [
+
+                          ],
+    "runtimeStatusCounts":  [
+
+                            ],
+    "audioStatusCounts":  [
+
+                          ],
+    "constraintCounts":  [
+
+                         ],
+    "hardConstraintCounts":  [
+
+                             ],
+    "recommendations":  [
+                            "Start Zeus and verify /api/dsp/live-diagnostics is reachable before collecting live DSP evidence.",
+                            "Repeat the trace after endpoint failures are resolved; missing samples weaken AGC and audio movement evidence."
+                        ],
+    "liveRecommendedActions":  [
+
+                               ],
+    "sampleSummaries":  [
+                            {
+                                "sampleIndex":  1,
+                                "sampledUtc":  "\/Date(1781576439844)\/",
+                                "ok":  false,
+                                "latencyMs":  299,
+                                "status":  "",
+                                "qualityTone":  "",
+                                "readinessScore":  null,
+                                "readyForLiveBenchmark":  false,
+                                "runtimeStatus":  "",
+                                "audioStatus":  "",
+                                "rxMetersFresh":  false,
+                                "audioFresh":  false,
+                                "agcGainDb":  null,
+                                "adcHeadroomDb":  null,
+                                "audioRmsDbfs":  null,
+                                "audioPeakDbfs":  null,
+                                "squelchOpen":  false,
+                                "monitorBacklogSamples":  null,
+                                "requestedNrMode":  "",
+                                "effectiveNrMode":  "",
+                                "nr5LearnedFrames":  null,
+                                "nr5InputDbfs":  null,
+                                "nr5OutputDbfs":  null,
+                                "nr5MeanGain":  null,
+                                "nr5SignalConfidence":  null,
+                                "nr5AgcGate":  null,
+                                "nr5LevelDrive":  null,
+                                "nr5RecoveryDrive":  null,
+                                "nr5MakeupGainDb":  null,
+                                "constraints":  [
+
+                                                ]
+                            },
+                            {
+                                "sampleIndex":  2,
+                                "sampledUtc":  "\/Date(1781576440467)\/",
+                                "ok":  false,
+                                "latencyMs":  6,
+                                "status":  "",
+                                "qualityTone":  "",
+                                "readinessScore":  null,
+                                "readyForLiveBenchmark":  false,
+                                "runtimeStatus":  "",
+                                "audioStatus":  "",
+                                "rxMetersFresh":  false,
+                                "audioFresh":  false,
+                                "agcGainDb":  null,
+                                "adcHeadroomDb":  null,
+                                "audioRmsDbfs":  null,
+                                "audioPeakDbfs":  null,
+                                "squelchOpen":  false,
+                                "monitorBacklogSamples":  null,
+                                "requestedNrMode":  "",
+                                "effectiveNrMode":  "",
+                                "nr5LearnedFrames":  null,
+                                "nr5InputDbfs":  null,
+                                "nr5OutputDbfs":  null,
+                                "nr5MeanGain":  null,
+                                "nr5SignalConfidence":  null,
+                                "nr5AgcGate":  null,
+                                "nr5LevelDrive":  null,
+                                "nr5RecoveryDrive":  null,
+                                "nr5MakeupGainDb":  null,
+                                "constraints":  [
+
+                                                ]
+                            },
+                            {
+                                "sampleIndex":  3,
+                                "sampledUtc":  "\/Date(1781576440685)\/",
+                                "ok":  false,
+                                "latencyMs":  6,
+                                "status":  "",
+                                "qualityTone":  "",
+                                "readinessScore":  null,
+                                "readyForLiveBenchmark":  false,
+                                "runtimeStatus":  "",
+                                "audioStatus":  "",
+                                "rxMetersFresh":  false,
+                                "audioFresh":  false,
+                                "agcGainDb":  null,
+                                "adcHeadroomDb":  null,
+                                "audioRmsDbfs":  null,
+                                "audioPeakDbfs":  null,
+                                "squelchOpen":  false,
+                                "monitorBacklogSamples":  null,
+                                "requestedNrMode":  "",
+                                "effectiveNrMode":  "",
+                                "nr5LearnedFrames":  null,
+                                "nr5InputDbfs":  null,
+                                "nr5OutputDbfs":  null,
+                                "nr5MeanGain":  null,
+                                "nr5SignalConfidence":  null,
+                                "nr5AgcGate":  null,
+                                "nr5LevelDrive":  null,
+                                "nr5RecoveryDrive":  null,
+                                "nr5MakeupGainDb":  null,
+                                "constraints":  [
+
+                                                ]
+                            }
+                        ]
+}

@@ -1,0 +1,297 @@
+{
+  "schemaVersion": 1,
+  "tool": "watch-dsp-live-diagnostics",
+  "generatedUtc": "2026-06-16T02:21:41.1329292+00:00",
+  "sourceMode": "live-endpoint",
+  "endpoint": "https://localhost:6443/api/dsp/live-diagnostics",
+  "inputPath": null,
+  "jsonlPath": "tmp\\20260616T022140503Z-nr5-live-transport-check2\\live-diagnostics-trace.jsonl",
+  "startedUtc": "2026-06-16T02:21:40.5038009+00:00",
+  "completedUtc": "2026-06-16T02:21:41.1329292+00:00",
+  "durationMs": 629,
+  "sampleCount": 3,
+  "okSampleCount": 3,
+  "failedSampleCount": 0,
+  "readySampleCount": 0,
+  "readyForBenchmarkTrace": true,
+  "trendStatus": "nr5-output-level-watch",
+  "hardBlockerSampleCount": 0,
+  "runtimeEvidenceSampleCount": 3,
+  "rxMetersFreshSampleCount": 3,
+  "audioFreshSampleCount": 3,
+  "txMonitorSampleCount": 0,
+  "squelchEnabledSampleCount": 0,
+  "squelchClosedSampleCount": 0,
+  "squelchClosedPct": 0.0,
+  "squelchTailSampleCount": 0,
+  "latencyMs": {
+    "count": 3,
+    "min": 6.0,
+    "max": 101.0,
+    "average": 38.667,
+    "movement": 95.0
+  },
+  "readinessScore": {
+    "count": 3,
+    "min": 77.0,
+    "max": 77.0,
+    "average": 77.0,
+    "movement": 0.0
+  },
+  "agcGainDb": {
+    "count": 3,
+    "min": -49.8,
+    "max": -47.7,
+    "average": -48.733,
+    "movement": 2.1
+  },
+  "adcHeadroomDb": {
+    "count": 3,
+    "min": 38.2,
+    "max": 49.8,
+    "average": 44.567,
+    "movement": 11.6
+  },
+  "audioRmsDbfs": {
+    "count": 3,
+    "min": -26.3,
+    "max": -17.4,
+    "average": -21.867,
+    "movement": 8.9
+  },
+  "audioPeakDbfs": {
+    "count": 3,
+    "min": -16.8,
+    "max": -7.9,
+    "average": -12.8,
+    "movement": 8.9
+  },
+  "monitorBacklogSamples": {
+    "count": 3,
+    "min": 0.0,
+    "max": 0.0,
+    "average": 0.0,
+    "movement": 0.0
+  },
+  "nr5SampleCount": 3,
+  "nr5AlignedSampleCount": 3,
+  "nr5AgcDiagnosticSampleCount": 3,
+  "nr5InputDbfs": {
+    "count": 3,
+    "min": -29.5,
+    "max": -11.9,
+    "average": -20.067,
+    "movement": 17.6
+  },
+  "nr5OutputDbfs": {
+    "count": 3,
+    "min": -34.6,
+    "max": -20.8,
+    "average": -26.0,
+    "movement": 13.8
+  },
+  "nr5MeanGain": {
+    "count": 3,
+    "min": 0.298,
+    "max": 0.711,
+    "average": 0.438,
+    "movement": 0.413
+  },
+  "nr5FloorReductionDb": {
+    "count": 3,
+    "min": 3.5,
+    "max": 4.5,
+    "average": 4.0,
+    "movement": 1.0
+  },
+  "nr5DynamicRangeDb": {
+    "count": 3,
+    "min": 20.4,
+    "max": 38.4,
+    "average": 29.967,
+    "movement": 18.0
+  },
+  "nr5SignalConfidence": {
+    "count": 3,
+    "min": 0.298,
+    "max": 0.355,
+    "average": 0.324,
+    "movement": 0.057
+  },
+  "nr5AgcGate": {
+    "count": 3,
+    "min": 0.576,
+    "max": 0.623,
+    "average": 0.596,
+    "movement": 0.047
+  },
+  "nr5LevelDrive": {
+    "count": 3,
+    "min": 1.0,
+    "max": 1.0,
+    "average": 1.0,
+    "movement": 0.0
+  },
+  "nr5RecoveryDrive": {
+    "count": 3,
+    "min": 0.154,
+    "max": 0.411,
+    "average": 0.261,
+    "movement": 0.257
+  },
+  "nr5MakeupGainDb": {
+    "count": 3,
+    "min": 5.4,
+    "max": 7.4,
+    "average": 6.1,
+    "movement": 2.0
+  },
+  "statusCounts": [
+    {
+      "name": "verify-before-tuning",
+      "count": 3
+    }
+  ],
+  "qualityToneCounts": [
+    {
+      "name": "verify",
+      "count": 3
+    }
+  ],
+  "runtimeStatusCounts": [
+    {
+      "name": "fresh",
+      "count": 3
+    }
+  ],
+  "audioStatusCounts": [
+    {
+      "name": "fresh",
+      "count": 3
+    }
+  ],
+  "constraintCounts": [
+    {
+      "name": "frontend-dsp-scene-aging",
+      "count": 3
+    },
+    {
+      "name": "smart-nr-profile-unmapped",
+      "count": 3
+    }
+  ],
+  "hardConstraintCounts": [],
+  "recommendations": [
+    "NR5 output RMS moved more than 6 dB during the trace; inspect nr5RecoveryDrive and nr5MakeupGainDb before tuning mask thresholds."
+  ],
+  "liveRecommendedActions": [
+    "Wait for fresh frontend spectrum evidence before tuning NR/AGC decisions."
+  ],
+  "sampleSummaries": [
+    {
+      "sampleIndex": 1,
+      "sampledUtc": "2026-06-16T02:21:40.5266272+00:00",
+      "ok": true,
+      "latencyMs": 101,
+      "status": "verify-before-tuning",
+      "qualityTone": "verify",
+      "readinessScore": 77,
+      "readyForLiveBenchmark": false,
+      "runtimeStatus": "fresh",
+      "audioStatus": "fresh",
+      "rxMetersFresh": true,
+      "audioFresh": true,
+      "agcGainDb": -48.7,
+      "adcHeadroomDb": 49.8,
+      "audioRmsDbfs": -21.9,
+      "audioPeakDbfs": -13.7,
+      "squelchOpen": true,
+      "monitorBacklogSamples": 0,
+      "requestedNrMode": "Nr5",
+      "effectiveNrMode": "Nr5",
+      "nr5LearnedFrames": 14838,
+      "nr5InputDbfs": -29.5,
+      "nr5OutputDbfs": -34.6,
+      "nr5MeanGain": 0.298,
+      "nr5SignalConfidence": 0.298,
+      "nr5AgcGate": 0.623,
+      "nr5LevelDrive": 1,
+      "nr5RecoveryDrive": 0.154,
+      "nr5MakeupGainDb": 7.4,
+      "constraints": [
+        "frontend-dsp-scene-aging",
+        "smart-nr-profile-unmapped"
+      ]
+    },
+    {
+      "sampleIndex": 2,
+      "sampledUtc": "2026-06-16T02:21:40.8989631+00:00",
+      "ok": true,
+      "latencyMs": 9,
+      "status": "verify-before-tuning",
+      "qualityTone": "verify",
+      "readinessScore": 77,
+      "readyForLiveBenchmark": false,
+      "runtimeStatus": "fresh",
+      "audioStatus": "fresh",
+      "rxMetersFresh": true,
+      "audioFresh": true,
+      "agcGainDb": -49.8,
+      "adcHeadroomDb": 45.7,
+      "audioRmsDbfs": -17.4,
+      "audioPeakDbfs": -7.9,
+      "squelchOpen": true,
+      "monitorBacklogSamples": 0,
+      "requestedNrMode": "Nr5",
+      "effectiveNrMode": "Nr5",
+      "nr5LearnedFrames": 14852,
+      "nr5InputDbfs": -18.8,
+      "nr5OutputDbfs": -22.6,
+      "nr5MeanGain": 0.711,
+      "nr5SignalConfidence": 0.355,
+      "nr5AgcGate": 0.59,
+      "nr5LevelDrive": 1,
+      "nr5RecoveryDrive": 0.411,
+      "nr5MakeupGainDb": 5.5,
+      "constraints": [
+        "frontend-dsp-scene-aging",
+        "smart-nr-profile-unmapped"
+      ]
+    },
+    {
+      "sampleIndex": 3,
+      "sampledUtc": "2026-06-16T02:21:41.1208859+00:00",
+      "ok": true,
+      "latencyMs": 6,
+      "status": "verify-before-tuning",
+      "qualityTone": "verify",
+      "readinessScore": 77,
+      "readyForLiveBenchmark": false,
+      "runtimeStatus": "fresh",
+      "audioStatus": "fresh",
+      "rxMetersFresh": true,
+      "audioFresh": true,
+      "agcGainDb": -47.7,
+      "adcHeadroomDb": 38.2,
+      "audioRmsDbfs": -26.3,
+      "audioPeakDbfs": -16.8,
+      "squelchOpen": true,
+      "monitorBacklogSamples": 0,
+      "requestedNrMode": "Nr5",
+      "effectiveNrMode": "Nr5",
+      "nr5LearnedFrames": 14862,
+      "nr5InputDbfs": -11.9,
+      "nr5OutputDbfs": -20.8,
+      "nr5MeanGain": 0.306,
+      "nr5SignalConfidence": 0.319,
+      "nr5AgcGate": 0.576,
+      "nr5LevelDrive": 1,
+      "nr5RecoveryDrive": 0.217,
+      "nr5MakeupGainDb": 5.4,
+      "constraints": [
+        "frontend-dsp-scene-aging",
+        "smart-nr-profile-unmapped"
+      ]
+    }
+  ]
+}

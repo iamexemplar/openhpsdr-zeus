@@ -32,6 +32,9 @@ public class Nr5SyntheticFixtureTests
         DspBenchmarkScenarioKind.SsbLikeSpeech,
         DspBenchmarkScenarioKind.FadingCarrier,
         DspBenchmarkScenarioKind.ImpulseNoise,
+        DspBenchmarkScenarioKind.StrongAdjacent,
+        DspBenchmarkScenarioKind.AgcStep,
+        DspBenchmarkScenarioKind.SquelchTransition,
         DspBenchmarkScenarioKind.NoiseOnly
     ];
 
@@ -62,6 +65,9 @@ public class Nr5SyntheticFixtureTests
         Assert.Contains("ssb-like-speech", names);
         Assert.Contains("fading-carrier", names);
         Assert.Contains("impulse-noise", names);
+        Assert.Contains("strong-adjacent", names);
+        Assert.Contains("agc-level-step", names);
+        Assert.Contains("squelch-transition", names);
         Assert.Contains("noise-only", names);
 
         foreach (var kind in RequiredNr5FixtureKinds)
@@ -161,6 +167,51 @@ public class Nr5SyntheticFixtureTests
         Assert.True(
             nbOn.Metrics.Peak <= nbOff.Metrics.Peak * 2.0 + 0.05,
             $"NB1+NR5 impulse peak should stay bounded. nbOff={Describe(nbOff)} nbOn={Describe(nbOn)}");
+    }
+
+    [SkippableFact]
+    public void Wdsp_Nr5StrongAdjacentFixture_PreservesWantedSignalWithoutLiftingBlocker()
+    {
+        Skip.IfNot(WdspAvailable(), "libwdsp not available");
+        Skip.IfNot(SpnrAvailable(), "Requires libwdsp rebuild with NR5/SPNR exports.");
+
+        var fixture = DspBenchmarkFixtureCatalog.Create(DspBenchmarkScenarioKind.StrongAdjacent);
+        var off = RunFixture(fixture, new NrConfig(NrMode: NrMode.Off));
+        var nr5 = RunFixture(fixture, new NrConfig(NrMode: NrMode.Nr5));
+
+        AssertHealthyOutput(off);
+        AssertHealthyOutput(nr5);
+        AssertLevelNormalized(nr5, off, maxRatio: 4.0);
+
+        double offWanted = off.Metrics.TonePowerDb["wanted"];
+        double nr5Wanted = nr5.Metrics.TonePowerDb["wanted"];
+        double nr5Adjacent = nr5.Metrics.TonePowerDb["adjacent"];
+
+        Assert.True(
+            nr5Wanted > offWanted - 18.0,
+            $"strong-adjacent: NR5 should preserve wanted passband energy. offWanted={offWanted:F1}dB nr5Wanted={nr5Wanted:F1}dB nr5={Describe(nr5)} nr5Diag={DescribeNr5(nr5.Nr5Diagnostics)}");
+        Assert.True(
+            nr5Wanted > nr5Adjacent - 12.0,
+            $"strong-adjacent: out-of-passband blocker should not dominate NR5 output. wanted={nr5Wanted:F1}dB adjacent={nr5Adjacent:F1}dB nr5={Describe(nr5)} nr5Diag={DescribeNr5(nr5.Nr5Diagnostics)}");
+    }
+
+    [SkippableFact]
+    public void Wdsp_Nr5AgcStepFixture_KeepsLevelMovementBounded()
+    {
+        Skip.IfNot(WdspAvailable(), "libwdsp not available");
+        Skip.IfNot(SpnrAvailable(), "Requires libwdsp rebuild with NR5/SPNR exports.");
+
+        var fixture = DspBenchmarkFixtureCatalog.Create(DspBenchmarkScenarioKind.AgcStep);
+        var off = RunFixture(fixture, new NrConfig(NrMode: NrMode.Off));
+        var nr5 = RunFixture(fixture, new NrConfig(NrMode: NrMode.Nr5));
+
+        AssertHealthyOutput(off);
+        AssertHealthyOutput(nr5);
+        AssertLevelNormalized(nr5, off, maxRatio: 4.0);
+
+        Assert.True(
+            nr5.Metrics.WindowedRmsSpreadDb <= off.Metrics.WindowedRmsSpreadDb + 8.0,
+            $"AGC-step NR5 should not add audible pumping beyond NR-off. offSpread={off.Metrics.WindowedRmsSpreadDb:F1}dB nr5Spread={nr5.Metrics.WindowedRmsSpreadDb:F1}dB off={Describe(off)} nr5={Describe(nr5)} nr5Diag={DescribeNr5(nr5.Nr5Diagnostics)}");
     }
 
     private static IReadOnlyList<WdspFixtureResult> RunComparisons(
@@ -295,6 +346,7 @@ public class Nr5SyntheticFixtureTests
               $"presence={diag.PresencePeak:F3} salience={diag.SaliencePeak:F3} " +
               $"coherence={diag.CoherencePeak:F3} ridge={diag.RidgePeak:F3} " +
               $"meanGain={diag.MeanGain:F3} minGain={diag.MinGain:F3} " +
+              $"levelDrive={diag.LevelDrive:F3} recovery={diag.RecoveryDrive:F3} makeup={diag.MakeupGainDb:F1}dB " +
               $"floor={diag.FloorReductionDb:F1}dB dr={diag.DynamicRangeDb:F1}dB " +
               $"in={diag.InputRms:F5} out={diag.OutputRms:F5} agcGain={diag.AgcGain:F3}";
 
