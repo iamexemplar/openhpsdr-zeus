@@ -115,6 +115,22 @@ public static class DspBenchmarkCaptureManifestService
                 true,
                 all),
             Artifact(
+                "live-diagnostics-trace",
+                "diagnostics-jsonl",
+                "tools/watch-dsp-live-diagnostics.ps1",
+                "Sample live diagnostics over a scenario window to preserve runtime evidence movement, blockers, AGC gain, audio level, ADC headroom, squelch, and monitor backlog trends.",
+                "once-per-live-scenario-window",
+                false,
+                all),
+            Artifact(
+                "live-diagnostics-trace-comparison",
+                "diagnostics-comparison-json",
+                "tools/compare-dsp-live-diagnostics-traces.ps1",
+                "Compare baseline and candidate live diagnostics traces to reject regressions in blockers, readiness, AGC movement, audio stability, ADC headroom, squelch, monitor backlog, and diagnostics latency.",
+                "once-per-candidate-live-trace",
+                false,
+                all),
+            Artifact(
                 "benchmark-plan-json",
                 "endpoint-json",
                 "/api/dsp/benchmark-plan",

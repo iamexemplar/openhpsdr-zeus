@@ -221,11 +221,14 @@ public sealed class SmartNrConditionEndpointTests
         var tools = root.GetProperty("candidateTools").EnumerateArray().Select(item => item.GetString()).ToArray();
         Assert.Contains("offline-dsp-benchmark-harness", tools);
         Assert.Contains("dsp-benchmark-acceptance-plan", tools);
+        Assert.Contains("dsp-live-runtime-evidence", tools);
         Assert.Contains("g2-live-capture", tools);
         Assert.Contains("external-post-demod-bakeoff:rnnoise", tools);
         Assert.Contains("external-post-demod-bakeoff:deepfilternet", tools);
         Assert.Equal("/api/dsp/benchmark-plan", root.GetProperty("benchmarkPlanEndpoint").GetString());
         Assert.True(root.GetProperty("benchmarkScenarioCount").GetInt32() >= 12);
+        Assert.Equal("missing", root.GetProperty("runtimeEvidence").GetProperty("audioStatus").GetString());
+        Assert.False(root.GetProperty("runtimeEvidence").GetProperty("audioFresh").GetBoolean());
         Assert.NotEmpty(root.GetProperty("nextBenchmarkScenarios").EnumerateArray());
         Assert.Contains(
             root.GetProperty("benchmarkAcceptanceGates").EnumerateArray().Select(item => item.GetString()),
@@ -275,6 +278,35 @@ public sealed class SmartNrConditionEndpointTests
         Assert.Contains(
             pureSignal.GetProperty("acceptanceGates").EnumerateArray().Select(item => item.GetString()),
             item => item is not null && item.Contains("PureSignal", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task GetBenchmarkMetricCatalog_ReturnsMetricDirectionSemantics()
+    {
+        using var factory = new Factory();
+        using var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/api/dsp/benchmark-metric-catalog");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        using var body = await JsonDocument.ParseAsync(await resp.Content.ReadAsStreamAsync());
+        var root = body.RootElement;
+
+        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Contains(
+            root.GetProperty("directionValues").EnumerateArray().Select(item => item.GetString()),
+            item => item == "lower");
+
+        var metrics = root.GetProperty("metrics").EnumerateArray().ToArray();
+        Assert.Contains(metrics, item =>
+            item.GetProperty("id").GetString() == "wantedsnr"
+            && item.GetProperty("direction").GetString() == "higher");
+        Assert.Contains(metrics, item =>
+            item.GetProperty("id").GetString() == "agcgainmovement"
+            && item.GetProperty("direction").GetString() == "lower");
+        Assert.Contains(metrics, item =>
+            item.GetProperty("id").GetString() == "outputrms"
+            && item.GetProperty("direction").GetString() == "informational");
     }
 
     [Fact]

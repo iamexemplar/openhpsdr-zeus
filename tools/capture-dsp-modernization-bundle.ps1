@@ -69,6 +69,13 @@ function Get-CaptureEndpoints {
             purpose = "Scenario catalog, required metrics, comparisons, and acceptance gates."
         },
         [ordered]@{
+            id = "benchmark-metric-catalog"
+            path = "/api/dsp/benchmark-metric-catalog"
+            file = "benchmark-metric-catalog.json"
+            required = $true
+            purpose = "Metric direction, unit, safety class, and rationale catalog for fixture comparisons."
+        },
+        [ordered]@{
             id = "nr-condition"
             path = "/api/dsp/nr-condition"
             file = "nr-condition.json"
@@ -230,6 +237,17 @@ $readme = @"
 This bundle is read-only evidence for WDSP modernization review. It does not
 approve changing DSP defaults. Keep it with matching audio renders, spectrum
 captures, offline fixture metrics, and operator notes.
+
+Next steps:
+1. Generate an artifact scaffold:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\new-dsp-artifact-manifest.ps1 -BundleDir "$bundleDir"
+2. Capture optional live runtime trends during scenario windows:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl $base -Samples 60 -IntervalMs 1000 -JsonlPath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-watch.json"
+3. Compare a candidate live trace against a baseline trace before accepting the window:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\compare-dsp-live-diagnostics-traces.ps1 -BaselinePath "$bundleDir\artifacts\live-diagnostics-baseline.jsonl" -CandidatePath "$bundleDir\artifacts\live-diagnostics-trace.jsonl" -ReportPath "$bundleDir\artifacts\live-diagnostics-trace-comparison.json" -FailOnRegression
+4. Fill the required files listed in artifact-manifest.template.json.
+5. Copy or regenerate the scaffold as artifact-manifest.json, then validate with:
+   powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir "$bundleDir" -RequireArtifactFiles
 "@
 Set-Content -LiteralPath (Join-Path $bundleDir "README.md") -Value $readme -Encoding UTF8
 

@@ -14,17 +14,24 @@
 //   - Drag handle is the small grip in each tile's chrome header — clicks
 //     inside the panel body do not initiate a drag (RGL's dragConfig.handle
 //     is scoped to .workspace-tile-drag-handle).
-//   - "+ Add Panel" is a single workspace-level button at the top-right,
+//   - "+ Add Panel" is a small workspace-level button at the bottom-right,
 //     opening the categorized AddPanelModal.
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
   type Layout,
 } from 'react-grid-layout';
-import { absoluteStrategy } from 'react-grid-layout/core';
-import { Puzzle, Settings } from 'lucide-react';
+import { absoluteStrategy, noCompactor } from 'react-grid-layout/core';
+import { Plus, Puzzle, Settings } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { parseLayoutOrDefault, useLayoutStore } from '../state/layout-store';
 import { getPanelDef } from './panels';
@@ -32,7 +39,6 @@ import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 import {
   EMPTY_WORKSPACE_LAYOUT,
   WORKSPACE_GRID_COLS,
-  WORKSPACE_ROW_HEIGHT_MIN_PX,
   WORKSPACE_ROW_HEIGHT_PX,
   WORKSPACE_TARGET_ROWS,
   WORKSPACE_TILE_MIN_H,
@@ -54,6 +60,9 @@ import {
   parseUrlEmbedConfig,
   type UrlEmbedConfig,
 } from './panels/urlEmbedConfig';
+
+const WORKSPACE_GRID_MARGIN_PX = 3;
+const WORKSPACE_ROW_GAP_SHARE = 6;
 
 interface FlexWorkspaceProps {
   /** Omitted = current dock-selected layout; set = fixed detached workspace. */
@@ -146,6 +155,18 @@ export function FlexWorkspace({
         onRequestRemoveTile={(uid, title) => setPendingRemoveTile({ uid, title })}
       />
       <TerminatorLines active={terminatorActive} />
+      {showAddPanelModal && !addPanelOpen && (
+        <button
+          type="button"
+          className="workspace-add-panel-btn"
+          onClick={() => setAddPanelOpen(true)}
+          disabled={!isLoaded}
+          title="Add a panel to this workspace"
+          aria-label="Add panel"
+        >
+          <Plus size={18} strokeWidth={2.2} aria-hidden />
+        </button>
+      )}
       {showAddPanelModal && addPanelOpen && (
         <AddPanelModal
           existingPanels={existingPanels}
@@ -228,26 +249,30 @@ function WorkspaceCanvas({
   // sparse layout doesn't balloon its tiles to fill the screen — it just
   // leaves empty space at the bottom, matching the prior behaviour), and
   // grows to the layout's real height when the operator stacks panels past
-  // the default fold (so the whole grid scales down to fit instead of
-  // scrolling). The readability floor below is the only thing that can
-  // re-introduce a scrollbar, and only when tiles would otherwise be crushed.
+  // the default fold. Dense layouts shrink rather than asking the workspace
+  // shell for a scrollbar.
   const targetRows = Math.max(layoutRows, WORKSPACE_TARGET_ROWS);
 
   // Responsive rowHeight: solve containerHeight ≈ rowHeight*N + margin*(N-1)
   // + 2*containerPadding. Margin and containerPadding here mirror the props
   // passed to ResponsiveGridLayout below — keep them in sync if those change.
+  // The row gap shrinks with very dense layouts so gaps alone can never make
+  // the grid taller than the viewport.
+  const rowMargin = useMemo(() => {
+    if (containerHeight <= 0 || targetRows <= 1) return WORKSPACE_GRID_MARGIN_PX;
+    return Math.min(
+      WORKSPACE_GRID_MARGIN_PX,
+      containerHeight / (targetRows * WORKSPACE_ROW_GAP_SHARE),
+    );
+  }, [containerHeight, targetRows]);
+
   const rowHeight = useMemo(() => {
     if (containerHeight <= 0) return WORKSPACE_ROW_HEIGHT_PX;
-    // Must mirror the `margin` prop passed to ResponsiveGridLayout below.
-    // Halved (6→3) alongside the 24→48 row doubling so the extra inter-row
-    // gaps don't eat ~140 px of vertical space — net density stays identical.
-    const margin = 3;
     const containerPadding = 0;
     const inner =
-      containerHeight - 2 * containerPadding - margin * (targetRows - 1);
-    const computed = Math.floor(inner / targetRows);
-    return Math.max(WORKSPACE_ROW_HEIGHT_MIN_PX, computed);
-  }, [containerHeight, targetRows]);
+      containerHeight - 2 * containerPadding - rowMargin * Math.max(0, targetRows - 1);
+    return Math.max(0.1, inner / Math.max(1, targetRows));
+  }, [containerHeight, rowMargin, targetRows]);
 
   // RGL needs a stable per-render layouts.lg array. Memoise against the
   // tile list identity so we don't push a new prop on every parent render.
@@ -297,8 +322,9 @@ function WorkspaceCanvas({
           breakpoints={{ lg: 0 }}
           cols={{ lg: WORKSPACE_GRID_COLS }}
           rowHeight={rowHeight}
-          margin={[3, 3]}
+          margin={[WORKSPACE_GRID_MARGIN_PX, rowMargin]}
           containerPadding={[0, 0]}
+          compactor={noCompactor}
           // Position tiles via top/left rather than transform: translate3d.
           // RGL's default `transformStrategy` uses CSS transforms, which
           // (combined with the upstream stylesheet's `will-change: transform`)

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Zeus.Plugins.Contracts.Audio;
 using Zeus.Plugins.Contracts.Extensions;
+using Zeus.Plugins.Host.Audio;
 using Zeus.Server;
 
 namespace Zeus.Server.Tests;
@@ -264,6 +265,44 @@ public class AudioPluginBridgeProcessLivePreviewTests
         Assert.Equal<float>(new float[] { 0f, 0f, 0f, 1f, -1f, 0.25f }, output.ToArray());
     }
 
+    [Fact]
+    public void VstPreview_PassthroughDegrade_DoesNotOverwrite_LastEngineMeters()
+    {
+        var controller = ActiveControllerWithoutBridge();
+        var bridge = new AudioPluginBridge(
+            isMoxOn: () => false,
+            isMonitorOn: () => false,
+            log: NullLogger<AudioPluginBridge>.Instance,
+            vstEngine: controller);
+        SetPrivateField(bridge, "_engineInPeak", 0.1f);
+        SetPrivateField(bridge, "_engineOutPeak", 0.8f);
+
+        RunPreview(bridge, 256);
+
+        var meters = bridge.ChainMeters;
+        Assert.Equal(0.1f, meters.In, precision: 6);
+        Assert.Equal(0.8f, meters.Out, precision: 6);
+    }
+
+    [Fact]
+    public void VstTx_PassthroughDegrade_StillRecords_OnAirMeters()
+    {
+        var controller = ActiveControllerWithoutBridge();
+        var bridge = new AudioPluginBridge(
+            isMoxOn: () => true,
+            isMonitorOn: () => false,
+            log: NullLogger<AudioPluginBridge>.Instance,
+            vstEngine: controller);
+        SetPrivateField(bridge, "_engineInPeak", 0.1f);
+        SetPrivateField(bridge, "_engineOutPeak", 0.8f);
+
+        RunTxProcess(bridge, 256);
+
+        var meters = bridge.ChainMeters;
+        Assert.Equal(0.5f, meters.In, precision: 6);
+        Assert.Equal(0.5f, meters.Out, precision: 6);
+    }
+
     private static void RunPreview(AudioPluginBridge bridge, int frames)
     {
         Span<float> mic = stackalloc float[frames];
@@ -277,6 +316,22 @@ public class AudioPluginBridgeProcessLivePreviewTests
         Span<float> output = stackalloc float[frames];
         for (int i = 0; i < frames; i++) input[i] = 0.5f;
         bridge.ProcessTxForTest(input, output, frames);
+    }
+
+    private static VstEngineController ActiveControllerWithoutBridge()
+    {
+        var controller = new VstEngineController();
+        SetPrivateField(controller, "_active", true);
+        return controller;
+    }
+
+    private static void SetPrivateField(object target, string fieldName, object value)
+    {
+        var field = target.GetType().GetField(
+            fieldName,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        field.SetValue(target, value);
     }
 
     private sealed class SpyAuditionSink : IAuditionAudioSink

@@ -70,7 +70,7 @@ interface LayoutState {
    *  don't need to re-parse on every render. */
   activeLayoutId: string;
   /** The active layout's parsed WorkspaceLayout. Always non-null — falls
-   *  back to DEFAULT_WORKSPACE_LAYOUT when the server returns nothing. */
+   *  back to DEFAULT_WORKSPACE_LAYOUT when the server returns invalid data. */
   workspace: WorkspaceLayout;
   /** True after loadFromServer() has run (success or 404 / network error). */
   isLoaded: boolean;
@@ -97,8 +97,9 @@ interface LayoutState {
   syncToServerBeforeUnload: () => void;
 
   // Layout-level mutators (LeftLayoutBar API):
-  /** Create a new layout for the current radio, seeded from
-   *  DEFAULT_WORKSPACE_LAYOUT, and switch to it. Returns the new id. */
+  /** Create a new blank layout for the current radio and switch to it.
+   *  Callers may pass an explicit workspace seed for special-purpose tabs.
+   *  Returns the new id. */
   addLayout: (
     name: string,
     meta?: { icon?: string; description?: string; workspace?: WorkspaceLayout },
@@ -182,12 +183,24 @@ function defaultSeedLayout(): NamedLayout {
 }
 
 export function parseLayoutOrDefault(json: string): WorkspaceLayout {
+  const parsed = parseLayoutJson(json);
+  return parsed ?? DEFAULT_WORKSPACE_LAYOUT;
+}
+
+function parseLayoutJson(json: string): WorkspaceLayout | null {
   try {
-    const parsed = parseWorkspaceLayout(JSON.parse(json));
-    return parsed.tiles.length === 0 ? DEFAULT_WORKSPACE_LAYOUT : parsed;
+    const raw = JSON.parse(json);
+    if (!hasRecognizedWorkspaceSchema(raw)) return null;
+    return parseWorkspaceLayout(raw);
   } catch {
-    return DEFAULT_WORKSPACE_LAYOUT;
+    return null;
   }
+}
+
+function hasRecognizedWorkspaceSchema(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const obj = raw as { schemaVersion?: unknown; tiles?: unknown };
+  return (obj.schemaVersion === 7 || obj.schemaVersion === 8) && Array.isArray(obj.tiles);
 }
 
 function findActive(layouts: NamedLayout[], id: string): NamedLayout | undefined {
@@ -282,7 +295,7 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
 
   addLayout: (name, meta) => {
     const id = `layout-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const initialWorkspace = meta?.workspace ?? DEFAULT_WORKSPACE_LAYOUT;
+    const initialWorkspace = meta?.workspace ?? EMPTY_WORKSPACE_LAYOUT;
     const json = serializeWorkspace(initialWorkspace);
     const next: NamedLayout = {
       id,

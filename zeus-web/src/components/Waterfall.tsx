@@ -64,6 +64,8 @@ type WaterfallProps = {
   transparent?: boolean;
 };
 
+type WaterfallValueDomain = 'rx-db' | 'pop' | 'tx-db';
+
 const CONTEXT_LOSS_TEARDOWN_DELAY_MS = 250;
 const pendingContextLossTimers = new WeakMap<HTMLCanvasElement, number>();
 
@@ -110,10 +112,19 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
     let gl: WebGL2RenderingContext | null = null;
     let renderer: ReturnType<typeof createWfRenderer> | null = null;
     let contextLost = false;
-    const isPopRenderActive = () => {
+    const currentValueDomain = (): WaterfallValueDomain => {
       const { popEnabled } = useSignalEnhanceStore.getState();
       const { moxOn, tunOn } = useTxStore.getState();
-      return popEnabled && !moxOn && !tunOn;
+      if (moxOn || tunOn) return 'tx-db';
+      return popEnabled ? 'pop' : 'rx-db';
+    };
+    let valueDomain = currentValueDomain();
+    const isPopRenderActive = () => currentValueDomain() === 'pop';
+    const clearIfValueDomainChanged = () => {
+      const nextDomain = currentValueDomain();
+      if (nextDomain === valueDomain) return;
+      valueDomain = nextDomain;
+      renderer?.clearHistory();
     };
     const applyRenderLook = () => {
       if (!renderer) return;
@@ -386,6 +397,7 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
     // spectrum-tick rate.
     const unsubTx = useTxStore.subscribe((state, prev) => {
       if (state.moxOn !== prev.moxOn || state.tunOn !== prev.tunOn) {
+        clearIfValueDomainChanged();
         applyRenderLook();
         requestRedraw();
       }
@@ -396,8 +408,8 @@ export function Waterfall({ transparent = false }: WaterfallProps = {}) {
     // clipped band against the new range. New rows fill in from the top.
     const unsubEnhance = useSignalEnhanceStore.subscribe((state, prev) => {
       if (state.popEnabled !== prev.popEnabled) {
+        clearIfValueDomainChanged();
         applyRenderLook();
-        renderer?.clearHistory();
         requestRedraw();
       } else if (
         state.popFloorDb !== prev.popFloorDb ||

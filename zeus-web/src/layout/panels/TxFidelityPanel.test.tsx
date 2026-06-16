@@ -360,4 +360,57 @@ describe('TxFidelityPanel', () => {
 
     unmount();
   });
+
+  it('applies route and bypass for an unbound station profile', async () => {
+    act(() => {
+      useConnectionStore.setState({
+        status: 'Connected',
+        mode: 'USB',
+      });
+    });
+
+    const { container, unmount } = render(createElement(TxFidelityPanel));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const profileButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="TX station profile"]',
+    );
+    expect(profileButton).not.toBeNull();
+
+    await act(async () => {
+      profileButton!.click();
+    });
+
+    const profileOptions = Array.from(
+      container.querySelectorAll<HTMLButtonElement>('[role="option"]'),
+    );
+    await act(async () => {
+      profileOptions.find((option) => option.textContent === 'DX Punch')!.click();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await Promise.resolve();
+    });
+
+    const calls = vi.mocked(fetch).mock.calls;
+    const routeCall = calls.find(
+      ([input, init]) =>
+        String(input) === '/api/audio-suite/processing-mode' &&
+        init?.method === 'PUT',
+    );
+    const bypassCall = calls.find(
+      ([input, init]) =>
+        String(input) === '/api/audio-suite/master-bypass' &&
+        init?.method === 'PUT',
+    );
+    expect(routeCall?.[1]?.body).toBe(JSON.stringify({ mode: 'vst' }));
+    expect(bypassCall?.[1]?.body).toBe(JSON.stringify({ bypassed: false }));
+    expect(container.textContent).toContain('DX Punch active');
+
+    unmount();
+  });
 });

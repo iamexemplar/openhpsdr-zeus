@@ -642,8 +642,10 @@ export function startRealtime(path = '/ws'): () => void {
           const txStore = useTxStore.getState();
           if (moxOn) {
             txStore.setMoxOn(true);
+            txStore.setTxMonitorEnabled(false);
           } else if (tunOn) {
             txStore.setTunOn(true);
+            txStore.setTxMonitorEnabled(false);
           } else {
             txStore.setMoxOn(false);
             txStore.setTunOn(false);

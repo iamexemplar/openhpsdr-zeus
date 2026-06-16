@@ -72,6 +72,7 @@ import { SignalIntelligenceController } from './components/SignalIntelligenceCon
 import { SmartNrController } from './components/SmartNrController';
 import { DspSceneDiagnosticsPublisher } from './components/DspSceneDiagnosticsPublisher';
 import { ThemeApplier } from './components/ThemeApplier';
+import { TxStationProfileActivator } from './components/TxStationProfileActivator';
 import { StepFavorites } from './components/toolbar/StepFavorites';
 import { TunButton } from './components/TunButton';
 import { BOARD_LABELS } from './api/radio';
@@ -680,6 +681,7 @@ export default function App() {
       <SignalIntelligenceController />
       <SmartNrController />
       <DspSceneDiagnosticsPublisher />
+      <TxStationProfileActivator />
       <div
         className="detached-workspace-app"
         data-screen-label={`Detached Workspace · ${detachedLayoutName ?? detachedLayoutId}`}
@@ -689,7 +691,6 @@ export default function App() {
           <FlexWorkspace
             key={detachedLayoutId}
             layoutId={detachedLayoutId}
-            showAddPanelModal={false}
           />
         </div>
         {disconnectedOverlay}
@@ -713,6 +714,7 @@ export default function App() {
           <SignalIntelligenceController />
           <SmartNrController />
           <DspSceneDiagnosticsPublisher />
+          <TxStationProfileActivator />
           <MobileApp />
         </SpectrumWheelActionsContext.Provider>
       </WorkspaceContext.Provider>
@@ -727,6 +729,7 @@ export default function App() {
     <SignalIntelligenceController />
     <SmartNrController />
     <DspSceneDiagnosticsPublisher />
+    <TxStationProfileActivator />
     <div className="app" data-screen-label="01 Main Console" style={{ position: 'relative' }}>
       {/* Left layout bar — issue #241. Spans the full app height; lists named
           layouts for the active radio with switch/add/delete/reset actions. */}
@@ -821,9 +824,9 @@ export default function App() {
 
       {/* Transport — MOX/TUN + audio + mic + macro buttons on the left,
           PA/PRE chips, then the per-radio status (radio IP, rotator, QRZ)
-          and "+ Add Panel" trigger on the right. This is the single
-          bottom-pinned bar; the previous separate BottomStatusBar was
-          merged in here so the chrome doesn't duplicate. */}
+          and layout reset on the right. This is the single bottom-pinned
+          bar; the previous separate BottomStatusBar was merged in here so
+          the chrome doesn't duplicate. */}
       <div className="transport">
         <MoxButton />
         <TunButton />
@@ -848,19 +851,9 @@ export default function App() {
         </span>
         <RotatorStatusPill />
         <QrzStatusPill />
-        {/* Add Panel + Reset live together at the bottom-right: both act on
-            the active layout's tile arrangement, so keeping them adjacent
-            makes the relationship obvious. Disabled while the Settings
-            view is showing (no active workspace to mutate). */}
-        <button
-          type="button"
-          className="btn"
-          onClick={() => useLayoutStore.getState().setAddPanelOpen(true)}
-          disabled={settingsViewOpen}
-          title="Add a panel to the active layout"
-        >
-          + Add Panel
-        </button>
+        {/* Reset acts on the active layout's tile arrangement. Disabled
+            while the Settings view is showing (no active workspace to
+            mutate). Add Panel now lives inside the workspace surface. */}
         <button
           type="button"
           className="btn ghost"

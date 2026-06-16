@@ -26,13 +26,9 @@ export const WORKSPACE_ROW_HEIGHT_PX = 15;
 /** Target row count the responsive rowHeight calc divides into the
  *  measured container height. Matches the total y+h of the default layout
  *  so a fresh radio fills the viewport exactly. Custom layouts taller than
- *  this row out below the fold (workspace scrolls); shorter layouts leave
+ *  this shrink proportionally into the same viewport; shorter layouts leave
  *  empty space at the bottom. */
 export const WORKSPACE_TARGET_ROWS = 48;
-/** Floor on the responsive rowHeight so tiles stay readable on small
- *  windows. Below this, the workspace scrolls instead of cramming. Halved
- *  with the row doubling (each row is now half as tall). */
-export const WORKSPACE_ROW_HEIGHT_MIN_PX = 9;
 /** Default minW/minH for every tile. minW=2 (≈ 1/12 of the workspace
  *  width at 24 cols) lets short-control tiles like Mode / Tuning Step / Band
  *  shrink down to a narrow column when the operator wants to dock them tight,
@@ -139,8 +135,8 @@ export function placeTileInGrid(
 
 /** Best-effort parser + validator for the opaque /api/ui/layout JSON blob.
  *  Anything malformed falls through to the empty layout — never throws. The
- *  caller is expected to substitute DEFAULT_WORKSPACE_LAYOUT when this
- *  returns the empty value. Unknown panelIds are kept rather than dropped —
+ *  caller decides whether the empty value means "blank workspace" or
+ *  "substitute the default workspace." Unknown panelIds are kept rather than dropped —
  *  plugin panels register asynchronously at startup, and dropping their
  *  tiles on each layout deserialise would mean operators have to re-add
  *  plugin panels after every tab switch / page reload. The tile renderer
@@ -157,8 +153,8 @@ export function parseWorkspaceLayout(raw: unknown): WorkspaceLayout {
   // v8 is the current 24×48 grid; v7 is the legacy 12×24 grid, migrated
   // forward by scaling every coordinate by GRID_SCALE so old saved layouts
   // render identically on the finer grid. Anything else (older formats,
-  // future versions) falls through to the empty layout, which the caller
-  // substitutes with DEFAULT_WORKSPACE_LAYOUT.
+  // future versions) falls through to the empty layout; callers decide
+  // whether to render that as blank or substitute DEFAULT_WORKSPACE_LAYOUT.
   if (version !== 7 && version !== 8) return EMPTY_WORKSPACE_LAYOUT;
   const scale = version === 7 ? GRID_SCALE : 1;
   const rawTiles = Array.isArray(obj.tiles) ? obj.tiles : [];

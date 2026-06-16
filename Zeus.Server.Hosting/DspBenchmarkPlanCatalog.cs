@@ -44,6 +44,18 @@ public static class DspBenchmarkPlanCatalog
             ],
             Scenarios: AllScenarios());
 
+    public static DspBenchmarkMetricCatalogDto BuildMetricCatalog()
+    {
+        var scenarios = AllScenarios();
+        return new DspBenchmarkMetricCatalogDto(
+            SchemaVersion: 1,
+            GeneratedUtc: DateTimeOffset.UtcNow,
+            Status: "ready-for-offline-comparison-tooling",
+            RolloutPolicy: "metric-semantics-only-no-runtime-dsp-behavior-change",
+            DirectionValues: ["higher", "lower", "informational"],
+            Metrics: AllMetrics(scenarios));
+    }
+
     public static string[] NextScenarioIds(SmartNrConditionDto condition)
     {
         ArgumentNullException.ThrowIfNull(condition);
@@ -322,6 +334,135 @@ public static class DspBenchmarkPlanCatalog
                 "g2-live-capture",
                 "dsp-live-diagnostics",
             ]);
+
+    private static DspBenchmarkMetricDto[] AllMetrics(DspBenchmarkScenarioDto[] scenarios) =>
+    [
+        Metric(scenarios, "scene age", "lower", "ms", "diagnostic-freshness",
+            "Older frontend scene data weakens live DSP recommendations and should trend down."),
+        Metric(scenarios, "source clock skew", "lower", "ms", "diagnostic-freshness",
+            "Clock skew between producers and diagnostics should stay bounded for live decisions."),
+        Metric(scenarios, "scene freshness", "higher", "score", "diagnostic-freshness",
+            "Fresh, current scene evidence is required before tuning Smart NR or external engines."),
+        Metric(scenarios, "runtime alignment", "higher", "score", "diagnostic-freshness",
+            "Requested and effective DSP runtime state should agree before capture."),
+
+        Metric(scenarios, "coherent tone power", "higher", "dB", "weak-signal-preservation",
+            "Weak coherent carriers must not be attenuated below current Zeus or Thetis parity."),
+        Metric(scenarios, "wanted SNR", "higher", "dB", "weak-signal-preservation",
+            "Wanted signal-to-noise ratio is a direct preservation/improvement metric."),
+        Metric(scenarios, "spectral preservation", "higher", "score", "weak-signal-preservation",
+            "Preserve wanted spectral shape while reducing unwanted noise or adjacent energy."),
+        Metric(scenarios, "output RMS", "informational", "linear-or-dBFS", "level-context",
+            "Output level is context for AGC/audio review; direction depends on scenario and gain policy."),
+
+        Metric(scenarios, "speech-band preservation", "higher", "score", "speech-preservation",
+            "Speech enhancement must preserve intelligibility-bearing spectrum."),
+        Metric(scenarios, "noise reduction", "higher", "dB", "noise-reduction",
+            "Reduction of unwanted noise is useful only when preservation gates also pass."),
+        Metric(scenarios, "artifact score", "lower", "score", "artifact-control",
+            "Lower artifact scoring means fewer metallic, speech-like, pumping, or ringing artifacts."),
+        Metric(scenarios, "RMS movement", "lower", "dB-or-score", "pumping-control",
+            "Level movement should be bounded to prevent audible pumping."),
+        Metric(scenarios, "CPU", "lower", "percent-or-ms", "runtime-cost",
+            "Lower processing cost leaves more margin for high-rate G2 workloads."),
+        Metric(scenarios, "latency", "lower", "ms", "runtime-cost",
+            "Lower latency is preferred when preservation and artifact gates still pass."),
+
+        Metric(scenarios, "windowed RMS movement", "lower", "dB-or-score", "pumping-control",
+            "Short-window level movement catches AGC/NR breathing and pumping."),
+        Metric(scenarios, "coherent tone continuity", "higher", "score", "weak-signal-preservation",
+            "Fading weak signals should remain continuous instead of being gated away."),
+        Metric(scenarios, "AGC gain movement", "lower", "dB-or-score", "pumping-control",
+            "AGC should normalize perceived level without excessive gain hunting."),
+
+        Metric(scenarios, "impulse suppression", "higher", "dB-or-score", "noise-reduction",
+            "Impulse suppression should improve while preserving wanted content."),
+        Metric(scenarios, "post-blanker ringing", "lower", "score", "artifact-control",
+            "Blanker/NR combinations should not leave ringing after impulses."),
+        Metric(scenarios, "wanted/adjacent ratio", "higher", "dB", "selectivity",
+            "Wanted energy should improve relative to strong adjacent signals."),
+        Metric(scenarios, "filter leakage", "lower", "dB-or-score", "selectivity",
+            "Lower leakage indicates better selectivity without harming Thetis parity."),
+        Metric(scenarios, "AGC movement", "lower", "dB-or-score", "pumping-control",
+            "AGC movement should stay bounded when adjacent energy changes."),
+
+        Metric(scenarios, "false-open rate", "lower", "rate", "gate-stability",
+            "Noise-only or artifact-heavy inputs must not falsely open squelch/meters."),
+        Metric(scenarios, "noise floor movement", "lower", "dB-or-score", "pumping-control",
+            "Noise floor motion indicates AGC/NR chasing rather than stable leveling."),
+        Metric(scenarios, "settling time", "lower", "ms", "pumping-control",
+            "Shorter settling is preferred when it does not cause overshoot or weak-signal loss."),
+        Metric(scenarios, "overshoot", "lower", "dB-or-score", "pumping-control",
+            "Overshoot catches AGC/leveler instability after signal transitions."),
+
+        Metric(scenarios, "open latency", "lower", "ms", "gate-stability",
+            "Squelch should open promptly without chatter or false opens."),
+        Metric(scenarios, "close latency", "lower", "ms", "gate-stability",
+            "Squelch should close promptly without stale audio."),
+        Metric(scenarios, "audio discontinuity", "lower", "score", "artifact-control",
+            "Lower discontinuity means smoother gate transitions."),
+
+        Metric(scenarios, "peak", "informational", "dBFS-or-linear", "tx-level-context",
+            "Peak level is contextual; clipping and ALC behavior determine pass/fail direction."),
+        Metric(scenarios, "crest factor", "informational", "dB", "tx-level-context",
+            "Crest factor is mode/profile dependent and should be reviewed with clipping metrics."),
+        Metric(scenarios, "clipping count", "lower", "count", "tx-safety",
+            "TX and monitor paths must not clip while evaluating improvements."),
+        Metric(scenarios, "intermodulation proxy", "lower", "score", "tx-linearity",
+            "Lower intermodulation proxy indicates safer two-tone linearity."),
+        Metric(scenarios, "RMS", "informational", "dBFS-or-linear", "level-context",
+            "RMS level is context for loudness and TX drive review."),
+        Metric(scenarios, "spectral balance", "informational", "score", "tx-audio-context",
+            "Desired spectral balance depends on TX profile and voice target."),
+
+        Metric(scenarios, "bypass state", "informational", "state", "puresignal-safety",
+            "PureSignal bypass state is a safety invariant, not a numeric improvement target."),
+        Metric(scenarios, "feedback stability", "higher", "score", "puresignal-safety",
+            "Stable feedback is required before any TX/PureSignal-adjacent change graduates."),
+        Metric(scenarios, "TX monitor coupling", "lower", "score", "puresignal-safety",
+            "External or monitor audio must not couple into feedback correction."),
+        Metric(scenarios, "state transition success", "higher", "score", "native-lifecycle",
+            "WDSP channel lifecycle operations should complete cleanly."),
+        Metric(scenarios, "meter escape", "lower", "count", "native-lifecycle",
+            "Meters must not leak stale state across channel transitions."),
+        Metric(scenarios, "audio drain", "lower", "samples-or-ms", "native-lifecycle",
+            "Residual audio should drain promptly across state changes."),
+        Metric(scenarios, "native exception count", "lower", "count", "native-lifecycle",
+            "Native lifecycle work must not introduce WDSP exceptions."),
+    ];
+
+    private static DspBenchmarkMetricDto Metric(
+        DspBenchmarkScenarioDto[] scenarios,
+        string name,
+        string direction,
+        string unit,
+        string safetyClass,
+        string rationale)
+    {
+        var id = NormalizeMetricId(name);
+        var related = scenarios
+            .Where(s => s.RequiredMetrics.Any(m => NormalizeMetricId(m) == id))
+            .Select(s => s.Id)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        return new DspBenchmarkMetricDto(
+            SchemaVersion: 1,
+            Id: id,
+            Name: name,
+            Direction: direction,
+            Unit: unit,
+            SafetyClass: safetyClass,
+            Rationale: rationale,
+            RelatedScenarios: related);
+    }
+
+    private static string NormalizeMetricId(string value) =>
+        new(value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
 
     private static bool ModeEquals(string? left, string right) =>
         string.Equals(left, right, StringComparison.OrdinalIgnoreCase);

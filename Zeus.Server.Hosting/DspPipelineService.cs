@@ -938,6 +938,64 @@ public class DspPipelineService : BackgroundService,
         };
     }
 
+    public DspLiveRuntimeEvidenceDto SnapshotLiveRuntimeEvidence()
+    {
+        var rxMeters = SnapshotRxMetersDiagnostics();
+        var audio = SnapshotAudioDiagnostics();
+        string status = LiveRuntimeEvidenceStatus(rxMeters, audio);
+
+        return new DspLiveRuntimeEvidenceDto(
+            SchemaVersion: 1,
+            GeneratedUtc: DateTimeOffset.UtcNow,
+            Status: status,
+            RxMetersFresh: rxMeters.Fresh,
+            RxMetersStale: rxMeters.Stale,
+            RxMetersAgeMs: rxMeters.AgeMs,
+            RxDbm: rxMeters.RxDbm,
+            AdcHeadroomDb: rxMeters.AdcHeadroomDb,
+            AgcGainDb: rxMeters.AgcGainDb,
+            AudioFresh: audio.Fresh,
+            AudioStale: audio.Stale,
+            AudioAgeMs: audio.AgeMs,
+            AudioStatus: audio.Status,
+            AudioSource: audio.Source,
+            AudioRmsDbfs: audio.RmsDbfs,
+            AudioPeakDbfs: audio.PeakDbfs,
+            TxMonitorRequested: audio.TxMonitorRequested,
+            SquelchEnabled: audio.SquelchEnabled,
+            SquelchOpen: audio.SquelchOpen,
+            SquelchTailActive: audio.SquelchTailActive,
+            SquelchGateGain: audio.SquelchGateGain,
+            MonitorBacklogSamples: audio.MonitorBacklogSamples,
+            AudioSinkCount: audio.AudioSinkCount,
+            DiagnosticRecommendation: LiveRuntimeEvidenceRecommendation(status, rxMeters, audio));
+    }
+
+    private static string LiveRuntimeEvidenceStatus(RxMetersDiagnosticsDto rxMeters, AudioPathDiagnosticsDto audio)
+    {
+        if (!audio.Fresh)
+            return $"audio-{audio.Status}";
+        if (audio.Status is not "fresh")
+            return $"audio-{audio.Status}";
+        if (!rxMeters.Fresh)
+            return rxMeters.Stale ? "rx-meters-stale" : "rx-meters-missing";
+        if (rxMeters.AdcHeadroomDb is < 6.0)
+            return "adc-headroom-low";
+        return "fresh";
+    }
+
+    private static string LiveRuntimeEvidenceRecommendation(
+        string status,
+        RxMetersDiagnosticsDto rxMeters,
+        AudioPathDiagnosticsDto audio) =>
+        status switch
+        {
+            "fresh" => "Final RX audio and RXA meters are fresh; use AGC gain/headroom, audio RMS/peak, and squelch state with fixture metrics before changing DSP behavior.",
+            "adc-headroom-low" => "ADC headroom is low; add attenuation or reduce front-end gain before judging NR/AGC improvements.",
+            "rx-meters-stale" or "rx-meters-missing" => rxMeters.DiagnosticRecommendation,
+            _ => audio.DiagnosticRecommendation,
+        };
+
     private object SnapshotDisplayDiagnostics(IDspEngine? engine)
     {
         long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -976,7 +1034,7 @@ public class DspPipelineService : BackgroundService,
         }
     }
 
-    private object SnapshotRxMetersDiagnostics()
+    private RxMetersDiagnosticsDto SnapshotRxMetersDiagnostics()
     {
         long nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         bool valid;

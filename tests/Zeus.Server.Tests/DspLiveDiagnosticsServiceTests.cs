@@ -23,6 +23,7 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.Contains("frontend-dsp-scene-publisher", diag.CandidateTools);
         Assert.Contains("offline-dsp-benchmark-harness", diag.CandidateTools);
         Assert.Contains("dsp-benchmark-acceptance-plan", diag.CandidateTools);
+        Assert.Contains("dsp-benchmark-metric-catalog", diag.CandidateTools);
         Assert.Contains("opt-in", diag.RolloutGate);
         Assert.Equal("/api/dsp/benchmark-plan", diag.BenchmarkPlanEndpoint);
         Assert.True(diag.BenchmarkScenarioCount >= 12);
@@ -59,6 +60,30 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.Contains("Model artifact", string.Join(" ", deepFilter.Blockers));
         Assert.Contains("ready-for-g2-live-benchmark", diag.Evidence);
         Assert.Equal("opt-in-only-until-benchmark-and-g2-on-air-acceptance", diag.RolloutGate);
+    }
+
+    [Fact]
+    public void Build_RuntimeEvidenceBlocksBenchmarkWhenFinalAudioClips()
+    {
+        var service = new FrontendDspSceneDiagnosticsService();
+        PublishScene(service, profile: "NR5", held: false, rxScore: 94, rxTone: "neutral", coherent: true);
+        var condition = service.SmartNrCondition(
+            Runtime("Nr5", "Nr5", nr5Available: true, nr5: Nr5(learnedFrames: 80, confidence: 0.72, agcGate: 0.66)),
+            RxChain(score: 94));
+
+        var diag = DspLiveDiagnosticsService.Build(condition, RuntimeEvidence(
+            status: "audio-clipping-risk",
+            audioStatus: "clipping-risk",
+            audioPeakDbfs: -0.1,
+            adcHeadroomDb: 12.0));
+
+        Assert.Equal("final-audio-clipping-risk", diag.Status);
+        Assert.Equal("protect", diag.QualityTone);
+        Assert.False(diag.ReadyForLiveBenchmark);
+        Assert.Contains("final-audio-clipping-risk", diag.Constraints);
+        Assert.Contains("Reduce RX leveler boost", string.Join(" ", diag.RecommendedActions));
+        Assert.NotNull(diag.RuntimeEvidence);
+        Assert.Equal(-0.1, diag.RuntimeEvidence.AudioPeakDbfs);
     }
 
     [Fact]
@@ -128,6 +153,35 @@ public sealed class DspLiveDiagnosticsServiceTests
     }
 
     [Fact]
+    public void BenchmarkMetricCatalog_CoversEveryRequiredPlanMetric()
+    {
+        var plan = DspBenchmarkPlanCatalog.Build();
+        var catalog = DspBenchmarkPlanCatalog.BuildMetricCatalog();
+
+        Assert.Equal(1, catalog.SchemaVersion);
+        Assert.Contains("higher", catalog.DirectionValues);
+        Assert.Contains("lower", catalog.DirectionValues);
+        Assert.Contains("informational", catalog.DirectionValues);
+
+        var catalogById = catalog.Metrics.ToDictionary(m => m.Id, StringComparer.Ordinal);
+        var requiredMetricIds = plan.Scenarios
+            .SelectMany(s => s.RequiredMetrics)
+            .Select(NormalizeMetricId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (var metricId in requiredMetricIds)
+            Assert.True(catalogById.ContainsKey(metricId), $"Missing benchmark metric catalog entry: {metricId}");
+
+        Assert.Equal("higher", catalogById["wantedsnr"].Direction);
+        Assert.Equal("lower", catalogById["latency"].Direction);
+        Assert.Equal("lower", catalogById["agcgainmovement"].Direction);
+        Assert.Equal("informational", catalogById["outputrms"].Direction);
+        Assert.Contains("weak-cw-carrier", catalogById["wantedsnr"].RelatedScenarios);
+        Assert.Contains("agc-level-step", catalogById["agcgainmovement"].RelatedScenarios);
+    }
+
+    [Fact]
     public void CaptureManifest_BlocksWhenLiveDiagnosticsNeedPreflight()
     {
         var service = new FrontendDspSceneDiagnosticsService();
@@ -172,6 +226,14 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.Contains(manifest.GlobalAcceptanceGates, gate => gate.Contains("No weak-signal loss", StringComparison.Ordinal));
         Assert.Contains(manifest.PreflightChecks, item => item.Contains("G2", StringComparison.Ordinal));
         Assert.Contains(manifest.RequiredArtifacts, artifact => artifact.Source == "/api/radio/diagnostics/dsp-scene");
+        var traceArtifact = Assert.Single(manifest.RequiredArtifacts, artifact => artifact.Id == "live-diagnostics-trace");
+        Assert.False(traceArtifact.Required);
+        Assert.Equal("diagnostics-jsonl", traceArtifact.Kind);
+        Assert.Contains("watch-dsp-live-diagnostics.ps1", traceArtifact.Source);
+        var traceComparisonArtifact = Assert.Single(manifest.RequiredArtifacts, artifact => artifact.Id == "live-diagnostics-trace-comparison");
+        Assert.False(traceComparisonArtifact.Required);
+        Assert.Equal("diagnostics-comparison-json", traceComparisonArtifact.Kind);
+        Assert.Contains("compare-dsp-live-diagnostics-traces.ps1", traceComparisonArtifact.Source);
         Assert.Contains(manifest.OperatorNotes, item => item.Contains("Cross-radio validation", StringComparison.Ordinal));
     }
 
@@ -196,6 +258,7 @@ public sealed class DspLiveDiagnosticsServiceTests
         Assert.False(snapshot.ReadyForCapture);
         Assert.True(snapshot.EvidenceCompletenessScore < 100);
         Assert.Contains("/api/dsp/modernization-snapshot", snapshot.IncludedEndpoints);
+        Assert.Contains("/api/dsp/benchmark-metric-catalog", snapshot.IncludedEndpoints);
         Assert.Contains("live-diagnostics-json", snapshot.IncludedArtifacts);
         Assert.Contains("frontend-dsp-scene", snapshot.MissingEvidence);
         Assert.Same(condition, snapshot.SmartNrCondition);
@@ -367,4 +430,42 @@ public sealed class DspLiveDiagnosticsServiceTests
             InputDbfs: -30.2,
             OutputRms: 0.068,
             OutputDbfs: -23.4);
+
+    private static DspLiveRuntimeEvidenceDto RuntimeEvidence(
+        string status = "fresh",
+        string audioStatus = "fresh",
+        double? audioPeakDbfs = -12.0,
+        double? adcHeadroomDb = 24.0) =>
+        new(
+            SchemaVersion: 1,
+            GeneratedUtc: DateTimeOffset.UtcNow,
+            Status: status,
+            RxMetersFresh: true,
+            RxMetersStale: false,
+            RxMetersAgeMs: 20,
+            RxDbm: -93.0,
+            AdcHeadroomDb: adcHeadroomDb,
+            AgcGainDb: 8.5,
+            AudioFresh: true,
+            AudioStale: false,
+            AudioAgeMs: 12,
+            AudioStatus: audioStatus,
+            AudioSource: "rx",
+            AudioRmsDbfs: -28.5,
+            AudioPeakDbfs: audioPeakDbfs,
+            TxMonitorRequested: false,
+            SquelchEnabled: false,
+            SquelchOpen: true,
+            SquelchTailActive: false,
+            SquelchGateGain: 1.0,
+            MonitorBacklogSamples: 0,
+            AudioSinkCount: 1,
+            DiagnosticRecommendation: "test evidence");
+
+    private static string NormalizeMetricId(string value) =>
+        new(value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
 }

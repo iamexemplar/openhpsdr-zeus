@@ -150,7 +150,8 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
         IAuditionAudioSink? audition = null,
         bool previewEnabled = true,
         bool engineIsWdsp = true,
-        Func<bool>? isTciTxAudioActive = null)
+        Func<bool>? isTciTxAudioActive = null,
+        VstEngineController? vstEngine = null)
     {
         _manager = null!;
         _pipeline = null!;
@@ -159,6 +160,7 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
         _isMonitorOn = isMonitorOn;
         _isTciTxAudioActive = isTciTxAudioActive ?? (() => false);
         _chainOrder = null;
+        _vstEngine = vstEngine;
         _log = log;
         _engineIsWdsp = engineIsWdsp;
         _previewEnabled = previewEnabled;
@@ -380,7 +382,11 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
     /// chosen, the block simply isn't double-driven. Realtime-safe: one CAS, no
     /// allocation, no managed lock.
     /// </summary>
-    private bool TryProcessThroughEngine(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
+    private bool TryProcessThroughEngine(
+        ReadOnlySpan<float> input,
+        Span<float> output,
+        AudioBlockContext ctx,
+        bool recordPassthroughMeters = true)
     {
         var vst = _vstEngine;
         if (vst is not { IsActive: true }) return false;
@@ -389,18 +395,25 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
         {
             input.CopyTo(output);            // other thread owns the engine this instant
             DspPipelineService.SanitizeAudioBuffer(output[..sampleCount]);
-            _engineInPeak = BlockPeak(input);
-            _engineOutPeak = BlockPeak(output[..sampleCount]);
+            if (recordPassthroughMeters)
+                RecordEngineMeters(input, output[..sampleCount]);
             return true;
         }
-        try { vst.Process(input, output, ctx); }
+        bool processed;
+        try { processed = vst.TryProcess(input, output, ctx); }
         finally { Volatile.Write(ref _engineGate, 0); }
         DspPipelineService.SanitizeAudioBuffer(output[..sampleCount]);
         // Sample master IN/OUT peaks so the Audio Suite meters stay live in VST
         // mode (the native chain's own metering path didn't run).
-        _engineInPeak = BlockPeak(input);
-        _engineOutPeak = BlockPeak(output[..sampleCount]);
+        if (processed || recordPassthroughMeters)
+            RecordEngineMeters(input, output[..sampleCount]);
         return true;
+    }
+
+    private void RecordEngineMeters(ReadOnlySpan<float> input, ReadOnlySpan<float> output)
+    {
+        _engineInPeak = BlockPeak(input);
+        _engineOutPeak = BlockPeak(output);
     }
 
     /// <summary>Instantaneous block abs-peak — mirrors AudioChain.BlockPeak so the
@@ -487,7 +500,11 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
         // chain animates its meters here on-bench. Audible audition is owned by
         // TX Monitor, not this preview output. When the engine isn't the active
         // route, fall through to the native in-process chain unchanged.
-        if (!TryProcessThroughEngine(mic, previewOut, ctx))
+        if (!TryProcessThroughEngine(
+                mic,
+                previewOut,
+                ctx,
+                recordPassthroughMeters: false))
         {
             Span<float> previewScratch = stackalloc float[mic.Length];
             _chain.Process(mic, previewOut, previewScratch, ctx);

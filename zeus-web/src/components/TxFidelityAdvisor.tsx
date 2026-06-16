@@ -183,6 +183,9 @@ export function TxFidelityAdvisor(props: TxFidelityAdvisorProps) {
             color: 'var(--fg-2)',
             fontSize: 11,
             lineHeight: 1.25,
+            minHeight: '2.5em',
+            maxHeight: '2.5em',
+            overflow: 'hidden',
             overflowWrap: 'break-word',
             whiteSpace: 'normal',
           }}
@@ -191,8 +194,10 @@ export function TxFidelityAdvisor(props: TxFidelityAdvisorProps) {
         </div>
         <div
           className="mono"
+          title={`NEXT ${analysis.recommendation}`}
           style={{
             gridArea: 'next',
+            boxSizing: 'border-box',
             padding: '4px 6px',
             border: '1px solid var(--line)',
             borderRadius: 'var(--r-md)',
@@ -201,6 +206,9 @@ export function TxFidelityAdvisor(props: TxFidelityAdvisorProps) {
             fontSize: 10,
             fontWeight: 900,
             lineHeight: 1.2,
+            minHeight: 'calc(2.4em + 8px)',
+            maxHeight: 'calc(2.4em + 8px)',
+            overflow: 'hidden',
             overflowWrap: 'break-word',
             whiteSpace: 'normal',
           }}

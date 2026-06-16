@@ -12,6 +12,7 @@ import {
 } from '../api/client';
 import {
   resolveTxStationProfile,
+  type TxAudioSuiteRoute,
   type TxStationProfile,
 } from './tx-station-profile';
 
@@ -27,6 +28,8 @@ export type ApplyTxStationProfileDeps = {
   setMicGainDb: (db: number) => void;
   setLevelerMaxGainDb: (db: number) => void;
   setCfcConfigLocal: (config: CfcConfigDto) => void;
+  setAudioProcessingMode: (mode: TxAudioSuiteRoute) => Promise<void>;
+  setAudioMasterBypassed: (bypassed: boolean) => Promise<void>;
   applyAudioProfile?: (name: string) => Promise<ApplyAudioProfileResult>;
   signal?: AbortSignal;
 };
@@ -47,6 +50,9 @@ export async function applyTxStationProfile(
     if (!result.ok) {
       throw new Error(result.error || `Audio Suite profile "${audioProfileName}" did not apply`);
     }
+  } else {
+    await deps.setAudioProcessingMode(profile.audioSuiteRoute);
+    await deps.setAudioMasterBypassed(profile.audioSuiteBypassed);
   }
 
   const mic = await setMicGain(profile.micGainDb, deps.signal);

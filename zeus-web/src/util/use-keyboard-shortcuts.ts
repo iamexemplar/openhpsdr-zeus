@@ -56,6 +56,7 @@ import * as viewCenter from '../state/view-center';
 import { useToolbarFavoritesStore } from '../state/toolbar-favorites-store';
 import { useTxStore } from '../state/tx-store';
 import { ACTIVE_MAP_REF } from '../state/active-map-ref';
+import { ensureTxStationProfileActivated } from '../audio/tx-station-profile-activation';
 
 // The arrow-key tune step follows the operator's TuningStepWidget choice
 // (toolbar-favorites-store.stepHz). Read at event time inside bumpTune so
@@ -97,6 +98,7 @@ export function useKeyboardShortcuts() {
     let tuneAbort: AbortController | null = null;
     let zoomAbort: AbortController | null = null;
     let moxAbort: AbortController | null = null;
+    let moxSeq = 0;
 
     const flushTune = () => {
       pendingRaf = 0;
@@ -151,20 +153,36 @@ export function useKeyboardShortcuts() {
     };
 
     const driveMox = (on: boolean) => {
+      const seq = ++moxSeq;
       const tx = useTxStore.getState();
-      if (tx.moxOn === on) return;
-      tx.setMoxOn(on);
-      tx.setLocalMicArmed(on);
-      moxAbort?.abort();
-      const ctrl = new AbortController();
-      moxAbort = ctrl;
-      setMox(on, ctrl.signal).catch(() => {
-        if (!ctrl.signal.aborted) {
-          const t = useTxStore.getState();
-          t.setMoxOn(!on);
-          t.setLocalMicArmed(!on);
+      if (tx.moxOn === on) {
+        if (!on && tx.localMicArmed) tx.setLocalMicArmed(false);
+        return;
+      }
+      void (async () => {
+        if (on) {
+          try {
+            await ensureTxStationProfileActivated();
+          } catch {
+            return;
+          }
+          if (seq !== moxSeq) return;
         }
-      });
+        const current = useTxStore.getState();
+        if (current.moxOn === on) return;
+        current.setMoxOn(on);
+        current.setLocalMicArmed(on);
+        moxAbort?.abort();
+        const ctrl = new AbortController();
+        moxAbort = ctrl;
+        setMox(on, ctrl.signal).catch(() => {
+          if (!ctrl.signal.aborted) {
+            const t = useTxStore.getState();
+            t.setMoxOn(!on);
+            t.setLocalMicArmed(!on);
+          }
+        });
+      })();
     };
 
     const onKeyDown = (e: KeyboardEvent) => {

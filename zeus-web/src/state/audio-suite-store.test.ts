@@ -189,4 +189,17 @@ describe('audio-suite-store profile selection', () => {
       body: JSON.stringify({ enabled: true }),
     });
   });
+
+  it('mirrors TX monitor changes back onto audition state', async () => {
+    const { useTxStore } = await import('./tx-store');
+    useTxStore.getState().setTxMonitorEnabled(true);
+
+    const { useAudioSuiteStore } = await import('./audio-suite-store');
+
+    expect(useAudioSuiteStore.getState().auditionEnabled).toBe(true);
+
+    useTxStore.getState().setTxMonitorEnabled(false);
+
+    expect(useAudioSuiteStore.getState().auditionEnabled).toBe(false);
+  });
 });

@@ -16,13 +16,14 @@
   overflow: hidden;
 }
 
-/* Inner workspace shell — measured by useContainerWidth, hosts the RGL
- * grid, scrolls vertically when tiles overflow. */
+/* Inner workspace shell — measured by useContainerWidth and hosts the RGL
+ * grid. FlexWorkspace scales row height/gaps to fit the viewport, so the
+ * shell clips instead of exposing workspace-level scrollbars. */
 .all-panels-workspace {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: auto;
+  overflow: hidden;
   /* v3 Lifted Dark: workspace ground is the distinct mid-grey "table"
    * (--bg-workspace), so the chrome (--bg-0) and the panels (--bg-1) each
    * read as their own surface. */
@@ -32,6 +33,7 @@
 .all-panels-grid.react-grid-layout {
   background: transparent;
   position: relative;
+  min-height: 100%;
 }
 
 /* Each grid item — a workspace tile wrapper. The upstream
@@ -251,11 +253,8 @@
   flex: 1;
   min-height: 0;
   position: relative;
-  /* Auto so panel content (DSP NR sub-controls, full Tuning Step grid,
-   * Logbook rows, etc.) can scroll inside the tile when the operator's
-   * chosen tile size doesn't accommodate everything. Tiles whose body
-   * is a fixed-size canvas (panadapter, world map) don't trigger a
-   * scrollbar because their content fits exactly. */
+  /* Panel-local overflow remains inside the tile. The workspace shell itself
+   * does not scroll; dense layouts shrink through FlexWorkspace row sizing. */
   overflow: auto;
 }
 
@@ -435,38 +434,56 @@
   gap: 5px;
 }
 
-/* Workspace-level "+ Add Panel" button — fixed top-right of the workspace
- * (matches DisplayPanel's "Reset Layout" placement convention). Sits above
- * tiles via z-index so it stays clickable even when a tile snaps under it
- * mid-drag. */
+/* Workspace-level Add Panel button — fixed bottom-right of the workspace.
+ * Kept small and translucent so it remains available without becoming
+ * another transport-row control or covering much panel content. */
 .workspace-add-panel-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  right: 12px;
+  bottom: 12px;
   z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: var(--r-sm);
-  background: linear-gradient(180deg, var(--btn-top), var(--btn-bot));
-  border: 1px solid var(--btn-edge);
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.015)),
+    rgba(12, 13, 15, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   color: var(--fg-1);
   font-family: var(--font-sans);
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  box-shadow:
+    0 8px 20px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  opacity: 0.68;
   cursor: pointer;
-  transition: background var(--dur-fast), border-color var(--dur-fast);
+  transition:
+    background var(--dur-fast),
+    border-color var(--dur-fast),
+    color var(--dur-fast),
+    opacity var(--dur-fast),
+    transform var(--dur-fast);
 }
 .workspace-add-panel-btn:hover {
-  background: linear-gradient(180deg, var(--btn-active-top), var(--btn-active-bot));
+  background:
+    linear-gradient(180deg, var(--btn-active-top), var(--btn-active-bot));
   border-color: var(--accent);
   color: var(--btn-active-text, var(--fg-0));
+  opacity: 1;
+  transform: translateY(-1px);
+}
+.workspace-add-panel-btn:disabled {
+  cursor: default;
+  opacity: 0.32;
+  transform: none;
 }
 .workspace-add-panel-btn:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 2px;
+  opacity: 1;
 }
 
 /* Categorized AddPanel modal — left rail of category chips, right pane of

@@ -43,6 +43,7 @@ public static class DspModernizationEvidenceSnapshotService
                 "/api/dsp/nr-condition",
                 "/api/dsp/live-diagnostics",
                 "/api/dsp/benchmark-plan",
+                "/api/dsp/benchmark-metric-catalog",
                 "/api/dsp/benchmark-capture-manifest",
                 "/api/dsp/external-engine-candidates",
                 "/api/radio/diagnostics",

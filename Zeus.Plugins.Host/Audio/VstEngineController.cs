@@ -293,9 +293,10 @@ public sealed class VstEngineController : IAsyncDisposable
     /// Realtime tap. In Native mode (not active) this is a bit-identical copy and
     /// never touches the engine. In VST mode it hands the block to the bridge,
     /// which round-trips it through the engine or passes through on any failure.
-    /// No allocation, no managed lock.
+    /// Returns true only when the output came from the engine. No allocation,
+    /// no managed lock.
     /// </summary>
-    public void Process(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
+    public bool TryProcess(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
     {
         // Single volatile read; _bridge is assigned once and never nulled before
         // disposal, so reading it here without a lock is safe.
@@ -303,10 +304,18 @@ public sealed class VstEngineController : IAsyncDisposable
         if (!_active || bridge is null)
         {
             input.CopyTo(output);
-            return;
+            return false;
         }
-        bridge.Process(input, output, ctx);
+        return bridge.Process(input, output, ctx);
     }
+
+    /// <summary>
+    /// Realtime tap for callers that only need robust passthrough semantics.
+    /// Prefer <see cref="TryProcess"/> when metering needs to distinguish a real
+    /// VST output block from a degraded passthrough block.
+    /// </summary>
+    public void Process(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
+        => _ = TryProcess(input, output, ctx);
 
     private void OnStdErr(string line) => StdErr?.Invoke(line);
     private void OnEngineEvent(JsonElement e) => EngineEvent?.Invoke(e);

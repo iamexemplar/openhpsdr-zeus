@@ -95,6 +95,12 @@ level steps, squelch transitions, TX two-tone, TX voice-like audio, PureSignal-s
 WDSP channel lifecycle. Each scenario lists required comparisons, metrics, artifacts, and failure
 gates. This endpoint is the checklist for G2 capture sessions and later cross-radio validation.
 
+The companion metric semantics surface is `/api/dsp/benchmark-metric-catalog`. It assigns each
+required metric a normalized ID, direction (`higher`, `lower`, or `informational`), unit hint,
+safety class, rationale, and related scenario IDs. Capture bundles save it as
+`benchmark-metric-catalog.json`; comparison tooling prefers that captured catalog before falling
+back to built-in metric directions.
+
 The capture manifest surface is `/api/dsp/benchmark-capture-manifest`. It combines the current live
 diagnostics state with the benchmark plan into a concrete evidence checklist: scenario IDs to run,
 required endpoint snapshots, offline fixture metrics, audio/spectrum artifacts, preflight checks,
@@ -110,14 +116,161 @@ supporting diagnostics endpoints into an ignored `captures/dsp-modernization/<ti
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\capture-dsp-modernization-bundle.ps1 -BaseUrl http://localhost:6060 -Label g2-nr5-before
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-live-diagnostics.ps1 -BaseUrl http://localhost:6060 -Samples 60 -IntervalMs 1000 -Label g2-nr5-weak-cw
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\new-dsp-artifact-manifest.ps1 -BundleDir captures\dsp-modernization\<timestamp>
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\compare-dsp-live-diagnostics-traces.ps1 -BaselinePath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-baseline.jsonl -CandidatePath captures\dsp-modernization\<timestamp>\artifacts\live-diagnostics-trace.jsonl -FailOnRegression
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\compare-dsp-fixture-metrics.ps1 -BundleDir captures\dsp-modernization\<timestamp> -FailOnRegression
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir captures\dsp-modernization\<timestamp>
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir captures\dsp-modernization\<timestamp> -RequireArtifactFiles
 ```
+
+The scaffold generator writes `artifact-manifest.template.json` by default and includes required
+non-endpoint artifacts; pass `-IncludeOptionalArtifacts` when a review needs optional evidence
+placeholders too. Fill the required paths with offline metrics, audio/spectrum evidence indexes,
+TX/PureSignal traces, and operator notes, then copy or regenerate it as `artifact-manifest.json`
+before treating a capture as acceptance evidence. Without `-RequireArtifactFiles`, the validator
+warns when this manifest is absent and still checks endpoint JSON; with `-RequireArtifactFiles`, it
+fails missing required offline metrics, audio renders, spectrum captures, operator notes, and
+TX/PureSignal traces. The scaffold also adds the generated
+`fixture-metric-comparison-report` artifact at `dsp-fixture-metric-comparison.json`; strict
+validation requires it and rejects reports with regressions, failed gates, missing current-Zeus or
+Thetis baselines, missing candidate coverage, or missing metric values.
+
+Use `tools/watch-dsp-live-diagnostics.ps1` during G2 scenario windows when the question is
+runtime stability rather than a single snapshot. It samples `/api/dsp/live-diagnostics`, writes a
+JSONL trace plus a summary report, and tracks hard blockers, AGC gain movement, final-audio RMS/peak
+movement, minimum ADC headroom, squelch closed percentage, TX-monitor coupling, and monitor backlog.
+These traces are optional artifact evidence and do not approve changing defaults by themselves. Use
+`tools/compare-dsp-live-diagnostics-traces.ps1` to compare candidate windows against a current-Zeus
+or Thetis-parity baseline; it rejects regressions in blockers, readiness, AGC/audio movement,
+clipping-risk proxy peaks, ADC headroom, monitor backlog, and diagnostic freshness before any
+on-air acceptance claim.
+
+Strict bundle validation also checks the hardware evidence chain. `benchmark-plan.json` must keep
+`firstHardwareTarget` at `G2`, `benchmark-capture-manifest.json` must carry the same
+`hardwareTarget`, and `hardware-diagnostics.json` must show a connected G2-class OrionMkII context
+with a G2/G2_1K variant before the bundle is accepted as first-cycle hardware evidence. Use
+`-AllowPreflight` only for dry-run captures; it downgrades readiness gaps to warnings but does not
+turn them into acceptance evidence.
+
+Example:
+
+```json
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "id": "offline-fixture-metrics",
+      "kind": "metrics-json",
+      "path": "artifacts/offline-fixture-metrics.json",
+      "required": true,
+      "scenarioIds": ["weak-cw-carrier", "ssb-like-speech"]
+    },
+    {
+      "id": "audio-render-before-after",
+      "kind": "audio",
+      "path": "artifacts/audio-render-before-after.json",
+      "required": true,
+      "scenarioIds": ["weak-cw-carrier"]
+    },
+    {
+      "id": "operator-notes",
+      "kind": "notes",
+      "path": "artifacts/operator-notes.md",
+      "required": true,
+      "scenarioIds": ["weak-cw-carrier", "ssb-like-speech"]
+    }
+  ]
+}
+```
+
+For `audio`, `spectrum`, and `trace` artifacts, the generated path is a JSON index. Its `files`
+array must point to bundle-relative leaf evidence files and tag each file with `scenarioId` or
+`scenarioIds` plus `comparison`, `comparisonId`, or `candidate`; strict validation checks that each
+listed file exists, is non-empty, covers the scenario IDs required by the artifact manifest, and
+covers the scenario's required benchmark comparisons from `/api/dsp/benchmark-plan`:
+
+```json
+{
+  "schemaVersion": 1,
+  "artifactId": "audio-render-before-after",
+  "files": [
+    {
+      "path": "artifacts/audio/weak-cw-before.wav",
+      "scenarioId": "weak-cw-carrier",
+      "comparison": "off-baseline"
+    },
+    {
+      "path": "artifacts/audio/weak-cw-thetis.wav",
+      "scenarioId": "weak-cw-carrier",
+      "comparison": "thetis-parity"
+    },
+    {
+      "path": "artifacts/audio/weak-cw-current-zeus.wav",
+      "scenarioId": "weak-cw-carrier",
+      "comparison": "current-zeus"
+    },
+    {
+      "path": "artifacts/audio/weak-cw-nr5.wav",
+      "scenarioId": "weak-cw-carrier",
+      "candidate": "nr5-spnr"
+    }
+  ]
+}
+```
+
+The `offline-fixture-metrics` artifact is a metrics JSON file. For each required scenario and
+comparison, strict validation checks that the metrics named by `/api/dsp/benchmark-plan` are present
+and that at least one gate outcome is recorded. Metric names are normalized for punctuation/case, so
+`wanted SNR`, `wantedSnr`, and `wanted-snr` all satisfy the same required metric:
+
+```json
+{
+  "schemaVersion": 1,
+  "scenarios": [
+    {
+      "scenarioId": "weak-cw-carrier",
+      "comparisons": [
+        {
+          "comparison": "off-baseline",
+          "metrics": {
+            "coherentTonePower": -46.2,
+            "wantedSnr": 8.5,
+            "spectralPreservation": 1.0,
+            "outputRms": 0.018,
+            "latency": 0.0
+          },
+          "gates": [
+            { "id": "weak-signal-preserved", "passed": true }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Run `tools/compare-dsp-fixture-metrics.ps1` after filling `offline-fixture-metrics.json`. It reads
+the captured benchmark plan, metric catalog, and metrics artifact, compares every candidate against
+`current-zeus` and `thetis-parity`, writes `dsp-fixture-metric-comparison.json` plus a Markdown
+summary, and can fail a quality gate with `-FailOnRegression`. Metric directions come from
+`benchmark-metric-catalog.json` when present; the script only falls back to built-in conservative
+directions for older bundles. The strict bundle validator consumes the JSON report as generated
+evidence; passing candidates still need G2 and cross-radio evidence before any default change is
+considered.
 
 The live readiness surface is `/api/dsp/live-diagnostics`. It is read-only and combines the current
 Smart NR condition, WDSP native capability probes, frontend DSP scene freshness, RX-chain health,
 and NR5/SPNR diagnostics into a tool-friendly readiness score, constraint list, recommended action,
 and candidate tool list for G2 benchmark sessions. It is an evidence aggregator only; it does not
 change DSP defaults or promote experimental behavior.
+
+The live diagnostics response now includes `runtimeEvidence`, derived from the DSP pipeline's
+existing diagnostic caches rather than new realtime work. It records RXA meter freshness, ADC
+headroom, AGC gain, final RX/TX-monitor audio freshness, RMS/peak dBFS, squelch open/tail/gate
+state, monitor backlog, audio sink count, and a runtime recommendation. Acceptance captures should
+treat `final-audio-not-fresh`, `final-audio-clipping-risk`, and `adc-headroom-low` as blockers
+before tuning AGC, NR5/SPNR, squelch, or post-demod external engines.
 
 The optional external-engine catalog is `/api/dsp/external-engine-candidates`. It classifies every
 non-WDSP candidate as a post-demod bakeoff target with explicit blockers:
@@ -150,6 +303,7 @@ non-WDSP candidate as a post-demod bakeoff target with explicit blockers:
 | `dotnet build` / `dotnet test` | targeted | full solution |
 | Frontend tests | no UI change in Phase 1 | required for UI/profile changes |
 | G2 bench validation | design required | required |
+| G2 hardware diagnostics bundle evidence | required | required |
 | Cross-radio validation | planned | required |
 | Operator defaults unchanged | required | required unless separately approved |
 

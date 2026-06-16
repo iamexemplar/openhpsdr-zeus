@@ -45,6 +45,7 @@
 import { useCallback, useRef } from 'react';
 import { setMox } from '../api/client';
 import { ensureMicUplinkRunning, setMicUplinkTxForced } from '../audio/mic-uplink-session';
+import { ensureTxStationProfileActivated } from '../audio/tx-station-profile-activation';
 import { waitForMicPcmTransportReady } from '../realtime/ws-client';
 import { useConnectionStore } from '../state/connection-store';
 import { useTxStore } from '../state/tx-store';
@@ -66,6 +67,13 @@ export function MobilePttButton() {
     async (on: boolean) => {
       const gesture = ++gestureRef.current;
       if (on) {
+        try {
+          await ensureTxStationProfileActivated();
+        } catch {
+          setMicUplinkTxForced(false);
+          return;
+        }
+        if (gesture !== gestureRef.current) return;
         try {
           const micReady = await ensureMicUplinkRunning();
           if (!micReady) return;

@@ -405,6 +405,8 @@ function MobileTxProfileSelect() {
   const setCfcConfigLocal = useTxStore((s) => s.setCfcConfig);
   const loadAudioProfiles = useAudioSuiteStore((s) => s.loadProfiles);
   const applyAudioProfile = useAudioSuiteStore((s) => s.applyProfile);
+  const setAudioProcessingMode = useAudioSuiteStore((s) => s.setProcessingMode);
+  const setAudioMasterBypassed = useAudioSuiteStore((s) => s.setMasterBypassed);
   const [profiles, setProfiles] = useState<TxStationProfile[]>(() =>
     mergeTxStationProfileOverrides([]),
   );
@@ -492,6 +494,8 @@ function MobileTxProfileSelect() {
           setMicGainDb,
           setLevelerMaxGainDb,
           setCfcConfigLocal,
+          setAudioProcessingMode,
+          setAudioMasterBypassed,
           applyAudioProfile,
         });
         if (seq !== activationSeqRef.current) return;
@@ -513,6 +517,8 @@ function MobileTxProfileSelect() {
       hydrateTxFromState,
       mode,
       setCfcConfigLocal,
+      setAudioMasterBypassed,
+      setAudioProcessingMode,
       setLevelerMaxGainDb,
       setMicGainDb,
       status,

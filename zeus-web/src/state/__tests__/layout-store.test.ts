@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Pull in the act-environment + localStorage polyfill side-effects from the
 // existing meters test harness before importing the store module.
 import '../../components/meters/__tests__/harness';
-import { useLayoutStore } from '../layout-store';
+import { parseLayoutOrDefault, useLayoutStore } from '../layout-store';
 import { DEFAULT_WORKSPACE_LAYOUT } from '../../layout/defaultLayout';
 import {
   parseWorkspaceLayout,
@@ -115,6 +115,40 @@ describe('layout-store / workspace tile mutators', () => {
       .getState()
       .workspace.tiles.find((t) => t.uid === uid);
     expect(tile?.instanceConfig).toEqual(cfg);
+  });
+
+  it('addLayout creates a blank workspace when no seed is supplied', () => {
+    useLayoutStore.setState({
+      radioKey: 'radio-1',
+      layouts: [
+        {
+          id: 'default',
+          name: 'Default',
+          layoutJson: JSON.stringify(DEFAULT_WORKSPACE_LAYOUT),
+        },
+      ],
+      activeLayoutId: 'default',
+      workspace: DEFAULT_WORKSPACE_LAYOUT,
+      isLoaded: true,
+    });
+
+    const id = useLayoutStore.getState().addLayout('Blank');
+    const state = useLayoutStore.getState();
+    const created = state.layouts.find((l) => l.id === id);
+
+    expect(state.activeLayoutId).toBe(id);
+    expect(state.workspace).toEqual(EMPTY_WORKSPACE_LAYOUT);
+    expect(JSON.parse(created!.layoutJson)).toEqual(EMPTY_WORKSPACE_LAYOUT);
+  });
+
+  it('addLayout honors an explicit workspace seed', () => {
+    const id = useLayoutStore.getState().addLayout('Seeded', {
+      workspace: DEFAULT_WORKSPACE_LAYOUT,
+    });
+
+    const state = useLayoutStore.getState();
+    expect(state.activeLayoutId).toBe(id);
+    expect(state.workspace).toEqual(DEFAULT_WORKSPACE_LAYOUT);
   });
 
   it('per-layout placement updates do not switch or mutate the active workspace', () => {
@@ -244,6 +278,19 @@ describe('layout-store / workspace tile mutators', () => {
 });
 
 describe('parseWorkspaceLayout', () => {
+  it('parseLayoutOrDefault preserves a valid empty layout', () => {
+    expect(parseLayoutOrDefault(JSON.stringify(EMPTY_WORKSPACE_LAYOUT))).toEqual(
+      EMPTY_WORKSPACE_LAYOUT,
+    );
+  });
+
+  it('parseLayoutOrDefault falls back to the default layout for invalid data', () => {
+    expect(parseLayoutOrDefault('')).toEqual(DEFAULT_WORKSPACE_LAYOUT);
+    expect(parseLayoutOrDefault(JSON.stringify({ schemaVersion: 99, tiles: [] }))).toEqual(
+      DEFAULT_WORKSPACE_LAYOUT,
+    );
+  });
+
   it('returns EMPTY_WORKSPACE_LAYOUT for non-object / missing input', () => {
     expect(parseWorkspaceLayout(null)).toEqual(EMPTY_WORKSPACE_LAYOUT);
     expect(parseWorkspaceLayout(undefined)).toEqual(EMPTY_WORKSPACE_LAYOUT);

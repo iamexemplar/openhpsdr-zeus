@@ -192,6 +192,24 @@ public sealed record DspBenchmarkScenarioDto(
     string[] FailureModes,
     string[] RelatedTools);
 
+public sealed record DspBenchmarkMetricDto(
+    int SchemaVersion,
+    string Id,
+    string Name,
+    string Direction,
+    string Unit,
+    string SafetyClass,
+    string Rationale,
+    string[] RelatedScenarios);
+
+public sealed record DspBenchmarkMetricCatalogDto(
+    int SchemaVersion,
+    DateTimeOffset GeneratedUtc,
+    string Status,
+    string RolloutPolicy,
+    string[] DirectionValues,
+    DspBenchmarkMetricDto[] Metrics);
+
 public sealed record DspBenchmarkPlanDto(
     int SchemaVersion,
     DateTimeOffset GeneratedUtc,
@@ -278,6 +296,32 @@ public sealed record DspExternalEngineCandidateDto(
     string[] Blockers,
     string[] ReferenceUrls);
 
+public sealed record DspLiveRuntimeEvidenceDto(
+    int SchemaVersion,
+    DateTimeOffset GeneratedUtc,
+    string Status,
+    bool RxMetersFresh,
+    bool RxMetersStale,
+    long? RxMetersAgeMs,
+    double? RxDbm,
+    double? AdcHeadroomDb,
+    double? AgcGainDb,
+    bool AudioFresh,
+    bool AudioStale,
+    long? AudioAgeMs,
+    string AudioStatus,
+    string AudioSource,
+    double? AudioRmsDbfs,
+    double? AudioPeakDbfs,
+    bool TxMonitorRequested,
+    bool SquelchEnabled,
+    bool SquelchOpen,
+    bool SquelchTailActive,
+    double? SquelchGateGain,
+    long MonitorBacklogSamples,
+    int AudioSinkCount,
+    string DiagnosticRecommendation);
+
 // Tool-facing live DSP modernization summary. This fuses the Smart NR scene,
 // WDSP runtime capability, RX-chain health, and NR5/SPNR diagnostics into one
 // read-only gate for G2/on-air benchmarking. It is diagnostic evidence only:
@@ -318,6 +362,7 @@ public sealed record DspLiveDiagnosticsDto(
     double? Nr5AgcGate,
     double? Nr5MeanGain,
     double? Nr5FloorReductionDb,
+    DspLiveRuntimeEvidenceDto? RuntimeEvidence,
     string[] Evidence,
     string[] Constraints,
     string[] RecommendedActions,

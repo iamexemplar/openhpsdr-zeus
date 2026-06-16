@@ -42,8 +42,9 @@
 // Zeus is distributed WITHOUT ANY WARRANTY; see the GNU General Public
 // License for details.
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { setMox } from '../api/client';
+import { ensureTxStationProfileActivated } from '../audio/tx-station-profile-activation';
 import { useConnectionStore } from '../state/connection-store';
 import { useTxStore } from '../state/tx-store';
 
@@ -57,29 +58,49 @@ export function MoxButton() {
   const moxOn = useTxStore((s) => s.moxOn);
   const setMoxOn = useTxStore((s) => s.setMoxOn);
   const setLocalMicArmed = useTxStore((s) => s.setLocalMicArmed);
+  const [arming, setArming] = useState(false);
 
   const click = useCallback(() => {
     const next = !moxOn;
-    // PERF_PASS_3_DEBUG: t0 — operator-initiated MOX edge wall-clock. Uncommitted.
-    console.log('mox.client.release', performance.now(), 'next=', next);
-    setMoxOn(next);
-    setLocalMicArmed(next);
-    setMox(next).catch(() => {
-      setMoxOn(!next);
-      setLocalMicArmed(!next);
-    });
+    void (async () => {
+      if (next) {
+        setArming(true);
+        try {
+          await ensureTxStationProfileActivated();
+        } catch (err) {
+          console.warn('tx station profile activation failed; MOX cancelled', err);
+          setArming(false);
+          return;
+        }
+        setArming(false);
+      }
+      // PERF_PASS_3_DEBUG: t0 — operator-initiated MOX edge wall-clock. Uncommitted.
+      console.log('mox.client.release', performance.now(), 'next=', next);
+      setMoxOn(next);
+      setLocalMicArmed(next);
+      setMox(next).catch(() => {
+        setMoxOn(!next);
+        setLocalMicArmed(!next);
+      });
+    })();
   }, [moxOn, setMoxOn, setLocalMicArmed]);
 
   return (
     <button
       type="button"
-      disabled={!connected}
+      disabled={!connected || arming}
       onClick={click}
       className={`btn tx-btn ${moxOn ? 'tx' : ''}`}
-      title={moxOn ? 'MOX on — transmitting' : 'MOX off (hold Space to key)'}
+      title={
+        arming
+          ? 'Applying TX profile before transmit'
+          : moxOn
+            ? 'MOX on — transmitting'
+            : 'MOX off (hold Space to key)'
+      }
     >
       <span className={`led ${moxOn ? 'tx' : ''}`} style={{ marginRight: 8 }} />
-      {moxOn ? 'TX' : 'MOX'}
+      {arming ? 'ARM' : moxOn ? 'TX' : 'MOX'}
     </button>
   );
 }

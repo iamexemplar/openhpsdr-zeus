@@ -184,6 +184,12 @@ public sealed class TxService
         return false;
     }
 
+    private void ClearTxMonitorForTransmitStart()
+    {
+        if (!_radio.Snapshot().TxMonitorEnabled) return;
+        _radio.SetTxMonitor(new TxMonitorSetRequest(false));
+    }
+
     /// <summary>Back-compat shim: callers that don't tag a source get
     /// <see cref="MoxSource.UI"/>, the master override. New callers should
     /// pass an explicit source so the release path can reject foreign drops.</summary>
@@ -256,6 +262,8 @@ public sealed class TxService
             txActiveCaptured = CaptureTxActiveChangeUnderLock();
         }
         RaiseTxActiveChanged(txActiveCaptured);
+
+        if (on) ClearTxMonitorForTransmitStart();
 
         if (wasTunOn && on)
         {
@@ -340,6 +348,7 @@ public sealed class TxService
 
         if (req.Enabled)
         {
+            ClearTxMonitorForTransmitStart();
             if (wasTunOn) _pipeline.SetTxTune(false);
             // Arm PostGen + cache state (signed freqs for USB family, mag,
             // run=1) BEFORE flipping MOX so TXA pump sees a configured
@@ -407,6 +416,8 @@ public sealed class TxService
             txActiveCaptured = CaptureTxActiveChangeUnderLock();
         }
         RaiseTxActiveChanged(txActiveCaptured);
+
+        if (on) ClearTxMonitorForTransmitStart();
 
         if (wasMoxOn && on)
         {

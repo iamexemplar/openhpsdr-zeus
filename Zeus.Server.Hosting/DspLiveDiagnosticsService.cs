@@ -9,7 +9,9 @@ namespace Zeus.Server;
 
 public static class DspLiveDiagnosticsService
 {
-    public static DspLiveDiagnosticsDto Build(SmartNrConditionDto condition)
+    public static DspLiveDiagnosticsDto Build(
+        SmartNrConditionDto condition,
+        DspLiveRuntimeEvidenceDto? runtimeEvidence = null)
     {
         ArgumentNullException.ThrowIfNull(condition);
 
@@ -23,6 +25,8 @@ public static class DspLiveDiagnosticsService
             "wdsp-lineage-parity-audit",
             "offline-dsp-benchmark-harness",
             "dsp-benchmark-acceptance-plan",
+            "dsp-benchmark-metric-catalog",
+            "dsp-live-runtime-evidence",
             "g2-live-capture",
         };
 
@@ -211,6 +215,65 @@ public static class DspLiveDiagnosticsService
         foreach (var candidate in externalCandidates)
             tools.Add($"external-post-demod-bakeoff:{candidate.Id}");
 
+        if (runtimeEvidence is not null)
+        {
+            evidence.Add($"runtime-evidence-{runtimeEvidence.Status}");
+            if (runtimeEvidence.RxMetersFresh)
+                evidence.Add("rx-meters-fresh");
+            if (runtimeEvidence.AudioFresh)
+                evidence.Add("final-audio-fresh");
+            if (runtimeEvidence.AgcGainDb is { } agcGain)
+                evidence.Add($"agc-gain-{agcGain:0.0}db");
+            if (runtimeEvidence.AdcHeadroomDb is { } headroom)
+                evidence.Add($"adc-headroom-{headroom:0.0}db");
+            if (runtimeEvidence.AudioRmsDbfs is { } rms)
+                evidence.Add($"audio-rms-{rms:0.0}dbfs");
+            if (runtimeEvidence.AudioPeakDbfs is { } peak)
+                evidence.Add($"audio-peak-{peak:0.0}dbfs");
+
+            if (!runtimeEvidence.AudioFresh)
+            {
+                score -= 10;
+                constraints.Add("final-audio-not-fresh");
+                actions.Add("Wait for fresh final RX audio before judging NR/AGC or external-engine quality.");
+            }
+
+            if (!runtimeEvidence.RxMetersFresh)
+            {
+                score -= 5;
+                constraints.Add("rx-meters-not-fresh");
+                actions.Add("Wait for fresh RXA meter evidence before using AGC gain/headroom as benchmark context.");
+            }
+
+            switch (runtimeEvidence.Status)
+            {
+                case "audio-clipping-risk":
+                    score -= 20;
+                    constraints.Add("final-audio-clipping-risk");
+                    actions.Add("Reduce RX leveler boost, front-end gain, or plugin output before collecting DSP acceptance audio.");
+                    break;
+                case "audio-muted-by-squelch":
+                    score -= 12;
+                    constraints.Add("final-audio-muted-by-squelch");
+                    actions.Add("Open, lower, or disable squelch before treating silence as weak-signal preservation evidence.");
+                    break;
+                case "audio-monitor-backlog":
+                    score -= 10;
+                    constraints.Add("monitor-audio-backlog");
+                    actions.Add("Drain or stop local playback monitor injection before judging live RX audio fidelity.");
+                    break;
+                case "audio-tx-monitor":
+                    constraints.Add("tx-monitor-audio-active");
+                    actions.Add("Disable TX monitor when collecting receive-side NR/AGC audio evidence.");
+                    break;
+                case "adc-headroom-low":
+                    score -= 15;
+                    constraints.Add("adc-headroom-low");
+                    actions.Add("Add attenuation or reduce preamp/front-end gain before evaluating NR/AGC improvements.");
+                    break;
+            }
+        }
+
         score = Math.Clamp(score, 0, 100);
         string status = Status(condition, constraints, score);
         string tone = QualityTone(status, condition, score);
@@ -267,6 +330,7 @@ public static class DspLiveDiagnosticsService
             Nr5AgcGate: nr5?.AgcGate,
             Nr5MeanGain: nr5?.MeanGain,
             Nr5FloorReductionDb: nr5?.FloorReductionDb,
+            RuntimeEvidence: runtimeEvidence,
             Evidence: Unique(evidence),
             Constraints: Unique(constraints),
             RecommendedActions: Unique(actions),
@@ -290,6 +354,10 @@ public static class DspLiveDiagnosticsService
         if (constraints.Contains("smart-nr-apply-pending")) return "smart-nr-apply-pending";
         if (constraints.Contains("smart-nr-runtime-misaligned")) return "smart-nr-runtime-misaligned";
         if (constraints.Contains("rx-chain-protect")) return "rx-chain-protect";
+        if (constraints.Contains("final-audio-clipping-risk")) return "final-audio-clipping-risk";
+        if (constraints.Contains("final-audio-not-fresh")) return "final-audio-not-fresh";
+        if (constraints.Contains("adc-headroom-low")) return "adc-headroom-low";
+        if (constraints.Contains("final-audio-muted-by-squelch")) return "final-audio-muted-by-squelch";
         if (constraints.Any(c => c.StartsWith("nr5-", StringComparison.Ordinal))) return "nr5-needs-benchmark";
         if (score >= 85) return "ready-for-live-benchmark";
         if (score >= 65) return "verify-before-tuning";
@@ -299,7 +367,8 @@ public static class DspLiveDiagnosticsService
     private static string QualityTone(string status, SmartNrConditionDto condition, int score)
     {
         if (status is "wdsp-native-unloadable" or "dsp-engine-unavailable" or "nr-capability-limited"
-            or "rx-chain-protect" or "diagnostics-not-ready")
+            or "rx-chain-protect" or "final-audio-clipping-risk" or "final-audio-not-fresh"
+            or "adc-headroom-low" or "diagnostics-not-ready")
             return "protect";
         if (!condition.Available || status is "frontend-scene-missing")
             return "standby";
@@ -321,6 +390,10 @@ public static class DspLiveDiagnosticsService
             "smart-nr-apply-pending" => condition.RuntimeAlignmentRecommendation,
             "smart-nr-runtime-misaligned" => condition.RuntimeAlignmentRecommendation,
             "rx-chain-protect" => condition.RxChainRecommendation ?? "RX-chain health is in protect mode; resolve ADC/AGC/attenuator posture before increasing DSP aggressiveness.",
+            "final-audio-clipping-risk" => "Final RX audio is near full scale; reduce gain or plugin output before collecting DSP acceptance evidence.",
+            "final-audio-not-fresh" => "Final RX audio is missing or stale; restore the DSP/audio publish path before evaluating live DSP quality.",
+            "adc-headroom-low" => "ADC headroom is low; stabilize front-end gain and attenuation before evaluating NR/AGC improvements.",
+            "final-audio-muted-by-squelch" => "Final audio is muted by squelch; open or lower squelch before using silence as weak-signal evidence.",
             "nr5-needs-benchmark" => "NR5/SPNR is active or requested but diagnostics show a tuning constraint; use the synthetic benchmark fixtures before changing constants.",
             "ready-for-live-benchmark" => "Live diagnostics are aligned enough for a G2 benchmark capture; keep the new DSP path opt-in until benchmark and on-air evidence prove it.",
             _ => actions[0],
@@ -336,7 +409,10 @@ public static class DspLiveDiagnosticsService
             or "nr4-sbnr-exports-missing"
             or "nr5-spnr-exports-missing"
             or "smart-nr-runtime-misaligned"
-            or "rx-chain-protect";
+            or "rx-chain-protect"
+            or "final-audio-not-fresh"
+            or "final-audio-clipping-risk"
+            or "adc-headroom-low";
 
     private static bool ModeEquals(string? left, string right) =>
         string.Equals(left, right, StringComparison.OrdinalIgnoreCase);

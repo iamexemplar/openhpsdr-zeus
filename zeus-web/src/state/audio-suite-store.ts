@@ -237,7 +237,7 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
       height: DEFAULT_HEIGHT,
       chainOrder: [],
       auditionSupported: false,
-      auditionEnabled: false,
+      auditionEnabled: useTxStore.getState().txMonitorEnabled,
       // Default to true (bypassed) so the UI starts in the inert state
       // that matches the server's first-run default. The server load
       // on Audio Suite window mount overrides this with the persisted
@@ -749,3 +749,8 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
     },
   ),
 );
+
+useTxStore.subscribe((state, prev) => {
+  if (state.txMonitorEnabled === prev.txMonitorEnabled) return;
+  useAudioSuiteStore.setState({ auditionEnabled: state.txMonitorEnabled });
+});

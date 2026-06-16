@@ -119,10 +119,11 @@ internal sealed unsafe class VstEngineBridge : IDisposable
 
     /// <summary>
     /// Realtime tap. Sends one block to the engine and reads the processed
-    /// result back, or passes through unchanged on any failure. No allocation,
-    /// no managed lock. See the robust-path contract on the class.
+    /// result back, or passes through unchanged on any failure. Returns true
+    /// only when the output came from the engine. No allocation, no managed
+    /// lock. See the robust-path contract on the class.
     /// </summary>
-    public void Process(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
+    public bool Process(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
     {
         int n = ctx.Frames, ch = ctx.Channels;
         int count = n * ch;
@@ -132,7 +133,7 @@ internal sealed unsafe class VstEngineBridge : IDisposable
             || input.Length < count || output.Length < count)
         {
             input.CopyTo(output);
-            return;
+            return false;
         }
 
         // Drain any stale .out left signaled by a LATE response to an earlier
@@ -165,14 +166,14 @@ internal sealed unsafe class VstEngineBridge : IDisposable
             {
                 input.CopyTo(output);
                 Interlocked.Increment(ref _degraded);
-                return;
+                return false;
             }
             int remainingMs = (int)(remainingTicks * 1000 / Stopwatch.Frequency);
             if (!_outEvent.WaitOne(remainingMs <= 0 ? 1 : remainingMs))
             {
                 input.CopyTo(output);
                 Interlocked.Increment(ref _degraded);
-                return;
+                return false;
             }
             // only trust output whose seq matches the block we just sent
             if (ReadU64(VstEngineProtocol.OffOutSeq) == _inSeq) break;
@@ -181,6 +182,7 @@ internal sealed unsafe class VstEngineBridge : IDisposable
 
         var outRegion = new Span<float>(_base + VstEngineProtocol.HeaderBytes + _regionBytes, count);
         outRegion.CopyTo(output.Slice(0, count));
+        return true;
     }
 
     private void WriteU32(int off, uint v) => *(uint*)(_base + off) = v;

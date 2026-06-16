@@ -1620,7 +1620,7 @@ public static class ZeusEndpoints
             var condition = scene.SmartNrCondition(
                 dsp.SnapshotNrRuntime(),
                 BuildSmartNrRxChainRuntime(state, radio.GetAdcProtectionStatus()));
-            return Results.Ok(DspLiveDiagnosticsService.Build(condition));
+            return Results.Ok(DspLiveDiagnosticsService.Build(condition, dsp.SnapshotLiveRuntimeEvidence()));
         });
 
         app.MapGet("/api/dsp/external-engine-candidates", () =>
@@ -1633,13 +1633,18 @@ public static class ZeusEndpoints
             return Results.Ok(DspBenchmarkPlanCatalog.Build());
         });
 
+        app.MapGet("/api/dsp/benchmark-metric-catalog", () =>
+        {
+            return Results.Ok(DspBenchmarkPlanCatalog.BuildMetricCatalog());
+        });
+
         app.MapGet("/api/dsp/benchmark-capture-manifest", (FrontendDspSceneDiagnosticsService scene, DspPipelineService dsp, RadioService radio) =>
         {
             var state = radio.Snapshot();
             var condition = scene.SmartNrCondition(
                 dsp.SnapshotNrRuntime(),
                 BuildSmartNrRxChainRuntime(state, radio.GetAdcProtectionStatus()));
-            var live = DspLiveDiagnosticsService.Build(condition);
+            var live = DspLiveDiagnosticsService.Build(condition, dsp.SnapshotLiveRuntimeEvidence());
             return Results.Ok(DspBenchmarkCaptureManifestService.Build(live, DspBenchmarkPlanCatalog.Build()));
         });
 
@@ -1649,7 +1654,7 @@ public static class ZeusEndpoints
             var condition = scene.SmartNrCondition(
                 dsp.SnapshotNrRuntime(),
                 BuildSmartNrRxChainRuntime(state, radio.GetAdcProtectionStatus()));
-            var live = DspLiveDiagnosticsService.Build(condition);
+            var live = DspLiveDiagnosticsService.Build(condition, dsp.SnapshotLiveRuntimeEvidence());
             var plan = DspBenchmarkPlanCatalog.Build();
             var manifest = DspBenchmarkCaptureManifestService.Build(live, plan);
             return Results.Ok(DspModernizationEvidenceSnapshotService.Build(
