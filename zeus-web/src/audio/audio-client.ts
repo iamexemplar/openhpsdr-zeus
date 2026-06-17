@@ -170,7 +170,7 @@ class AudioClient {
       latePushCount: this.latePushCount,
       latenessVsScheduleCount: this.latenessVsScheduleCount,
       pendingSources: this.pending.size,
-      bufferTargetMs: BUFFER_TARGET_SECS * 1000,
+      bufferTargetMs: this.targetSecs * 1000,
       bufferMaxMs: BUFFER_MAX_SECS * 1000,
       errorMessage: this.state.kind === 'error' ? this.state.message : null,
     };
