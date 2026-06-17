@@ -11,64 +11,80 @@ const NOISE_DB = -120;
 function arrays(): {
   spectrum: Float32Array;
   floor: Float32Array;
-  confidence: Float32Array;
+  stationarity: Float32Array;
 } {
   return {
     spectrum: new Float32Array(WIDTH).fill(NOISE_DB),
     floor: new Float32Array(WIDTH).fill(NOISE_DB),
-    confidence: new Float32Array(WIDTH),
+    stationarity: new Float32Array(WIDTH),
   };
 }
 
-function paintRun(
+/** Paint a steep narrow carrier: a single-bin peak with the immediate
+ *  neighbours dropped well below the −6 dB width line. */
+function paintCarrier(
   spectrum: Float32Array,
-  confidence: Float32Array,
+  stationarity: Float32Array,
+  bin: number,
+  snrDb: number,
+  steadiness: number,
+): void {
+  spectrum[bin] = NOISE_DB + snrDb;
+  spectrum[bin - 1] = NOISE_DB + Math.max(0, snrDb - 12);
+  spectrum[bin + 1] = NOISE_DB + Math.max(0, snrDb - 12);
+  stationarity[bin] = steadiness;
+  stationarity[bin - 1] = steadiness;
+  stationarity[bin + 1] = steadiness;
+}
+
+/** Paint a broad occupied hump (SSB-voice-like): a wide plateau that stays
+ *  above the −6 dB line for many bins. `steadiness` lets a test isolate the
+ *  narrowness gate (steady hump) from the stationarity gate (fluctuating). */
+function paintHump(
+  spectrum: Float32Array,
+  stationarity: Float32Array,
   lo: number,
   hi: number,
   snrDb: number,
-  confidenceValue: number,
+  steadiness: number,
 ): void {
   for (let i = lo; i <= hi; i++) {
     spectrum[i] = NOISE_DB + snrDb;
-    confidence[i] = confidenceValue;
+    stationarity[i] = steadiness;
   }
 }
 
-describe('auto notch detector', () => {
-  it('detects a persistent narrow EMF bar', () => {
-    const { spectrum, floor, confidence } = arrays();
-    spectrum[63] = -104;
-    spectrum[64] = -92;
-    spectrum[65] = -104;
-    confidence[63] = 0.62;
-    confidence[64] = 0.86;
-    confidence[65] = 0.62;
+describe('auto notch carrier detector', () => {
+  it('detects a steady narrow carrier', () => {
+    const { spectrum, floor, stationarity } = arrays();
+    paintCarrier(spectrum, stationarity, 64, 28, 0.9);
 
     const notches = detectAutoNotches({
       spectrum,
       floor,
-      confidence,
+      confidence: null,
+      stationarity,
       centerHz: CENTER_HZ,
       hzPerPixel: HZ_PER_PIXEL,
     });
 
     expect(notches).toHaveLength(1);
     expect(notches[0]!.centerHz).toBeCloseTo(CENTER_HZ, 0);
-    expect(notches[0]!.widthHz).toBeGreaterThanOrEqual(190);
-    expect(notches[0]!.snrDb).toBeGreaterThan(25);
+    // A carrier yields a NARROW notch now — not the multi-hundred-Hz slab the
+    // old SNR-run detector produced.
+    expect(notches[0]!.widthHz).toBeLessThanOrEqual(200);
+    expect(notches[0]!.snrDb).toBeGreaterThanOrEqual(25); // prominence, not raw SNR
   });
 
-  it('rejects broad occupied regions that look like real signals', () => {
-    const { spectrum, floor, confidence } = arrays();
-    for (let i = 45; i < 75; i++) {
-      spectrum[i] = NOISE_DB + 22;
-      confidence[i] = 0.8;
-    }
+  it('rejects a broad occupied region (narrowness gate) even when steady', () => {
+    const { spectrum, floor, stationarity } = arrays();
+    paintHump(spectrum, stationarity, 45, 74, 22, 0.9);
 
     const notches = detectAutoNotches({
       spectrum,
       floor,
-      confidence,
+      confidence: null,
+      stationarity,
       centerHz: CENTER_HZ,
       hzPerPixel: HZ_PER_PIXEL,
     });
@@ -76,51 +92,72 @@ describe('auto notch detector', () => {
     expect(notches).toEqual([]);
   });
 
-  it('detects strong coherent blockers wider than the narrow bar limit', () => {
-    const { spectrum, floor, confidence } = arrays();
-    paintRun(spectrum, confidence, 68, 77, 34, 0.84);
-    paintRun(spectrum, confidence, 88, 97, 32, 0.82);
+  it('rejects a fluctuating voice formant even when narrow and prominent', () => {
+    const { spectrum, floor, stationarity } = arrays();
+    // Narrow + prominent (would pass the shape gates) but its amplitude swings,
+    // so stationarity is low — this is exactly the voice low-end the old
+    // detector notched.
+    paintCarrier(spectrum, stationarity, 64, 30, 0.2);
 
     const notches = detectAutoNotches({
       spectrum,
       floor,
-      confidence,
+      confidence: null,
+      stationarity,
       centerHz: CENTER_HZ,
-      hzPerPixel: 100,
+      hzPerPixel: HZ_PER_PIXEL,
     });
 
-    expect(notches).toHaveLength(2);
-    expect(notches[0]!.widthHz).toBeGreaterThan(750);
-    expect(notches[1]!.widthHz).toBeGreaterThan(750);
+    expect(notches).toEqual([]);
   });
 
-  it('detects partially visible wide blockers at the edge of the display', () => {
-    const { spectrum, floor, confidence } = arrays();
-    paintRun(spectrum, confidence, 0, 12, 25, 0.76);
+  it('detects a strong carrier whose local CFAR floor is lifted by its own skirts', () => {
+    const { spectrum, floor, stationarity } = arrays();
+    // Self-masking: the spatial floor near the carrier is raised, so the old
+    // "SNR above floor" gate would collapse — but topographic prominence over
+    // the local saddle still towers, so the carrier is caught.
+    paintCarrier(spectrum, stationarity, 70, 45, 0.9);
+    for (let i = 66; i <= 74; i++) floor[i] = -85; // lifted local floor
 
     const notches = detectAutoNotches({
       spectrum,
       floor,
-      confidence,
+      confidence: null,
+      stationarity,
       centerHz: CENTER_HZ,
-      hzPerPixel: 100,
+      hzPerPixel: HZ_PER_PIXEL,
     });
 
     expect(notches).toHaveLength(1);
-    expect(notches[0]!.centerHz).toBeLessThan(CENTER_HZ - 5_000);
-    expect(notches[0]!.widthHz).toBeGreaterThan(1_000);
+    expect(notches[0]!.centerHz).toBeCloseTo(CENTER_HZ + (70 - WIDTH / 2) * HZ_PER_PIXEL, 0);
   });
 
-  it('does not replace a manual notch already covering the bar', () => {
-    const { spectrum, floor, confidence } = arrays();
-    spectrum[72] = -94;
-    confidence[72] = 0.9;
+  it('emits nothing when the stationarity map is unavailable (fail safe)', () => {
+    const { spectrum, floor, stationarity } = arrays();
+    paintCarrier(spectrum, stationarity, 64, 30, 0.95);
+
+    const notches = detectAutoNotches({
+      spectrum,
+      floor,
+      confidence: null,
+      stationarity: null,
+      centerHz: CENTER_HZ,
+      hzPerPixel: HZ_PER_PIXEL,
+    });
+
+    expect(notches).toEqual([]);
+  });
+
+  it('does not replace a manual notch already covering the carrier', () => {
+    const { spectrum, floor, stationarity } = arrays();
+    paintCarrier(spectrum, stationarity, 72, 30, 0.9);
     const barHz = CENTER_HZ + (72 - WIDTH / 2) * HZ_PER_PIXEL;
 
     const notches = detectAutoNotches({
       spectrum,
       floor,
-      confidence,
+      confidence: null,
+      stationarity,
       centerHz: CENTER_HZ,
       hzPerPixel: HZ_PER_PIXEL,
       existingNotches: [{ id: 'manual', centerHz: barHz, widthHz: 250 }],
@@ -128,7 +165,9 @@ describe('auto notch detector', () => {
 
     expect(notches).toEqual([]);
   });
+});
 
+describe('auto notch tracker', () => {
   it('verifies repeated sightings before emitting a notch', () => {
     const tracker = createAutoNotchTracker({ verifySamples: 3 });
     const candidate: AutoNotchCandidate = {
@@ -172,7 +211,7 @@ describe('auto notch detector', () => {
     expect(afterRefine[0]!.centerHz).toBe(lockedCenter);
   });
 
-  it('rejects voice-like candidates that wander before validation', () => {
+  it('rejects candidates that wander before validation', () => {
     const tracker = createAutoNotchTracker({ verifySamples: 3 });
     const candidate: AutoNotchCandidate = {
       centerHz: CENTER_HZ,
@@ -188,22 +227,18 @@ describe('auto notch detector', () => {
     expect(tracker.update([{ ...candidate, centerHz: CENTER_HZ - 420 }])).toEqual([]);
   });
 
-  it('keeps verified wide blocker widths instead of clamping them narrow', () => {
+  it('preserves a verified narrow notch width', () => {
     const tracker = createAutoNotchTracker({ verifySamples: 1 });
     const candidate: AutoNotchCandidate = {
       centerHz: CENTER_HZ + 2_000,
-      widthHz: 3_200,
+      widthHz: 220,
       snrDb: 34,
       confidence: 0.86,
     };
 
-    expect(tracker.update([candidate])).toEqual([]);
-    expect(tracker.update([candidate])).toEqual([]);
-    expect(tracker.update([candidate])).toEqual([]);
-    expect(tracker.update([candidate])).toEqual([]);
     const verified = tracker.update([candidate]);
     expect(verified).toHaveLength(1);
-    expect(verified[0]!.widthHz).toBe(3_200);
+    expect(verified[0]!.widthHz).toBe(220);
   });
 
   it('holds verified notches through brief missed samples', () => {

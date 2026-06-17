@@ -155,10 +155,18 @@ export default function App() {
   // landing flips this to e.g. "HermesLite2" / "AnanG2" and the store
   // re-fetches that radio's named-layout collection from the server.
   const loadLayoutsForRadio = useLayoutStore((s) => s.loadForRadio);
+  // Wait for the radio-store's initial fetch before loading any layout. Until
+  // `radioLoaded` is true, `connected === 'Unknown'` is ambiguous: it could mean
+  // "no radio" OR "not resolved yet". Loading 'default' eagerly here renders the
+  // default-key layout, then the connection resolves to the real board and we
+  // re-load the per-radio layout — that swap is the on-load flash. Gating on
+  // `radioLoaded` means we load the correct layout exactly once.
+  const radioLoaded = useRadioStore((s) => s.loaded);
   useEffect(() => {
+    if (!radioLoaded) return;
     const key = radioConnected !== 'Unknown' ? radioConnected : 'default';
     void loadLayoutsForRadio(key);
-  }, [loadLayoutsForRadio, radioConnected]);
+  }, [loadLayoutsForRadio, radioConnected, radioLoaded]);
   const activeLayoutId = useLayoutStore((s) => s.activeLayoutId);
 
   useKeyboardShortcuts();

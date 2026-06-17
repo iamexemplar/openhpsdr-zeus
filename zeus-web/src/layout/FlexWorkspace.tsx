@@ -24,17 +24,22 @@ import {
   useMemo,
   useRef,
   useState,
+  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
   type Layout,
 } from 'react-grid-layout';
-import { absoluteStrategy, noCompactor } from 'react-grid-layout/core';
+import { absoluteStrategy } from 'react-grid-layout/core';
 import { Plus, Puzzle, Settings } from 'lucide-react';
 import { useWorkspace } from './WorkspaceContext';
 import { parseLayoutOrDefault, useLayoutStore } from '../state/layout-store';
 import { getPanelDef } from './panels';
+import {
+  WORKSPACE_DRAG_COMPACTOR,
+  WORKSPACE_RESIZE_COMPACTOR,
+} from './workspaceGrid';
 import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 import {
   EMPTY_WORKSPACE_LAYOUT,
@@ -63,6 +68,8 @@ import {
 
 const WORKSPACE_GRID_MARGIN_PX = 3;
 const WORKSPACE_ROW_GAP_SHARE = 6;
+
+type GridInteraction = 'drag' | 'resize' | null;
 
 interface FlexWorkspaceProps {
   /** Omitted = current dock-selected layout; set = fixed detached workspace. */
@@ -224,6 +231,8 @@ function WorkspaceCanvas({
   // available vertical space, right-column tiles distribute proportionally,
   // window resize re-flows automatically.
   const [containerHeight, setContainerHeight] = useState(0);
+  const [gridInteraction, setGridInteraction] =
+    useState<GridInteraction>(null);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -274,6 +283,35 @@ function WorkspaceCanvas({
     return Math.max(0.1, inner / Math.max(1, targetRows));
   }, [containerHeight, rowMargin, targetRows]);
 
+  const workspaceCompactor =
+    gridInteraction === 'resize'
+      ? WORKSPACE_RESIZE_COMPACTOR
+      : WORKSPACE_DRAG_COMPACTOR;
+
+  const onPointerDownCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      if (target.closest('.react-resizable-handle')) {
+        setGridInteraction('resize');
+        return;
+      }
+
+      if (
+        target.closest('.workspace-tile-header') &&
+        !target.closest('.workspace-tile-close')
+      ) {
+        setGridInteraction('drag');
+      }
+    },
+    [],
+  );
+
+  const onDragStart = useCallback(() => setGridInteraction('drag'), []);
+  const onResizeStart = useCallback(() => setGridInteraction('resize'), []);
+  const onInteractionStop = useCallback(() => setGridInteraction(null), []);
+
   // RGL needs a stable per-render layouts.lg array. Memoise against the
   // tile list identity so we don't push a new prop on every parent render.
   // Per-panel maxW/maxH (when defined in panels.ts) is propagated here so
@@ -311,7 +349,11 @@ function WorkspaceCanvas({
   );
 
   return (
-    <div ref={containerRef} className="all-panels-workspace">
+    <div
+      ref={containerRef}
+      className="all-panels-workspace"
+      onPointerDownCapture={onPointerDownCapture}
+    >
       {!isLoaded || !mounted ? (
         // Reserve space silently while server load + ResizeObserver settle.
         <div style={{ minHeight: 80 }} aria-hidden />
@@ -324,7 +366,7 @@ function WorkspaceCanvas({
           rowHeight={rowHeight}
           margin={[WORKSPACE_GRID_MARGIN_PX, rowMargin]}
           containerPadding={[0, 0]}
-          compactor={noCompactor}
+          compactor={workspaceCompactor}
           // Position tiles via top/left rather than transform: translate3d.
           // RGL's default `transformStrategy` uses CSS transforms, which
           // (combined with the upstream stylesheet's `will-change: transform`)
@@ -348,6 +390,10 @@ function WorkspaceCanvas({
             cancel: '.workspace-tile-close',
             bounded: false,
           }}
+          onDragStart={onDragStart}
+          onDragStop={onInteractionStop}
+          onResizeStart={onResizeStart}
+          onResizeStop={onInteractionStop}
           onLayoutChange={onLayoutChange}
           layouts={rglLayouts}
         >

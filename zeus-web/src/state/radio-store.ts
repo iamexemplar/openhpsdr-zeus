@@ -72,9 +72,13 @@ export const useRadioStore = create<RadioStore>((set, get) => ({
         inflight: false,
       });
     } catch (err) {
+      // Mark loaded even on failure: `connected` stays 'Unknown', so downstream
+      // gates (e.g. App's layout load) fall back to the 'default' radio key
+      // rather than blocking forever on an unresolved identity.
       set({
         error: err instanceof Error ? err.message : String(err),
         inflight: false,
+        loaded: true,
       });
     }
   },

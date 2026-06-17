@@ -70,18 +70,18 @@ const BRACKET_MIN_SNR_DB = 6;         // only mark carriers this far above the f
 const BRACKET_TRACK_TOLERANCE_HZ = 260; // nearby detections belong to the same visual marker
 const BRACKET_TRACK_TTL_MS = 1800;     // keep marker state briefly across missed detections
 const BRACKET_SMOOTH_ALPHA = 0.055;    // EMA for measured signal edges
-const BRACKET_LABEL_MAX = 1;           // one active bandwidth lock; guides may still show
 const BRACKET_LABEL_HOLD_MS = 1500;    // minimum dwell before small label changes
 const BRACKET_LABEL_CONFIRM_MS = 900;  // candidate value must persist before replacing a label
 const BRACKET_LABEL_QUANTUM_HZ = 100;  // kHz labels step by 0.1 kHz
 const BRACKET_LABEL_JUMP_HZ = 600;     // real bandwidth changes can break the dwell early
 const BRACKET_LABEL_JUMP_CONFIRM_MS = 350; // but only after a brief confirmation
-const BRACKET_LABEL_MIN_CONFIDENCE = 0.45;
 const BRACKET_CONFIDENCE_SPAN_HZ = 550; // edge disagreement that drains confidence
 const BRACKET_OVERLAP_RATIO = 0.45;    // suppress duplicate labels on the same signal hump
-const EQ_NODE_MAX = 3;                 // strongest frequency nodes shown in analyzer mode
-const EQ_NODE_MIN_CONFIDENCE = 0.32;
+const PEAK_PIN_MAX = 2;                // quiet held peak hints, not measurement labels
+const PEAK_PIN_MIN_CONFIDENCE = 0.42;
 const MEASUREMENT_PEAK_HOLD_MS = 1000; // hold prominent-frequency readouts for operator readability
+const EQ_METER_BANDS = 32;             // bottom parametric-EQ style activity rail
+const EQ_METER_AVG_MS = 5000;          // each EQ band shows a 5-second level average
 const PEAKHOLD_DECAY_PX = 0.45;       // peak-hold envelope fall rate (px/frame ≈ 13 px/s)
 const FIT_HIT_PX = 26;                // click-to-fit grab radius around a carrier
 const FIT_MARGIN_HZ = 120;            // breathing room added each side when fitting
@@ -343,10 +343,6 @@ function rangeOverlapRatio(aLo: number, aHi: number, bLo: number, bHi: number): 
   return overlap / denom;
 }
 
-function rectsOverlap(a: { left: number; right: number; top: number; bottom: number }, b: { left: number; right: number; top: number; bottom: number }): boolean {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
-
 export function FilterMiniPan() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   // Visible span lives in a ref (read by the imperative draw loop) plus a state
@@ -402,6 +398,9 @@ export function FilterMiniPan() {
     let traceSm: Float32Array | null = null; // reused smoothed-trace buffer
     let peakHoldY: Float32Array | null = null; // per-column peak-hold envelope (Y)
     let peakHoldKey = ''; // geometry key; reset the envelope when it changes
+    let eqMeterAvg: Float32Array | null = null; // bottom EQ-style 5-second averaged levels
+    let eqMeterKey = ''; // geometry key; reset EQ meter when the window changes
+    let eqMeterLastAt = 0;
     let autoLoDb = NaN; // EMA of the visible-window floor (dynamic vertical scale)
     let autoHiDb = NaN; // EMA of the visible-window peak
     let avgLin: Float32Array | null = null; // time-averaged linear power per bin
@@ -705,6 +704,55 @@ export function FilterMiniPan() {
         }
         ctx.stroke();
 
+        // Bottom EQ-style activity rail. Each band is a 5-second average of
+        // its frequency segment so it shows sustained hot spots, not momentary
+        // detector jitter.
+        if (w > 0) {
+          if (eqMeterAvg === null || eqMeterAvg.length !== EQ_METER_BANDS) {
+            eqMeterAvg = new Float32Array(EQ_METER_BANDS);
+            eqMeterKey = '';
+            eqMeterLastAt = 0;
+          }
+          const meterKey = `${c.vfoHz}:${spanHz}:${w}:${EQ_METER_BANDS}`;
+          const avg = eqMeterAvg;
+          if (meterKey !== eqMeterKey) {
+            eqMeterKey = meterKey;
+            avg.fill(0);
+            eqMeterLastAt = 0;
+          }
+          const meterDtMs = eqMeterLastAt > 0 ? Math.max(0, Math.min(1000, now - eqMeterLastAt)) : 0;
+          const avgAlpha = eqMeterLastAt > 0 ? 1 - Math.exp(-meterDtMs / EQ_METER_AVG_MS) : 1;
+          eqMeterLastAt = now;
+          const meterH = Math.max(7, Math.round(12 * dpr));
+          const meterBottom = plotBottom - Math.round(2 * dpr);
+          const meterTop = Math.max(plotTop + Math.round(6 * dpr), meterBottom - meterH);
+          const usableH = Math.max(1, meterBottom - meterTop);
+          ctx.fillStyle = 'rgba(4, 6, 10, 0.34)';
+          ctx.fillRect(0, meterTop, w, usableH);
+          for (let band = 0; band < EQ_METER_BANDS; band++) {
+            const x0 = Math.floor((band / EQ_METER_BANDS) * w);
+            const x1 = Math.max(x0 + 1, Math.floor(((band + 1) / EQ_METER_BANDS) * w));
+            let topY = plotBottom;
+            for (let x = x0; x < x1; x++) topY = Math.min(topY, sm[Math.min(w - 1, x)]!);
+            const live = Math.max(0, Math.min(1, ((plotBottom - topY) / plotH) ** 0.82));
+            avg[band] = avg[band]! + avgAlpha * (live - avg[band]!);
+            const level = avg[band]!;
+            const barH = Math.max(1, Math.round(level * usableH));
+            const gap = Math.max(1, Math.round(1 * dpr));
+            const bx = x0 + gap;
+            const bw = Math.max(1, x1 - x0 - gap * 2);
+            const centerOffHz = ((x0 + x1) / 2 / w - 0.5) * spanHz;
+            const accepted = centerOffHz >= c.filterLowHz && centerOffHz <= c.filterHighHz;
+            const paint = accepted ? accent : signal;
+            ctx.fillStyle = paint(0.14 + 0.54 * level);
+            ctx.fillRect(bx, meterBottom - barH, bw, barH);
+            if (level > 0.18) {
+              ctx.fillStyle = paint(0.28 + 0.54 * level);
+              ctx.fillRect(bx, meterBottom - barH, bw, Math.max(1, Math.round(1 * dpr)));
+            }
+          }
+        }
+
         // Pop-mode floor baseline: a faint flat rail at SNR=0 with an "NF" tag.
         if (popOn) {
           const yBase = snrToY(0);
@@ -765,29 +813,7 @@ export function FilterMiniPan() {
           .filter((p) => p.snrDb >= BRACKET_MIN_SNR_DB)
           .slice(0, BRACKET_MAX); // detectPeaks returns strongest-first
         const drawnBands: Array<{ loPx: number; hiPx: number }> = [];
-        const drawnLabels: Array<{ left: number; right: number; top: number; bottom: number }> = [];
-        let labelCount = 0;
-        let nodeCount = 0;
-        const placeChip = (
-          centerX: number,
-          baseBy: number,
-          chipW: number,
-          chipH: number,
-        ): { by: number; rect: { left: number; right: number; top: number; bottom: number } } | null => {
-          const laneGap = Math.max(2, Math.round(2 * dpr));
-          const lx = Math.max(chipW / 2 + 2, Math.min(w - chipW / 2 - 2, centerX));
-          for (let lane = 0; lane < 3; lane++) {
-            const by = Math.max(plotTop + chipH + 1, baseBy - lane * (chipH + laneGap));
-            const rect = {
-              left: lx - chipW / 2,
-              right: lx + chipW / 2,
-              top: by - chipH,
-              bottom: by,
-            };
-            if (!drawnLabels.some((r) => rectsOverlap(rect, r))) return { by, rect };
-          }
-          return null;
-        };
+        let peakPinCount = 0;
         for (const p of peaks) {
           const xC = ((p.hz - loHz) / spanHz) * w;
           if (xC < 0 || xC > w) continue;
@@ -819,147 +845,66 @@ export function FilterMiniPan() {
             continue;
           }
           drawnBands.push({ loPx: xL, hiPx: xR });
-          const bwHz = track.labelBwHz;
           const markerCrestHz = track.heldCrestHz;
           const markerCenterX = ((markerCrestHz - loHz) / spanHz) * w;
           const inBand = markerCrestHz - vfo >= c.filterLowHz && markerCrestHz - vfo <= c.filterHighHz;
           const col = inBand ? accent : signal;
           const prominence = Math.max(0, Math.min(1, (track.heldSnrDb - BRACKET_MIN_SNR_DB) / 30));
-          const guideAlpha = inBand ? 0.95 : 0.34 + 0.34 * prominence;
 
-          // 1) Occupied-band wash — brighten the detected extent above the heat
-          //    so the band itself reads as a distinct block.
+          // Quiet signal context. The filter panel should not become a
+          // measuring-instrument overlay; keep peaks visible without covering
+          // the spectrum with text.
           if (traceSm) {
-            ctx.fillStyle = col(inBand ? 0.16 : 0.07 + 0.06 * prominence);
+            ctx.fillStyle = col(inBand ? 0.10 : 0.035 + 0.025 * prominence);
             const xa = Math.max(0, Math.round(xL));
             const xb = Math.min(w, Math.round(xR));
             for (let x = xa; x < xb; x++) ctx.fillRect(x, traceSm[x]!, 1, baseY - traceSm[x]!);
           }
 
-          // 2) Bright full-height edge guides with glow — the crisp left/right
-          //    boundaries the eye locks onto.
-          ctx.save();
-          ctx.shadowColor = col(inBand ? 0.8 : 0.25 + 0.35 * prominence);
-          ctx.shadowBlur = Math.round((inBand ? 6 : 3) * dpr);
-          ctx.strokeStyle = col(guideAlpha);
-          ctx.lineWidth = Math.max(1.5, 1.5 * dpr);
-          for (const ex of [xL, xR]) {
-            if (ex < 0 || ex > w) continue;
-            ctx.beginPath();
-            ctx.moveTo(Math.round(ex) + 0.5, plotTop);
-            ctx.lineTo(Math.round(ex) + 0.5, baseY);
-            ctx.stroke();
-          }
-          ctx.restore();
-
-          // 3) Inward carets at the baseline so the edges point at the band.
-          const cz = Math.round(4 * dpr);
-          ctx.fillStyle = col(inBand ? 1 : 0.52 + 0.28 * prominence);
-          if (xL >= 0 && xL <= w) {
-            ctx.beginPath();
-            ctx.moveTo(xL, baseY);
-            ctx.lineTo(xL + cz, baseY - cz);
-            ctx.lineTo(xL + cz, baseY + cz);
-            ctx.closePath();
-            ctx.fill();
-          }
-          if (xR >= 0 && xR <= w) {
-            ctx.beginPath();
-            ctx.moveTo(xR, baseY);
-            ctx.lineTo(xR - cz, baseY - cz);
-            ctx.lineTo(xR - cz, baseY + cz);
-            ctx.closePath();
-            ctx.fill();
+          // In-band edge guides are intentionally restrained. Out-of-band
+          // detections stay as heat/pin hints only.
+          if (inBand) {
+            ctx.save();
+            ctx.shadowColor = col(0.35);
+            ctx.shadowBlur = Math.round(4 * dpr);
+            ctx.strokeStyle = col(0.52);
+            ctx.lineWidth = Math.max(1, 1 * dpr);
+            for (const ex of [xL, xR]) {
+              if (ex < 0 || ex > w) continue;
+              ctx.beginPath();
+              ctx.moveTo(Math.round(ex) + 0.5, plotTop + Math.round(5 * dpr));
+              ctx.lineTo(Math.round(ex) + 0.5, baseY - Math.round(2 * dpr));
+              ctx.stroke();
+            }
+            ctx.restore();
           }
 
-          // 4) EQ/analyzer node: the fast realtime readout is now the most
-          //    prominent frequency, not a twitchy bandwidth number.
+          // Held peak pins: no ranks, no frequency text, no bandwidth text.
+          // They simply answer "where is the dominant energy right now?"
           const crestY = traceSm
             ? traceSm[Math.max(0, Math.min(w - 1, Math.round(markerCenterX)))]!
             : plotTop;
-          if (nodeCount < EQ_NODE_MAX && track.confidence >= EQ_NODE_MIN_CONFIDENCE) {
-            const rank = nodeCount + 1;
+          if (peakPinCount < PEAK_PIN_MAX && track.confidence >= PEAK_PIN_MIN_CONFIDENCE) {
             const nodeY = Math.max(plotTop + Math.round(8 * dpr), Math.min(plotBottom - Math.round(8 * dpr), crestY));
-            const nodeR = Math.max(4, Math.round(5 * dpr));
+            const nodeR = Math.max(3, Math.round((3.5 + 2.5 * prominence) * dpr));
             ctx.save();
-            ctx.strokeStyle = col(0.18 + 0.35 * prominence);
+            ctx.strokeStyle = col((inBand ? 0.18 : 0.10) + 0.16 * prominence);
             ctx.lineWidth = Math.max(1, 1 * dpr);
-            ctx.setLineDash([Math.max(2, Math.round(2 * dpr)), Math.max(3, Math.round(4 * dpr))]);
             ctx.beginPath();
             ctx.moveTo(Math.round(markerCenterX) + 0.5, nodeY + nodeR);
             ctx.lineTo(Math.round(markerCenterX) + 0.5, baseY - Math.round(3 * dpr));
             ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.shadowColor = col(0.55 + 0.35 * prominence);
-            ctx.shadowBlur = Math.round((4 + 4 * prominence) * dpr);
-            ctx.fillStyle = 'rgba(12, 14, 18, 0.74)';
-            ctx.strokeStyle = col(0.72 + 0.28 * prominence);
+            ctx.shadowColor = col(0.35 + 0.25 * prominence);
+            ctx.shadowBlur = Math.round((3 + 3 * prominence) * dpr);
+            ctx.fillStyle = col(0.26 + 0.28 * prominence);
+            ctx.strokeStyle = col(inBand ? 0.90 : 0.55 + 0.25 * prominence);
             ctx.lineWidth = Math.max(1.5, 1.5 * dpr);
             ctx.beginPath();
             ctx.arc(markerCenterX, nodeY, nodeR, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
-            ctx.shadowBlur = 0;
-            ctx.fillStyle = col(1);
-            ctx.font = `800 ${Math.round(7 * dpr)}px "SFMono-Regular", ui-monospace, monospace`;
-            ctx.textBaseline = 'middle';
-            ctx.textAlign = 'center';
-            ctx.fillText(String(rank), markerCenterX, nodeY + Math.round(0.5 * dpr));
             ctx.restore();
-
-            const nodeLabel = `P${rank} ${formatCutOffset(markerCrestHz - vfo)}`;
-            ctx.font = `700 ${Math.round(8 * dpr)}px "SFMono-Regular", ui-monospace, monospace`;
-            ctx.textBaseline = 'bottom';
-            ctx.textAlign = 'center';
-            const nodeLw = ctx.measureText(nodeLabel).width;
-            const nodePadX = Math.round(4 * dpr);
-            const nodeChipW = nodeLw + nodePadX * 2;
-            const nodeChipH = Math.round(12 * dpr);
-            const nodePlaced = placeChip(markerCenterX, nodeY - nodeR - Math.round(3 * dpr), nodeChipW, nodeChipH);
-            if (nodePlaced) {
-              ctx.fillStyle = 'rgba(12, 14, 18, 0.58)';
-              ctx.fillRect(nodePlaced.rect.left, nodePlaced.rect.top, nodeChipW, nodeChipH);
-              ctx.fillStyle = col(0.82 + 0.18 * prominence);
-              ctx.fillText(nodeLabel, (nodePlaced.rect.left + nodePlaced.rect.right) / 2, nodePlaced.by - Math.round(2 * dpr));
-              drawnLabels.push(nodePlaced.rect);
-            }
-            ctx.textAlign = 'start';
-            ctx.textBaseline = 'alphabetic';
-            nodeCount++;
-          }
-
-          // 5) Slower active bandwidth lock. Only the in-passband signal gets
-          //    this number; nearby signals are interpreted through the P-nodes.
-          const canLabel = inBand && labelCount < BRACKET_LABEL_MAX && track.confidence >= BRACKET_LABEL_MIN_CONFIDENCE;
-          if (canLabel) {
-            const label = `BW LOCK ${formatFilterWidth(0, Math.round(bwHz))}`;
-            ctx.font = `700 ${Math.round(9 * dpr)}px "SFMono-Regular", ui-monospace, monospace`;
-            ctx.textBaseline = 'bottom';
-            ctx.textAlign = 'center';
-            const lw = ctx.measureText(label).width;
-            const chipPadX = Math.round(5 * dpr);
-            const chipW = lw + chipPadX * 2;
-            const chipH = Math.round(14 * dpr);
-            const baseBy = Math.max(plotTop + chipH + 1, crestY - Math.round(6 * dpr));
-            const placed = placeChip((xL + xR) / 2, baseBy, chipW, chipH);
-            if (placed) {
-              const chipAlpha = 0.46 + 0.24 * track.confidence;
-              ctx.fillStyle = `rgba(12, 14, 18, ${chipAlpha.toFixed(3)})`;
-              ctx.fillRect(placed.rect.left, placed.rect.top, chipW, chipH);
-              ctx.fillStyle = col(0.22 + 0.58 * track.confidence);
-              ctx.fillRect(
-                placed.rect.left,
-                placed.rect.bottom - Math.max(1, Math.round(2 * dpr)),
-                chipW * track.confidence,
-                Math.max(1, Math.round(2 * dpr)),
-              );
-              ctx.fillStyle = col(0.75 + 0.25 * track.confidence);
-              ctx.fillText(label, (placed.rect.left + placed.rect.right) / 2, placed.by - Math.round(3 * dpr));
-              drawnLabels.push(placed.rect);
-              labelCount++;
-            }
-            ctx.textAlign = 'start';
-            ctx.textBaseline = 'alphabetic';
+            peakPinCount++;
           }
         }
       }

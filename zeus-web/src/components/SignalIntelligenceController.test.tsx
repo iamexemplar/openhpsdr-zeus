@@ -318,7 +318,10 @@ describe('SignalIntelligenceController display-intelligence sync', () => {
     const autoNotches = useNotchStore.getState().notches.filter((n) => n.source === 'auto');
     expect(autoNotches).toHaveLength(1);
     expect(autoNotches[0]!.centerHz).toBe(7_253_200);
-    expect(autoNotches[0]!.widthHz).toBeGreaterThanOrEqual(240);
+    // The carrier-line detector emits a NARROW surgical notch around the bar,
+    // not the wide SNR-run slab the old detector grew.
+    expect(autoNotches[0]!.widthHz).toBeGreaterThanOrEqual(100);
+    expect(autoNotches[0]!.widthHz).toBeLessThanOrEqual(300);
 
     await act(async () => {
       vi.advanceTimersByTime(130);

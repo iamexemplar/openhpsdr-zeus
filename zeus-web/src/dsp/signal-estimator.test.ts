@@ -15,6 +15,7 @@ import {
   detectPeaks,
   enhanceInto,
   enhanceWaterfallTextureInto,
+  estimateAdjacentNoiseProfile,
   findNearestPeakHz,
   findPeakHz,
   getNoiseFloor,
@@ -56,6 +57,17 @@ function spectrumWithTilt(): Float32Array {
   const spec = new Float32Array(WIDTH);
   for (let i = 0; i < WIDTH; i++) spec[i] = -90 + (-30 * i) / WIDTH;
   spec[CARRIER_BIN] = CARRIER_DB;
+  return spec;
+}
+
+function speckledNoiseFrame(frame: number): Float32Array {
+  const spec = new Float32Array(WIDTH).fill(NOISE_DB);
+  for (let i = 0; i < WIDTH; i++) {
+    const a = (i * 37 + frame * 53) % 41;
+    const b = (i * 19 + frame * 29) % 67;
+    if (a === 0) spec[i] = NOISE_DB + 8;
+    else if (b === 0) spec[i] = NOISE_DB + 5;
+  }
   return spec;
 }
 
@@ -298,6 +310,38 @@ describe('signal estimator — spatial floor', () => {
     }
   });
 
+  it('builds an adjacent noise profile while rejecting nearby signal bins', () => {
+    const floor = new Float32Array(WIDTH).fill(NOISE_DB);
+    const spec = new Float32Array(WIDTH).fill(NOISE_DB + 2);
+    const confidence = new Float32Array(WIDTH);
+    const half = WIDTH / 2;
+    const binFor = (offsetHz: number) => Math.round(offsetHz / HZ_PER_PX + half);
+
+    spec[binFor(1200)] = NOISE_DB + 28; // wanted signal inside the passband
+    confidence[binFor(1200)] = 0.9;
+    spec[binFor(3800)] = NOISE_DB + 32; // adjacent signal in the right reference band
+    confidence[binFor(3800)] = 0.9;
+
+    const profile = estimateAdjacentNoiseProfile({
+      spectrum: spec,
+      floor,
+      confidence,
+      centerHz: CENTER,
+      hzPerPixel: HZ_PER_PX,
+      dialHz: CENTER,
+      filterLowHz: 300,
+      filterHighHz: 2600,
+    });
+
+    expect(profile).not.toBeNull();
+    expect(profile?.usable).toBe(true);
+    expect(profile?.floorDb).toBe(NOISE_DB);
+    expect(profile?.leftBins).toBeGreaterThan(20);
+    expect(profile?.rightBins).toBeGreaterThan(20);
+    expect(profile?.rejectedPct).toBeGreaterThan(0);
+    expect(profile?.rejectedPct).toBeLessThan(10);
+  });
+
   it('stays cold (no floor, zero cost) when both Pop and Snap are off', () => {
     pushFrame(spectrumWithCarrier());
     expect(getNoiseFloor()).toBeNull();
@@ -410,6 +454,40 @@ describe('signal estimator — spatial floor', () => {
     expect(out[40]!).toBe(0);
   });
 
+  it('keeps stochastic low-confidence speckles from becoming POP texture', () => {
+    useSignalEnhanceStore.setState({ popEnabled: true });
+    const quiet = new Float32Array(WIDTH).fill(NOISE_DB);
+    for (let k = 0; k < 5; k++) pushFrame(quiet);
+    for (let k = 0; k < 6; k++) pushFrame(speckledNoiseFrame(k));
+
+    const spec = speckledNoiseFrame(6);
+    const out = new Float32Array(WIDTH);
+    enhanceInto(spec, out);
+    const texture = getSignalTexture()!;
+
+    const lit = Array.from(out).filter((v) => v > 0.05).length;
+    const maxTexture = Math.max(...Array.from(texture));
+    expect(lit).toBeLessThan(8);
+    expect(maxTexture).toBeLessThan(0.20);
+  });
+
+  it('emits a sparse POP terrain height field for coherent weak ridges', () => {
+    useSignalEnhanceStore.setState({ popEnabled: true });
+    const spec = new Float32Array(WIDTH).fill(NOISE_DB);
+    spec[149] = NOISE_DB + 7;
+    spec[150] = NOISE_DB + 10;
+    spec[151] = NOISE_DB + 7;
+    for (let k = 0; k < 6; k++) pushFrame(spec);
+
+    const out = new Float32Array(WIDTH);
+    const terrain = new Float32Array(WIDTH);
+    enhanceInto(spec, out, terrain);
+
+    expect(terrain[150]!).toBeGreaterThan(0.25);
+    expect(terrain[40]!).toBe(0);
+    expect(terrain[150]!).toBeGreaterThan(terrain[149]!);
+  });
+
   it('normal waterfall texture mapper lifts coherent weak ridges while staying in dB space', () => {
     const release = registerEstimatorConsumer();
     try {
@@ -421,13 +499,48 @@ describe('signal estimator — spatial floor', () => {
       for (let k = 0; k < 6; k++) pushFrame(spec);
 
       const out = new Float32Array(WIDTH);
-      enhanceWaterfallTextureInto(spec, out);
+      const terrain = new Float32Array(WIDTH);
+      enhanceWaterfallTextureInto(spec, out, terrain);
       const texture = getSignalTexture()!;
 
       expect(texture[150]!).toBeGreaterThan(0.25);
+      expect(terrain[150]!).toBeGreaterThan(0.25);
+      expect(terrain[40]!).toBe(0);
       expect(out[150]!).toBeGreaterThan(spec[150]! + 2);
       expect(out[40]!).toBeLessThan(NOISE_DB + 0.1);
-      expect(out[40]!).toBeGreaterThan(NOISE_DB - 8);
+      expect(out[40]!).toBeLessThan(NOISE_DB - 18);
+      expect(out[40]!).toBeGreaterThan(NOISE_DB - 32);
+    } finally {
+      release();
+    }
+  });
+
+  it('normal waterfall texture mapper does not add relief to stochastic speckles', () => {
+    const release = registerEstimatorConsumer();
+    try {
+      useSignalEnhanceStore.setState({ popEnabled: false, autoProfileEnabled: false });
+      const quiet = new Float32Array(WIDTH).fill(NOISE_DB);
+      for (let k = 0; k < 5; k++) pushFrame(quiet);
+      for (let k = 0; k < 6; k++) pushFrame(speckledNoiseFrame(k));
+
+      const spec = speckledNoiseFrame(6);
+      const out = new Float32Array(WIDTH);
+      const terrain = new Float32Array(WIDTH);
+      enhanceWaterfallTextureInto(spec, out, terrain);
+
+      let lifted = 0;
+      let maxLift = -Infinity;
+      let maxTerrain = 0;
+      for (let i = 0; i < WIDTH; i++) {
+        maxTerrain = Math.max(maxTerrain, terrain[i]!);
+        if (spec[i]! <= NOISE_DB + 3) continue;
+        const lift = out[i]! - spec[i]!;
+        maxLift = Math.max(maxLift, lift);
+        if (lift > 1) lifted++;
+      }
+      expect(lifted).toBe(0);
+      expect(maxLift).toBeLessThan(1);
+      expect(maxTerrain).toBeLessThan(0.18);
     } finally {
       release();
     }

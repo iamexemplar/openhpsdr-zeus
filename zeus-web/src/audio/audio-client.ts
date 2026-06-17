@@ -78,22 +78,27 @@ export type AudioStats = {
 
 type Listener = (state: AudioClientState, stats: AudioStats | null) => void;
 
-// 300 ms re-anchor floor. The 100 ms baseline (and earlier 50 ms experiment,
-// commit 503e0d2) underflowed in two distinct cases the #299 Step 2 probe
-// surfaced:
-//   1. OBS streaming load preempted the audio render thread → registered as
-//      `latenessVsSchedule`. Addressed primarily by `latencyHint: 'playback'`
-//      below (larger internal render buffers) but the headroom helps too.
-//   2. A heavy-WebAudio companion tab (e.g. kiwisdr.com) occasionally
-//      starved the Zeus tab's main thread for ~200-220 ms — registered as
-//      `latePush`. The 200 ms intermediate floor still tripped on a measured
-//      215 ms gap during idle with a kiwisdr tab open; 300 ms is comfortably
-//      above the observed worst case with 85 ms of margin.
-// Operator-perceptible TX→RX gap rises 200 ms vs the 100 ms baseline, still
-// well under monitoring-latency expectations. A follow-up could swap this for
-// an adaptive scheme (200 ms normal, bump on underrun, decay back).
-const BUFFER_TARGET_SECS = 0.3;
-const BUFFER_MAX_SECS = 0.5;
+// Adaptive re-anchor target. A fixed 300 ms floor (the previous value) made the
+// waterfall lead the audio by ~0.3 s — perceptible as display/audio lag. Instead
+// of one conservative constant we run the self-correcting scheme the old comment
+// proposed: start LOW for a realtime feel, BUMP up on every underrun, and DECAY
+// slowly back toward the floor during clean playback. Worst case it climbs to
+// BUFFER_TARGET_MAX_SECS — as robust as the old fixed 300 ms — but in good
+// conditions it settles near BUFFER_TARGET_MIN_SECS.
+//
+// History the floor must survive (see #299 Step 2 probe): OBS streaming
+// preempting the render thread (mitigated by `latencyHint: 'playback'` below),
+// and a heavy-WebAudio companion tab (kiwisdr.com) starving the main thread for
+// ~200-220 ms. The bump-on-underrun path absorbs those without a permanent tax.
+const BUFFER_TARGET_START_SECS = 0.14;
+const BUFFER_TARGET_MIN_SECS = 0.10;
+const BUFFER_TARGET_MAX_SECS = 0.35;
+// Step added to the target on each underrun, and removed per clean stats tick.
+const BUFFER_UNDERRUN_BUMP_SECS = 0.06;
+const BUFFER_DECAY_SECS_PER_TICK = 0.01;
+// Drop frames scheduled further ahead than this to bound producer-faster-than
+// -realtime drift; kept above the max target so it never fights the re-anchor.
+const BUFFER_MAX_SECS = 0.6;
 const STATS_INTERVAL_MS = 500;
 
 class AudioClient {
@@ -105,6 +110,12 @@ class AudioClient {
   private stats: AudioStats | null = null;
   private underruns = 0;
   private dropped = 0;
+  // Adaptive jitter-buffer target (seconds). Bumped on underrun, decayed toward
+  // the floor during clean playback — see the BUFFER_* constants.
+  private targetSecs = BUFFER_TARGET_START_SECS;
+  // Underrun count at the last stats tick; lets emitStats() decay only when no
+  // new underrun happened in the window.
+  private underrunsAtLastTick = 0;
   // #299 Step 2 frontend probe — see AudioStats type for semantics.
   private lastPushPerfTime = 0;
   private latePushCount = 0;
@@ -160,6 +171,8 @@ class AudioClient {
       this.nextPlayTime = 0;
       this.underruns = 0;
       this.dropped = 0;
+      this.targetSecs = BUFFER_TARGET_START_SECS;
+      this.underrunsAtLastTick = 0;
       this.lastPushPerfTime = 0;
       this.latePushCount = 0;
       this.latenessVsScheduleCount = 0;
@@ -239,9 +252,12 @@ class AudioClient {
 
     // If we've fallen behind (or this is the first frame after start/reset),
     // re-anchor the schedule one target interval in the future.
-    if (this.nextPlayTime < now + BUFFER_TARGET_SECS * 0.5) {
+    if (this.nextPlayTime < now + this.targetSecs * 0.5) {
       if (this.nextPlayTime !== 0) {
         this.underruns++;
+        // A real underrun — grow the buffer target so we stop chasing the
+        // schedule. Decays back down during clean playback (emitStats).
+        this.targetSecs = Math.min(BUFFER_TARGET_MAX_SECS, this.targetSecs + BUFFER_UNDERRUN_BUMP_SECS);
         // #299 Step 2 probe — attribute the underrun. 90 ms threshold matches
         // BUFFER_TARGET_SECS * 0.9 with a small margin; at 50 Hz audio frame
         // rate (one ~20 ms frame per push) the expected dt is 20 ms, so >90 ms
@@ -259,7 +275,7 @@ class AudioClient {
           );
         }
       }
-      this.nextPlayTime = now + BUFFER_TARGET_SECS;
+      this.nextPlayTime = now + this.targetSecs;
     }
 
     const buffer = ctx.createBuffer(1, frame.sampleCount, frame.sampleRateHz);
@@ -324,6 +340,13 @@ class AudioClient {
   private emitStats() {
     const ctx = this.context;
     if (!ctx) return;
+    // Adaptive buffer decay: a clean window (no new underrun) walks the target
+    // back toward the floor, so latency recovers after a transient stall instead
+    // of being taxed for the rest of the session.
+    if (this.underruns === this.underrunsAtLastTick) {
+      this.targetSecs = Math.max(BUFFER_TARGET_MIN_SECS, this.targetSecs - BUFFER_DECAY_SECS_PER_TICK);
+    }
+    this.underrunsAtLastTick = this.underruns;
     const ahead = Math.max(0, this.nextPlayTime - ctx.currentTime);
     this.stats = {
       available: Math.round(ahead * ctx.sampleRate),

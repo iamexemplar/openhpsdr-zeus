@@ -78,15 +78,19 @@ type Anchor = [number, [number, number, number]];
 // or near black so a noisy band doesn't flood the display with mid-band
 // colour. The signal range is compressed into the upper ~65% — peaks still
 // reach the same top colour, but the noise floor reads dark.
+// Floor is held dark longer (black to 0.42, deep blue not until ~0.52) so the
+// noise floor reads dark and signals separate with more contrast — the bright
+// washed-out blue floor was swallowing weak carriers. Same hue journey and the
+// same white peak; only WHERE the dark→bright transition sits moved up.
 const BLUE_ANCHORS: Anchor[] = [
   [0.0, [0, 0, 0]],
-  [0.35, [0, 0, 0]],
-  [0.45, [0, 0, 128]],
-  [0.55, [0, 0, 255]],
-  [0.65, [0, 255, 255]],
-  [0.75, [0, 255, 0]],
-  [0.85, [255, 255, 0]],
-  [0.93, [255, 0, 0]],
+  [0.42, [0, 0, 0]],
+  [0.52, [0, 0, 110]],
+  [0.62, [0, 30, 235]],
+  [0.71, [0, 210, 255]],
+  [0.79, [10, 255, 70]],
+  [0.87, [255, 255, 0]],
+  [0.94, [255, 40, 0]],
   [1.0, [255, 255, 255]],
 ];
 
@@ -110,16 +114,19 @@ const VIRIDIS_ANCHORS: Anchor[] = [
   [1.0, [253, 231, 37]],
 ];
 
+// Pop palette: a clean MONOTONIC-brightness ramp (black → blue → white), not a
+// rainbow. After floor subtraction the field is sparse, so a multi-hue ramp made
+// every speckle a different colour (confetti). One cool hue family lets real
+// signals read as smooth bright traces and lets the hillshade relief do the
+// signal-popping. Black is held to 0.20 so the suppressed noise floor stays dark.
 const POP_ANCHORS: Anchor[] = [
   [0.0, [0, 0, 0]],
-  [0.12, [0, 0, 0]],
-  [0.26, [2, 18, 34]],
-  [0.42, [0, 74, 122]],
-  [0.56, [0, 178, 220]],
-  [0.70, [42, 236, 200]],
-  [0.82, [232, 214, 82]],
-  [0.92, [255, 118, 40]],
-  [1.0, [255, 248, 214]],
+  [0.20, [0, 0, 0]],
+  [0.38, [10, 32, 80]],
+  [0.58, [30, 130, 240]],
+  [0.76, [110, 215, 255]],
+  [0.90, [200, 245, 255]],
+  [1.0, [255, 255, 255]],
 ];
 
 function sampleAnchors(anchors: Anchor[], t: number): [number, number, number] {

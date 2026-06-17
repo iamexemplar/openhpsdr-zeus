@@ -25,7 +25,10 @@ export type AutoNotchTrack = AutoNotchCandidate & {
 export type AutoNotchInput = {
   spectrum: Float32Array | null;
   floor: Float32Array | null;
+  /** Per-bin temporal coherence (legacy/diagnostic; not a detection gate). */
   confidence: Float32Array | null;
+  /** Per-bin amplitude steadiness 0..1 — the carrier-vs-voice discriminant. */
+  stationarity: Float32Array | null;
   centerHz: bigint | number;
   hzPerPixel: number;
   existingNotches?: readonly Notch[];
@@ -45,17 +48,33 @@ export type AutoNotchTracker = {
   snapshot: () => AutoNotchTrack[];
 };
 
-const MIN_SNR_DB = 14;
-const MIN_CONFIDENCE = 0.52;
+// Carrier-line detection gates. The detector's only job is to find STEADY,
+// NARROW carriers/heterodynes the operator wants notched and to leave SSB/AM
+// voice alone. Three orthogonal gates, ANDed together (see
+// docs/designs/auto-notch-carrier-detector.md):
+//
+//   • PROMINENCE — how far the peak stands above its own local saddle (the
+//     higher of the two basin minima bounding it), measured topographically.
+//     This REPLACES "SNR above the CFAR floor" as the primary gate: a strong
+//     carrier whose own FFT leakage skirts lift the spatial floor (CFAR self-
+//     masking) still towers over its local saddles, so it is no longer missed.
+//     A voice formant riding a broad hump has little prominence over the hump.
+//   • NARROWNESS — width measured at a fixed dB drop from the peak. A carrier is
+//     1–3 bins wide; an SSB voice hump stays up for hundreds of Hz to ~2.7 kHz.
+//     This is what stops the low-end of voice from ever qualifying.
+//   • STATIONARITY — amplitude steadiness over time (signal-estimator). A
+//     carrier's level is constant; voice swings with the 2–10 Hz syllabic
+//     envelope. This is the decisive carrier-vs-voice discriminant.
+const MIN_SNR_DB = 9; // light prefilter — prominence is the real level gate
+const MIN_PROMINENCE_DB = 10; // peak must stand this far above its local saddle
+const PROMINENCE_WINDOW_HZ = 3_000; // ± window the saddle reference is taken over
+const WIDTH_DROP_DB = 6; // carrier width is measured at −6 dB from the peak
+const MAX_CARRIER_WIDTH_HZ = 500; // wider than this is a signal/voice, not a carrier
+const MIN_STEADINESS = 0.6; // amplitude-stationarity gate (0..1; carriers ≳ 0.85)
+const NOTCH_PAD_HZ = 30; // pad each side of the measured carrier width
 const MIN_WIDTH_HZ = 45;
-const NARROW_MAX_WIDTH_HZ = 750;
-const MAX_WIDTH_HZ = 12_000;
-const WIDE_MAX_MIDSPAN_HZ = 5_000;
-const WIDE_MIN_SNR_DB = 28;
-const WIDE_EDGE_MIN_SNR_DB = 24;
-const WIDE_MIN_CONFIDENCE = 0.7;
-const WIDE_EDGE_BINS = 3;
-const EDGE_PAD_HZ = 40;
+const NARROW_MAX_WIDTH_HZ = 750; // tracker required-hits boundary
+const MAX_WIDTH_HZ = 600; // an emitted notch never exceeds a narrow carrier band
 const MERGE_HZ = 120;
 const MAX_AUTO_NOTCHES = 16;
 const VERIFY_SAMPLES = 3;
@@ -105,22 +124,39 @@ function clampWidth(widthHz: number): number {
   return Math.max(MIN_WIDTH_HZ, Math.min(MAX_WIDTH_HZ, widthHz));
 }
 
-function isWideBlockerRun(
-  occupiedHz: number,
-  lo: number,
-  hi: number,
-  n: number,
-  crestSnr: number,
-  avgConfidence: number,
-): boolean {
-  if (occupiedHz <= NARROW_MAX_WIDTH_HZ) return true;
-  if (occupiedHz > MAX_WIDTH_HZ) return false;
-  if (avgConfidence < WIDE_MIN_CONFIDENCE) return false;
+/** Topographic prominence of the peak at `i`, in dB: peak minus the higher of
+ *  the two local saddle minima within ±windowBins. Walking outward stops when
+ *  the spectrum rises above the peak (the basin edge) or the window/array ends.
+ *  Robust to a tilted or skirt-lifted baseline in a way that peak-minus-CFAR is
+ *  not — this is the fix for a strong carrier self-masking its own floor. */
+function saddleProminenceDb(spec: Float32Array, i: number, windowBins: number): number {
+  const peak = spec[i]!;
+  const loEdge = Math.max(0, i - windowBins);
+  const hiEdge = Math.min(spec.length - 1, i + windowBins);
+  let leftMin = peak;
+  for (let j = i - 1; j >= loEdge; j--) {
+    const v = spec[j]!;
+    if (!finite(v) || v > peak) break;
+    if (v < leftMin) leftMin = v;
+  }
+  let rightMin = peak;
+  for (let j = i + 1; j <= hiEdge; j++) {
+    const v = spec[j]!;
+    if (!finite(v) || v > peak) break;
+    if (v < rightMin) rightMin = v;
+  }
+  return peak - Math.max(leftMin, rightMin);
+}
 
-  const edgeVisible = lo <= WIDE_EDGE_BINS || hi >= n - 1 - WIDE_EDGE_BINS;
-  if (edgeVisible) return crestSnr >= WIDE_EDGE_MIN_SNR_DB;
-
-  return occupiedHz <= WIDE_MAX_MIDSPAN_HZ && crestSnr >= WIDE_MIN_SNR_DB;
+/** Width in Hz of the contiguous run around the peak that stays at or above
+ *  `threshold` dB (peak − WIDTH_DROP_DB). A carrier collapses within a couple of
+ *  bins; a voice hump stays above the −6 dB line for hundreds of Hz. */
+function widthAtDropHz(spec: Float32Array, i: number, threshold: number, hzPerPixel: number): number {
+  let lo = i;
+  let hi = i;
+  while (lo > 0 && finite(spec[lo - 1]!) && spec[lo - 1]! >= threshold) lo--;
+  while (hi < spec.length - 1 && finite(spec[hi + 1]!) && spec[hi + 1]! >= threshold) hi++;
+  return (hi - lo + 1) * hzPerPixel;
 }
 
 function quantizeHz(value: number): number {
@@ -269,70 +305,56 @@ export function createAutoNotchTracker(options: AutoNotchTrackerOptions = {}): A
 export function detectAutoNotches(input: AutoNotchInput): AutoNotchCandidate[] {
   const spec = input.spectrum;
   const floor = input.floor;
-  const conf = input.confidence;
+  const steady = input.stationarity;
   const hzPerPixel = input.hzPerPixel;
-  if (!spec || !floor || !conf || spec.length < 8) return [];
+  // Stationarity is required: without it we cannot tell a carrier from voice,
+  // and emitting on prominence alone would re-introduce the voice-eating bug.
+  // Fail safe to "no notches" rather than guess.
+  if (!spec || !floor || !steady || spec.length < 8) return [];
   const n = spec.length;
-  if (floor.length !== n || conf.length !== n || !finite(hzPerPixel) || hzPerPixel <= 0) return [];
+  if (floor.length !== n || steady.length !== n || !finite(hzPerPixel) || hzPerPixel <= 0) return [];
   const centerHz = Number(input.centerHz);
   if (!finite(centerHz)) return [];
 
+  const windowBins = Math.max(2, Math.round(PROMINENCE_WINDOW_HZ / hzPerPixel));
   const raw: AutoNotchCandidate[] = [];
-  let i = 1;
-  while (i < n - 1) {
-    const snr = spec[i]! - floor[i]!;
-    const c = conf[i]!;
-    if (!finite(snr) || !finite(c) || snr < MIN_SNR_DB || c < MIN_CONFIDENCE) {
-      i++;
-      continue;
-    }
 
-    let lo = i;
-    let hi = i;
-    let crest = i;
-    let crestSnr = snr;
-    let confidenceSum = 0;
-    let bins = 0;
+  for (let i = 1; i < n - 1; i++) {
+    const here = spec[i]!;
+    const left = spec[i - 1]!;
+    const right = spec[i + 1]!;
+    if (!finite(here) || !finite(left) || !finite(right)) continue;
+    // Local maximum. `>=` on the left lets a flat-topped two-bin carrier anchor
+    // on its left bin (the right `>` keeps it from anchoring twice).
+    if (!(here >= left && here > right)) continue;
 
-    while (lo > 0) {
-      const leftSnr = spec[lo - 1]! - floor[lo - 1]!;
-      const leftConf = conf[lo - 1]!;
-      if (!finite(leftSnr) || !finite(leftConf) || leftSnr < MIN_SNR_DB - 2 || leftConf < MIN_CONFIDENCE * 0.8) break;
-      lo--;
-    }
-    while (hi < n - 1) {
-      const rightSnr = spec[hi + 1]! - floor[hi + 1]!;
-      const rightConf = conf[hi + 1]!;
-      if (!finite(rightSnr) || !finite(rightConf) || rightSnr < MIN_SNR_DB - 2 || rightConf < MIN_CONFIDENCE * 0.8) break;
-      hi++;
-    }
+    // Gate 1 — light level prefilter (cheap; skips the deep noise floor).
+    const snr = here - floor[i]!;
+    if (!finite(snr) || snr < MIN_SNR_DB) continue;
 
-    for (let k = lo; k <= hi; k++) {
-      const kSnr = spec[k]! - floor[k]!;
-      if (kSnr > crestSnr) {
-        crest = k;
-        crestSnr = kSnr;
-      }
-      confidenceSum += Math.max(0, Math.min(1, conf[k]!));
-      bins++;
-    }
+    // Gate 2 — amplitude stationarity. Voice swings; a carrier is steady.
+    const steadiness = steady[i]!;
+    if (!finite(steadiness) || steadiness < MIN_STEADINESS) continue;
 
-    const occupiedHz = Math.max(hzPerPixel, (hi - lo + 1) * hzPerPixel);
-    const avgConfidence = bins > 0 ? confidenceSum / bins : c;
-    if (isWideBlockerRun(occupiedHz, lo, hi, n, crestSnr, avgConfidence)) {
-      const widthHz = clampWidth(occupiedHz + EDGE_PAD_HZ + hzPerPixel * 2);
-      const candidate = {
-        centerHz: binToHz(crest, n, centerHz, hzPerPixel),
-        widthHz,
-        snrDb: crestSnr,
-        confidence: avgConfidence,
-      };
-      if (!isCoveredByManualNotch(candidate, input.existingNotches ?? [])) {
-        raw.push(candidate);
-      }
-    }
+    // Gate 3 — prominence over the local saddle (carrier vs hump shoulder, and
+    // the fix for CFAR self-masking on strong carriers).
+    const prominence = saddleProminenceDb(spec, i, windowBins);
+    if (prominence < MIN_PROMINENCE_DB) continue;
 
-    i = hi + 1;
+    // Gate 4 — narrowness. A carrier collapses within a couple of bins; a voice
+    // hump stays above the −6 dB line for hundreds of Hz.
+    const widthHz = widthAtDropHz(spec, i, here - WIDTH_DROP_DB, hzPerPixel);
+    if (widthHz > MAX_CARRIER_WIDTH_HZ) continue;
+
+    const candidate: AutoNotchCandidate = {
+      centerHz: binToHz(i, n, centerHz, hzPerPixel),
+      widthHz: clampWidth(widthHz + 2 * NOTCH_PAD_HZ),
+      snrDb: prominence,
+      confidence: steadiness,
+    };
+    if (!isCoveredByManualNotch(candidate, input.existingNotches ?? [])) {
+      raw.push(candidate);
+    }
   }
 
   raw.sort(candidateSort);

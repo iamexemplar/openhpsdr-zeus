@@ -114,6 +114,20 @@ const COHERENCE_SNR_FULL_DB = 22;
 const COHERENCE_DECAY = 0.88;
 const COHERENCE_HOLD_GATE = 0.45;
 const COHERENCE_VISUAL_BOOST_DB = 4;
+// Amplitude stationarity — the carrier-vs-voice discriminant for auto-notch.
+// Temporal "confidence" (above) measures whether energy PERSISTS; it cannot
+// tell a steady carrier from sustained voice because both persist. What
+// separates them is whether the LEVEL is steady: a carrier/heterodyne sits at a
+// near-constant amplitude (deviation well under a dB frame-to-frame), while
+// SSB/AM voice swings several dB with the 2–10 Hz syllabic envelope. Track an
+// EWMA of the per-bin SNR and an EWMA of its absolute deviation from that mean
+// (an exponentially-weighted mean-absolute-deviation). alpha ≈ 0.2 gives a
+// ~0.3–0.5 s memory at display frame rates — long enough to span a syllable, so
+// voice reads as non-stationary. Map deviation → 0..1 steadiness (1 = a dead-
+// steady carrier, 0 = fluctuating voice/noise). Detection-only: never alters a
+// display pixel.
+const STATIONARITY_ALPHA = 0.2;
+const STATIONARITY_DEV_FULL_DB = 6;
 // Display-domain visual AGC. After local-floor subtraction/ridge/coherence,
 // sparse weak scenes can still under-use the 0..1 colormap because a fixed
 // Pop span must also tolerate strong stations. Visual AGC estimates the active
@@ -441,6 +455,32 @@ export type SignalEnhanceSceneStatus = {
   coherentMaxSnrDb: number;
 };
 
+export type AdjacentNoiseProfileInput = {
+  spectrum: Float32Array | null;
+  floor: Float32Array | null;
+  confidence?: Float32Array | null;
+  centerHz: number | bigint;
+  hzPerPixel: number;
+  dialHz: number;
+  filterLowHz: number;
+  filterHighHz: number;
+};
+
+export type AdjacentNoiseProfile = {
+  usable: boolean;
+  bins: number;
+  leftBins: number;
+  rightBins: number;
+  floorDb: number;
+  p10Db: number;
+  p50Db: number;
+  p90Db: number;
+  leftFloorDb: number | null;
+  rightFloorDb: number | null;
+  slopeDbPerKhz: number | null;
+  rejectedPct: number;
+};
+
 const SCENE_PEAK_GATE_DB = 8;
 const SCENE_BUSY_PEAKS_PER_10KHZ = 3.5;
 const SCENE_BUSY_OCCUPIED_RATIO = 0.14;
@@ -448,6 +488,11 @@ const SCENE_DX_MAX_PEAKS_PER_10KHZ = 1.6;
 const SCENE_DX_MAX_SNR_DB = 24;
 const SCENE_IMPULSE_GATE_DB = 12;
 const SCENE_IMPULSE_CONFIDENCE_CEILING = 0.25;
+const ADJACENT_NOISE_GUARD_HZ = 250;
+const ADJACENT_NOISE_SPAN_HZ = 4500;
+const ADJACENT_NOISE_SIGNAL_GATE_DB = 7;
+const ADJACENT_NOISE_CONFIDENCE_GATE = 0.4;
+const ADJACENT_NOISE_MAX_REJECTED_PCT = 80;
 const FALLBACK_FLOOR_DB = -200;
 
 function finiteSample(arr: Float32Array, index: number): number | null {
@@ -498,6 +543,155 @@ function validSpectrumGeometry(centerHz: number, hzPerPixel: number): boolean {
 
 function validSearchRadiusHz(radiusHz: number): boolean {
   return Number.isFinite(radiusHz) && radiusHz >= 0;
+}
+
+function round1(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function percentileValue(values: number[], q: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.max(0, Math.min(sorted.length - 1, Math.round((sorted.length - 1) * q)));
+  return sorted[idx] ?? null;
+}
+
+function absoluteCenterHz(centerHz: number | bigint): number | null {
+  const value = typeof centerHz === 'bigint' ? Number(centerHz) : centerHz;
+  return Number.isFinite(value) ? value : null;
+}
+
+function collectAdjacentNoise(
+  spec: Float32Array,
+  floorArr: Float32Array,
+  confidence: Float32Array | null | undefined,
+  centerHz: number,
+  hzPerPixel: number,
+  lowHz: number,
+  highHz: number,
+): { values: number[]; inspected: number; rejected: number; hzSum: number } {
+  const n = spec.length;
+  const half = n / 2;
+  const useConfidence = confidence !== null && confidence !== undefined && confidence.length === n;
+  const loBin = Math.max(0, Math.ceil((lowHz - centerHz) / hzPerPixel + half));
+  const hiBin = Math.min(n - 1, Math.floor((highHz - centerHz) / hzPerPixel + half));
+  const values: number[] = [];
+  let inspected = 0;
+  let rejected = 0;
+  let hzSum = 0;
+  if (hiBin < loBin) return { values, inspected, rejected, hzSum };
+
+  for (let i = loBin; i <= hiBin; i++) {
+    const sample = spec[i]!;
+    const floorDb = floorArr[i]!;
+    if (
+      !Number.isFinite(sample) ||
+      !Number.isFinite(floorDb) ||
+      floorDb <= FALLBACK_FLOOR_DB + 1
+    ) {
+      continue;
+    }
+
+    inspected++;
+    const snr = sample - floorDb;
+    const conf = finiteConfidenceValue(useConfidence ? confidence! : null, n, i);
+    if (snr >= ADJACENT_NOISE_SIGNAL_GATE_DB || conf >= ADJACENT_NOISE_CONFIDENCE_GATE) {
+      rejected++;
+      continue;
+    }
+
+    values.push(floorDb);
+    hzSum += centerHz + (i - half) * hzPerPixel;
+  }
+
+  return { values, inspected, rejected, hzSum };
+}
+
+export function estimateAdjacentNoiseProfile(input: AdjacentNoiseProfileInput): AdjacentNoiseProfile | null {
+  const spec = input.spectrum;
+  const floorArr = input.floor;
+  const centerHz = absoluteCenterHz(input.centerHz);
+  if (
+    spec === null ||
+    floorArr === null ||
+    spec.length < 8 ||
+    floorArr.length !== spec.length ||
+    centerHz === null ||
+    !validHzPerPixel(input.hzPerPixel) ||
+    !Number.isFinite(input.dialHz) ||
+    !Number.isFinite(input.filterLowHz) ||
+    !Number.isFinite(input.filterHighHz)
+  ) {
+    return null;
+  }
+
+  const passLowHz = input.dialHz + Math.min(input.filterLowHz, input.filterHighHz);
+  const passHighHz = input.dialHz + Math.max(input.filterLowHz, input.filterHighHz);
+  if (!Number.isFinite(passLowHz) || !Number.isFinite(passHighHz) || passHighHz <= passLowHz) return null;
+
+  const left = collectAdjacentNoise(
+    spec,
+    floorArr,
+    input.confidence,
+    centerHz,
+    input.hzPerPixel,
+    passLowHz - ADJACENT_NOISE_GUARD_HZ - ADJACENT_NOISE_SPAN_HZ,
+    passLowHz - ADJACENT_NOISE_GUARD_HZ,
+  );
+  const right = collectAdjacentNoise(
+    spec,
+    floorArr,
+    input.confidence,
+    centerHz,
+    input.hzPerPixel,
+    passHighHz + ADJACENT_NOISE_GUARD_HZ,
+    passHighHz + ADJACENT_NOISE_GUARD_HZ + ADJACENT_NOISE_SPAN_HZ,
+  );
+
+  const values = [...left.values, ...right.values];
+  const inspected = left.inspected + right.inspected;
+  const rejected = left.rejected + right.rejected;
+  if (inspected === 0 || values.length === 0) return null;
+
+  const p10 = percentileValue(values, 0.1);
+  const p50 = percentileValue(values, 0.5);
+  const p90 = percentileValue(values, 0.9);
+  if (p10 === null || p50 === null || p90 === null) return null;
+
+  const leftP50 = percentileValue(left.values, 0.5);
+  const rightP50 = percentileValue(right.values, 0.5);
+  const leftCenter = left.values.length > 0 ? left.hzSum / left.values.length : null;
+  const rightCenter = right.values.length > 0 ? right.hzSum / right.values.length : null;
+  const slopeDbPerKhz =
+    leftP50 !== null &&
+    rightP50 !== null &&
+    leftCenter !== null &&
+    rightCenter !== null &&
+    rightCenter > leftCenter
+      ? ((rightP50 - leftP50) / (rightCenter - leftCenter)) * 1000
+      : null;
+
+  const rejectedPct = (rejected / inspected) * 100;
+  const minAcceptedBins = Math.max(8, Math.ceil(600 / input.hzPerPixel));
+  const usable =
+    values.length >= minAcceptedBins &&
+    rejectedPct <= ADJACENT_NOISE_MAX_REJECTED_PCT &&
+    (left.values.length > 0 || right.values.length > 0);
+
+  return {
+    usable,
+    bins: values.length,
+    leftBins: left.values.length,
+    rightBins: right.values.length,
+    floorDb: round1(p50),
+    p10Db: round1(p10),
+    p50Db: round1(p50),
+    p90Db: round1(p90),
+    leftFloorDb: leftP50 === null ? null : round1(leftP50),
+    rightFloorDb: rightP50 === null ? null : round1(rightP50),
+    slopeDbPerKhz: slopeDbPerKhz === null ? null : round1(slopeDbPerKhz),
+    rejectedPct: round1(rejectedPct),
+  };
 }
 
 function sceneSnr(spec: Float32Array, f: Float32Array, index: number): number | null {
@@ -887,6 +1081,9 @@ let floor: Float32Array | null = null; // published, time-smoothed floor
 let quietRef: Float32Array | null = null; // per-frame low-percentile spatial reference
 let signalHold: Float32Array | null = null; // display-only SNR peak hold
 let signalConfidence: Float32Array | null = null; // 0..1 temporal/neighbour confidence
+let signalStationarity: Float32Array | null = null; // 0..1 amplitude steadiness (carrier vs voice)
+let signalLevelEma: Float32Array | null = null; // EWMA of per-bin SNR (stationarity mean)
+let signalLevelDev: Float32Array | null = null; // EWMA |SNR − mean| (stationarity deviation)
 let previousSnr: Float32Array | null = null; // previous-frame SNR for coherence
 let ridgeMean: Float32Array | null = null; // display-only local positive-SNR mean
 let signalTexture: Float32Array | null = null; // 0..1 signal-evidence texture
@@ -1036,8 +1233,14 @@ function updateSignalState(spec: Float32Array): void {
   }
   if (signalConfidence === null || signalConfidence.length !== n) signalConfidence = new Float32Array(n);
   if (previousSnr === null || previousSnr.length !== n) previousSnr = new Float32Array(n);
+  if (signalStationarity === null || signalStationarity.length !== n) signalStationarity = new Float32Array(n);
+  if (signalLevelEma === null || signalLevelEma.length !== n) signalLevelEma = new Float32Array(n).fill(NaN);
+  if (signalLevelDev === null || signalLevelDev.length !== n) signalLevelDev = new Float32Array(n).fill(NaN);
   const conf = signalConfidence;
   const prev = previousSnr;
+  const steady = signalStationarity;
+  const levelEma = signalLevelEma;
+  const levelDev = signalLevelDev;
   const gate = st.popFloorDb;
   const coherenceHoldGate = st.coherenceHoldGate;
   const needsDisplayHold = st.popEnabled || estimatorConsumers > 0;
@@ -1077,6 +1280,20 @@ function updateSignalState(spec: Float32Array): void {
       const next = target > decayed ? target : decayed;
       hold[i] = next >= gate && conf[i]! >= coherenceHoldGate ? next : 0;
     }
+
+    // Amplitude stationarity. Seed the EWMA mean on first sight so a fresh
+    // carrier reads steady immediately rather than after the EWMA crawls up
+    // from zero; the deviation EWMA then climbs only if the level actually
+    // moves (voice) and stays near zero for a constant carrier.
+    const seenLevel = Number.isFinite(levelEma[i]!) ? levelEma[i]! : snr;
+    const dev = Math.abs(snr - seenLevel);
+    levelEma[i] = seenLevel + (snr - seenLevel) * STATIONARITY_ALPHA;
+    const seenDev = Number.isFinite(levelDev[i]!) ? levelDev[i]! : 0;
+    levelDev[i] = seenDev + (dev - seenDev) * STATIONARITY_ALPHA;
+    steady[i] = snr >= gate
+      ? Math.max(0, Math.min(1, 1 - levelDev[i]! / STATIONARITY_DEV_FULL_DB))
+      : 0;
+
     prev[i] = snr;
   }
 }
@@ -1084,6 +1301,9 @@ function updateSignalState(spec: Float32Array): void {
 function resetSignalState(): void {
   signalHold = null;
   signalConfidence = null;
+  signalStationarity = null;
+  signalLevelEma = null;
+  signalLevelDev = null;
   previousSnr = null;
   ridgeMean = null;
   signalTexture = null;
@@ -1157,6 +1377,15 @@ export function getNoiseFloor(): Float32Array | null {
  *  signal energy; values near 0 are noise or one-frame speckles. */
 export function getSignalConfidence(): Float32Array | null {
   return signalConfidence;
+}
+
+/** Current 0..1 amplitude-stationarity map, or null before it has accumulated.
+ *  Read-only. Values near 1 mean the bin's level has been steady frame-to-frame
+ *  (a carrier/heterodyne); values near 0 mean it swings (voice/AM sidebands or
+ *  noise). This is the carrier-vs-voice discriminant the auto-notch detector
+ *  uses so it stops notching voice and starts catching steady blockers. */
+export function getSignalStationarity(): Float32Array | null {
+  return signalStationarity;
 }
 
 /** Current 0..1 display signal-evidence texture, or null before an enhanced
@@ -1234,8 +1463,8 @@ function computeSignalTexture(
   out: Float32Array,
 ): void {
   const n = raw.length;
-  const weakGate = Math.max(0.5, st.popFloorDb - 1.5);
-  const fullGate = st.popFloorDb + 6.5;
+  const weakGate = Math.max(0.5, st.popFloorDb - 0.25);
+  const fullGate = st.popFloorDb + 8.5;
   for (let i = 0; i < n; i++) {
     if (finiteSample(raw, i) === null) {
       out[i] = 0;
@@ -1258,28 +1487,34 @@ function computeSignalTexture(
     const supportSnr = neighbourSupport;
     const contrast = snr - localMean;
 
-    const snrEvidence = smooth01(weakGate, fullGate, snr);
-    const ridgeEvidence = smooth01(0.30, 7.5, contrast);
-    const supportEvidence = smooth01(Math.max(0.25, st.popFloorDb - 1.25), st.popFloorDb + 4.5, supportSnr);
-    const coherentEvidence = smooth01(0.18, 0.62, confidence);
-    const edgeTexture = smooth01(0.04, 0.48, Math.max(Math.abs(snr - left1), Math.abs(snr - right1)) / 18);
+    const coherentEvidence = smooth01(0.30, 0.70, confidence);
+    const strongEvidence = smooth01(st.popFloorDb + 8, st.popFloorDb + 24, snr);
+    const persistentOrStrong = Math.max(coherentEvidence, strongEvidence);
+    const snrEvidence = smooth01(weakGate, fullGate, snr) * persistentOrStrong;
+    const ridgeEvidence = smooth01(0.85, 8.0, contrast) *
+      Math.max(persistentOrStrong, smooth01(st.popFloorDb + 4, st.popFloorDb + 16, snr));
+    const supportEvidence = smooth01(st.popFloorDb, st.popFloorDb + 5.5, supportSnr) *
+      Math.max(coherentEvidence, strongEvidence * 0.85);
+    const edgeTexture = smooth01(0.08, 0.55, Math.max(Math.abs(snr - left1), Math.abs(snr - right1)) / 18) *
+      persistentOrStrong;
     const structureEvidence = Math.max(coherentEvidence, supportEvidence);
 
     let texture = Math.max(
-      snrEvidence * (0.06 + 0.36 * structureEvidence),
-      ridgeEvidence * (0.08 + 0.58 * structureEvidence),
-      supportEvidence * 0.58,
+      snrEvidence * (0.04 + 0.34 * structureEvidence),
+      ridgeEvidence * (0.05 + 0.54 * structureEvidence),
+      supportEvidence * 0.46,
     );
     texture += Math.min(
-      0.30,
-      coherentEvidence * supportEvidence * 0.20 +
-        ridgeEvidence * coherentEvidence * 0.20 +
-        edgeTexture * ridgeEvidence * 0.08,
+      0.22,
+      coherentEvidence * supportEvidence * 0.16 +
+        ridgeEvidence * coherentEvidence * 0.16 +
+        edgeTexture * ridgeEvidence * 0.06,
     );
 
-    if (snr < weakGate && confidence < 0.22) texture = 0;
-    if (structureEvidence < 0.25) texture = Math.min(texture, 0.15 + structureEvidence * 0.22);
-    if (snr < st.popFloorDb && supportEvidence < 0.35 && confidence < 0.30) texture *= 0.30;
+    if (persistentOrStrong < 0.10) texture = 0;
+    if (snr < weakGate && coherentEvidence < 0.18) texture = 0;
+    if (structureEvidence < 0.28) texture = Math.min(texture, structureEvidence * 0.55);
+    if (snr < st.popFloorDb + 1.5 && supportEvidence < 0.30 && coherentEvidence < 0.30) texture *= 0.18;
     out[i] = clamp01(texture);
   }
 }
@@ -1370,6 +1605,30 @@ function terrainLift01(texture: Float32Array, n: number, i: number): number {
   return clamp01(Math.pow(smooth01(0.14, 0.88, plateau), 0.72) + crest * 0.55);
 }
 
+function waterfallTerrainHeight01(
+  baseSnr: number,
+  gate: number,
+  textureValue: number,
+  confidence: number,
+  terrain: number,
+  ridgeCrest: number,
+  confirmed: number,
+  structured: number,
+): number {
+  const temporalEvidence = smooth01(0.28, 0.68, confidence);
+  const textureEvidence = smooth01(0.16, 0.78, textureValue);
+  const strongEvidence = smooth01(gate + 10, gate + 30, baseSnr);
+  const signalEvidence = Math.max(temporalEvidence, textureEvidence, strongEvidence * 0.72, confirmed);
+  if (signalEvidence < 0.06) return 0;
+
+  const snrHeight = smooth01(gate - 0.5, gate + 30, baseSnr);
+  const ridgeShape = 0.34 + 0.66 * ridgeCrest;
+  const shoulder = Math.max(textureEvidence * (0.14 + 0.34 * structured), terrain * (0.22 + 0.52 * structured));
+  const plateau = snrHeight * signalEvidence * (0.18 + 0.38 * structured) * ridgeShape;
+  const crest = ridgeCrest * signalEvidence * (0.16 + 0.26 * Math.max(temporalEvidence, textureEvidence));
+  return clamp01(Math.max(shoulder, plateau) + crest);
+}
+
 function estimateVisualAgcSpan(
   raw: Float32Array,
   f: Float32Array,
@@ -1432,11 +1691,12 @@ function updateDisplayTexture(
 /** Map the spectrum to a 0..1 Pop display value per bin: subtract the floor,
  *  derive a sparse signal texture, then compress so weak and strong signals can
  *  coexist in the colormap. Outputs 0 (dark) when no floor exists yet. */
-export function enhanceInto(raw: Float32Array, out: Float32Array): void {
+export function enhanceInto(raw: Float32Array, out: Float32Array, terrainOut?: Float32Array | null): void {
   const n = raw.length;
   const f = floor;
   if (f === null || f.length !== n) {
     out.fill(0);
+    if (terrainOut && terrainOut.length === n) terrainOut.fill(0);
     signalTexture = null;
     return;
   }
@@ -1450,25 +1710,58 @@ export function enhanceInto(raw: Float32Array, out: Float32Array): void {
   const span = estimateVisualAgcSpan(raw, f, hold, conf, mean, texture, st, baseSpan);
   for (let i = 0; i < n; i++) {
     const snr = displaySnrForBin(raw, f, hold, conf, mean, texture, st, i, true);
-    const rawV = (snr - gate) / span;
-    let v = rawV <= 0 ? 0 : 0.94 * (1 - Math.exp(-rawV * 1.02));
     const textureValue = Number.isFinite(texture[i]!) ? texture[i]! : 0;
     const confidence = finiteConfidenceValue(conf, n, i);
     const terrain = terrainLift01(texture, n, i);
     const leftSnr = i > 0 ? optionalSnr(raw, f, n, i - 1) ?? 0 : 0;
     const rightSnr = i + 1 < n ? optionalSnr(raw, f, n, i + 1) ?? 0 : 0;
-    const structured = Math.max(
-      smooth01(0.24, 0.62, confidence),
-      smooth01(st.popFloorDb - 1, st.popFloorDb + 4, Math.max(leftSnr, rightSnr)),
-    );
-    const textureLift = smooth01(0.12, 0.78, textureValue) * 0.42 * structured;
     const baseSnr = positiveSnrAt(raw, f, hold, n, i);
+    const temporalEvidence = smooth01(0.28, 0.68, confidence);
+    const textureEvidence = smooth01(0.16, 0.78, textureValue);
+    const strongEvidence = smooth01(gate + 8, gate + 24, baseSnr);
     const localMean = Number.isFinite(mean[i]!) ? mean[i]! : 0;
     const ridgeCrest = smooth01(0.75, 8.0, baseSnr - localMean);
-    const terrainLift = terrain * (0.22 + 0.44 * structured);
-    v = Math.max(clamp01(v), textureLift, terrainLift);
-    v = clamp01(v + ridgeCrest * (0.10 + 0.08 * structured) + terrain * ridgeCrest * 0.08);
-    out[i] = gamma === 1 ? v : Math.pow(v, gamma);
+    const neighbourEvidence = smooth01(gate + 1, gate + 8, Math.max(leftSnr, rightSnr)) *
+      Math.max(temporalEvidence, strongEvidence * 0.85);
+    const confirmedEvidence = Math.max(temporalEvidence, textureEvidence, neighbourEvidence);
+    const signalEvidence = Math.max(confirmedEvidence, strongEvidence * 0.45);
+    const structured = Math.max(
+      temporalEvidence,
+      textureEvidence,
+      neighbourEvidence,
+      strongEvidence * 0.35,
+    );
+    const rawV = (snr - gate) / Math.max(1, span * (1.72 + 0.62 * (1 - structured)));
+    const absoluteHeight = rawV <= 0 ? 0 : 1 - Math.exp(-rawV * 0.70);
+    let v = absoluteHeight * (0.34 + 0.30 * signalEvidence + 0.10 * structured);
+    if (baseSnr < gate + 7 && signalEvidence < 0.26) {
+      v = 0;
+    } else if (baseSnr < gate + 14) {
+      v *= 0.35 + 0.65 * smooth01(0.14, 0.50, signalEvidence);
+    }
+    const ridgeShape = 0.30 + 0.70 * ridgeCrest;
+    const textureLift = textureEvidence * (0.16 + 0.32 * structured) * ridgeShape;
+    const terrainLift = terrain * (0.10 + 0.44 * structured) * (0.36 + 0.64 * ridgeCrest);
+    const plateau = smooth01(gate + 4, gate + 28, baseSnr) *
+      signalEvidence * (0.08 + 0.12 * textureEvidence) * (1 - ridgeCrest * 0.60);
+    const crestLift = ridgeCrest * confirmedEvidence * (0.16 + 0.26 * structured);
+    v = Math.max(clamp01(v), textureLift, terrainLift, plateau);
+    v = clamp01(v + crestLift + terrain * ridgeCrest * confirmedEvidence * 0.10);
+    const summitCeiling = 0.72 + 0.11 * ridgeCrest + 0.05 * Math.max(temporalEvidence, textureEvidence);
+    const shaped = Math.min(v, summitCeiling);
+    out[i] = gamma === 1 ? shaped : Math.pow(shaped, gamma);
+    if (terrainOut && terrainOut.length === n) {
+      terrainOut[i] = waterfallTerrainHeight01(
+        baseSnr,
+        gate,
+        textureValue,
+        confidence,
+        terrain,
+        ridgeCrest,
+        confirmedEvidence,
+        structured,
+      );
+    }
   }
 }
 
@@ -1476,11 +1769,12 @@ export function enhanceInto(raw: Float32Array, out: Float32Array): void {
  *  the renderer dB-space rows with coherent signals lifted like topography.
  *  Because output remains in dB, the normal waterfall range slider keeps full
  *  authority; POP remains the only hard-gated normalized mode. */
-export function enhanceWaterfallTextureInto(raw: Float32Array, out: Float32Array): void {
+export function enhanceWaterfallTextureInto(raw: Float32Array, out: Float32Array, terrainOut?: Float32Array | null): void {
   const n = raw.length;
   const f = floor;
   if (f === null || f.length !== n) {
     for (let i = 0; i < n; i++) out[i] = finiteSample(raw, i) ?? FALLBACK_FLOOR_DB;
+    if (terrainOut && terrainOut.length === n) terrainOut.fill(0);
     signalTexture = null;
     return;
   }
@@ -1497,22 +1791,48 @@ export function enhanceWaterfallTextureInto(raw: Float32Array, out: Float32Array
     const liveSnr = optionalSnr(raw, f, n, i) ?? 0;
     const texturedSnr = displaySnrForBin(raw, f, hold, conf, mean, texture, st, i, true);
     const textureValue = Number.isFinite(texture[i]!) ? texture[i]! : 0;
-    const structure = smooth01(0.18, 0.76, textureValue);
+    const confidence = finiteConfidenceValue(conf, n, i);
+    const temporalEvidence = smooth01(0.28, 0.68, confidence);
+    const textureEvidence = smooth01(0.20, 0.80, textureValue);
+    const structure = Math.max(
+      textureEvidence,
+      temporalEvidence * smooth01(st.popFloorDb + 0.5, st.popFloorDb + 10, texturedSnr),
+    );
     const terrain = terrainLift01(texture, n, i);
     const localMean = Number.isFinite(mean[i]!) ? mean[i]! : 0;
-    const ridgeCrest = smooth01(0.65, 8.0, positiveSnrAt(raw, f, hold, n, i) - localMean);
+    const baseSnr = positiveSnrAt(raw, f, hold, n, i);
+    const ridgeCrest = smooth01(0.65, 8.0, baseSnr - localMean);
+    const confirmed = Math.max(structure, terrain * 0.82, temporalEvidence);
     const reliefDb = structure <= 0
       ? 0
       : Math.min(
         18,
-        Math.max(0, texturedSnr - Math.max(0, liveSnr)) * 0.42 +
-          terrain * (5.8 + st.coherenceBoostDb * 1.20) +
-          ridgeCrest * (2.8 + terrain * 4.0) +
-          structure * 2.2,
+        Math.max(0, texturedSnr - Math.max(0, liveSnr)) * 0.24 +
+          terrain * (5.4 + st.coherenceBoostDb * 1.05) +
+          ridgeCrest * confirmed * (3.6 + terrain * 4.8) +
+          confirmed * 2.2,
       );
-    const floorTuckDb = smooth01(0, st.popFloorDb + 6, Math.max(0, st.popFloorDb + 4 - liveSnr)) *
-      (textureValue < 0.08 ? 5.8 : (1 - structure) * 1.2);
+    const nearFloor = 1 - smooth01(st.popFloorDb - 1, st.popFloorDb + 16, Math.max(liveSnr, texturedSnr * 0.55));
+    const lowEvidence = 1 - smooth01(0.12, 0.58, confirmed);
+    const stochasticSpeckle = smooth01(st.popFloorDb + 3, st.popFloorDb + 13, liveSnr) *
+      (1 - Math.max(temporalEvidence, textureEvidence));
+    const floorTuckDb =
+      nearFloor * (4.0 + 18.0 * lowEvidence) +
+      stochasticSpeckle * 7.0 +
+      (1 - confirmed) * smooth01(0, st.popFloorDb + 7, Math.max(0, st.popFloorDb + 4 - texturedSnr)) * 4.5;
     out[i] = sample + reliefDb - floorTuckDb;
+    if (terrainOut && terrainOut.length === n) {
+      terrainOut[i] = waterfallTerrainHeight01(
+        baseSnr,
+        st.popFloorDb,
+        textureValue,
+        confidence,
+        terrain,
+        ridgeCrest,
+        confirmed,
+        structure,
+      );
+    }
   }
 }
 

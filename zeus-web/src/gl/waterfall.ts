@@ -73,6 +73,8 @@ export type PushOptions = {
   // tracker and reset/shift paths still run, so VFO retunes keep the history
   // coherent while the Waterfall component throttles row uploads (task #25).
   skipRowUpload?: boolean;
+  /** Optional 0..1 terrain/evidence height row aligned with wfDb. */
+  terrainRow?: Float32Array | null;
 };
 
 /** WebGL float-texture capabilities, surfaced so the component can show an
@@ -101,9 +103,17 @@ export type WfRenderer = {
   ) => void;
   /** Draw the history. `viewCenterHz` is the animated view-center; when
    *  non-null the sampling window slides by the fractional offset between
-   *  the history's anchor center and the view (issue #597). Null renders
-   *  with zero offset (pre-first-frame / tests). */
-  draw: (dbMin: number, dbMax: number, viewCenterHz?: number | null) => void;
+   *  the history's anchor center and the view (issue #597). `viewHzPerPixel`
+   *  is the animated display span (view-zoom.ts); when it differs from the
+   *  span the history was rebased at, the sampler scales about the view centre
+   *  so a zoom glides instead of snapping — no texture resample. Null/omitted
+   *  renders at unit scale and zero offset (pre-first-frame / tests). */
+  draw: (
+    dbMin: number,
+    dbMax: number,
+    viewCenterHz?: number | null,
+    viewHzPerPixel?: number | null,
+  ) => void;
   setColormap: (id: RenderColormapId) => void;
   /** Enables and tunes the Signal Pop waterfall shader treatment. */
   setPopMode: (active: boolean, intensity?: number, reliefDepth?: number, smoothness?: number) => void;
@@ -118,6 +128,7 @@ export type WfRenderer = {
   debugState: () => {
     texWidth: number;
     writeRow: number;
+    validRows: number;
     scrollSpeed: number;
     lastViewOffsetUv: number;
     contextLost: boolean;
@@ -164,6 +175,7 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
 
   const drawProg = buildProgram(gl, WF_VS, WF_FS);
   const uHistory = gl.getUniformLocation(drawProg, 'uHistory');
+  const uTerrainHistory = gl.getUniformLocation(drawProg, 'uTerrainHistory');
   const uLut = gl.getUniformLocation(drawProg, 'uLut');
   const uDbMin = gl.getUniformLocation(drawProg, 'uDbMin');
   const uDbMax = gl.getUniformLocation(drawProg, 'uDbMax');
@@ -171,14 +183,17 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
   const uH = gl.getUniformLocation(drawProg, 'uH');
   const uVisibleRows = gl.getUniformLocation(drawProg, 'uVisibleRows');
   const uScrollSpeed = gl.getUniformLocation(drawProg, 'uScrollSpeed');
+  const uValidRows = gl.getUniformLocation(drawProg, 'uValidRows');
   const uBgAlpha = gl.getUniformLocation(drawProg, 'uBgAlpha');
   const uViewOffsetUv = gl.getUniformLocation(drawProg, 'uViewOffsetUv');
+  const uViewScale = gl.getUniformLocation(drawProg, 'uViewScale');
   const uSeedDbDraw = gl.getUniformLocation(drawProg, 'uSeedDb');
   const uPopActive = gl.getUniformLocation(drawProg, 'uPopActive');
   const uPopIntensity = gl.getUniformLocation(drawProg, 'uPopIntensity');
   const uReliefDepth = gl.getUniformLocation(drawProg, 'uReliefDepth');
   const uSmoothness = gl.getUniformLocation(drawProg, 'uSmoothness');
   const uTexW = gl.getUniformLocation(drawProg, 'uTexW');
+  const uCanvasW = gl.getUniformLocation(drawProg, 'uCanvasW');
   let bgAlpha = 1;
   let popActive = false;
   let popIntensity = 0;
@@ -209,6 +224,10 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     gl.createTexture()!,
     gl.createTexture()!,
   ];
+  const terrainTextures: [WebGLTexture, WebGLTexture] = [
+    gl.createTexture()!,
+    gl.createTexture()!,
+  ];
   const initTextureParams = (tex: WebGLTexture) => {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -218,6 +237,8 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
   };
   initTextureParams(textures[0]);
   initTextureParams(textures[1]);
+  initTextureParams(terrainTextures[0]);
+  initTextureParams(terrainTextures[1]);
 
   const fbo = gl.createFramebuffer()!;
 
@@ -254,11 +275,16 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
   let lastValidWidth = 0;
   // Last view offset applied at draw — surfaced via debugState for #629 triage.
   let lastViewOffsetUv = 0;
+  // Rows uploaded since the last hard seed/remap that exposed new territory.
+  // Slow scroll rates can otherwise sample thousands of rows deep and reveal
+  // old seeded rectangles before live data has filled them.
+  let validRows = 0;
+  let zeroTerrainRow: Float32Array | null = null;
 
-  const seedTexture = (tex: WebGLTexture, w: number) => {
+  const seedTexture = (tex: WebGLTexture, w: number, seedValue: number) => {
     gl.bindTexture(gl.TEXTURE_2D, tex);
     const seed = new Float32Array(w * HISTORY_ROWS);
-    seed.fill(SEED_DB);
+    seed.fill(seedValue);
     gl.texImage2D(
       gl.TEXTURE_2D,
       0,
@@ -273,15 +299,25 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
   };
 
   const resetTextures = (w: number) => {
-    seedTexture(textures[0], w);
-    seedTexture(textures[1], w);
+    seedTexture(textures[0], w, SEED_DB);
+    seedTexture(textures[1], w, SEED_DB);
+    seedTexture(terrainTextures[0], w, 0);
+    seedTexture(terrainTextures[1], w, 0);
     texWidth = w;
     lastValidWidth = w;
     writeRow = 0;
+    validRows = 0;
     active = 0;
+    zeroTerrainRow = null;
   };
 
-  const uploadRow = (wfDb: Float32Array) => {
+  const terrainFallbackRow = (w: number): Float32Array => {
+    if (zeroTerrainRow === null || zeroTerrainRow.length !== w) zeroTerrainRow = new Float32Array(w);
+    else zeroTerrainRow.fill(0);
+    return zeroTerrainRow;
+  };
+
+  const uploadRow = (wfDb: Float32Array, terrainRow?: Float32Array | null) => {
     // Lazy seed (#629): the first valid waterfall row seeds the history,
     // regardless of whether a 'reset' decision happened to carry wf data.
     // Before this, seeding only ran inside the 'reset' branch when that exact
@@ -305,12 +341,36 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
       gl.FLOAT,
       wfDb,
     );
+    const terrain = terrainRow && terrainRow.length === wfDb.length
+      ? terrainRow
+      : terrainFallbackRow(wfDb.length);
+    gl.bindTexture(gl.TEXTURE_2D, terrainTextures[active]);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      writeRow,
+      wfDb.length,
+      1,
+      gl.RED,
+      gl.FLOAT,
+      terrain,
+    );
+    validRows = Math.min(HISTORY_ROWS, validRows + 1);
   };
 
-  const performRemap = (srcCenterOffsetUv: number, srcXScale: number) => {
-    if (texWidth === 0) return; // not seeded yet — nothing to remap
-    const src = active === 0 ? textures[0] : textures[1];
-    const dst = active === 0 ? textures[1] : textures[0];
+  const capVisibleHistory = (rows = 0) => {
+    validRows = Math.min(validRows, Math.max(0, Math.min(HISTORY_ROWS, rows)));
+  };
+
+  const performRemapTexture = (
+    pair: [WebGLTexture, WebGLTexture],
+    srcCenterOffsetUv: number,
+    srcXScale: number,
+    seedValue: number,
+  ) => {
+    const src = active === 0 ? pair[0] : pair[1];
+    const dst = active === 0 ? pair[1] : pair[0];
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(
       gl.FRAMEBUFFER,
@@ -326,17 +386,24 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     gl.uniform1i(uRemapSrc, 0);
     gl.uniform1f(uRemapSrcXScale, srcXScale);
     gl.uniform1f(uRemapSrcCenterOffsetUv, srcCenterOffsetUv);
-    gl.uniform1f(uRemapSeed, SEED_DB);
+    gl.uniform1f(uRemapSeed, seedValue);
     gl.bindVertexArray(vao);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  };
+
+  const performRemap = (srcCenterOffsetUv: number, srcXScale: number) => {
+    if (texWidth === 0) return; // not seeded yet — nothing to remap
+    performRemapTexture(textures, srcCenterOffsetUv, srcXScale, SEED_DB);
+    performRemapTexture(terrainTextures, srcCenterOffsetUv, srcXScale, 0);
     active = (1 - active) as 0 | 1;
   };
 
   const performShift = (shiftPx: number) => {
     if (texWidth === 0) return;
     performRemap(-shiftPx / texWidth, 1);
+    if (Math.abs(shiftPx) > Math.max(8, texWidth * 0.015)) capVisibleHistory();
   };
 
   return {
@@ -355,13 +422,13 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
           // frame pushes the first real row.
           const width = wfDb?.length ?? (texWidth || lastValidWidth);
           if (width > 0) resetTextures(width);
-          if (wfDb) uploadRow(wfDb);
+          if (wfDb) uploadRow(wfDb, options?.terrainRow);
           lastCenterHz = centerHz;
           lastHzPerPixel = hzPerPixel;
           break;
         }
         case 'push':
-          if (wfDb && !options?.skipRowUpload) uploadRow(wfDb);
+          if (wfDb && !options?.skipRowUpload) uploadRow(wfDb, options?.terrainRow);
           // lastCenterHz unchanged so sub-pixel retunes accumulate.
           break;
         case 'shift':
@@ -385,7 +452,10 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
           // column under the new hz/px. This keeps zoom changes continuous:
           // zoom-in crops around the center; zoom-out exposes seeded edges.
           performRemap(decision.srcCenterOffsetUv, decision.srcXScale);
-          if (wfDb && !options?.skipRowUpload) uploadRow(wfDb);
+          if (Math.abs(decision.srcCenterOffsetUv) + decision.srcXScale * 0.5 > 0.5) {
+            capVisibleHistory();
+          }
+          if (wfDb && !options?.skipRowUpload) uploadRow(wfDb, options?.terrainRow);
           lastCenterHz = centerHz;
           lastHzPerPixel = hzPerPixel;
           break;
@@ -409,7 +479,7 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     clearHistory() {
       if (texWidth > 0) resetTextures(texWidth);
     },
-    draw(dbMin, dbMax, viewCenterHz = null) {
+    draw(dbMin, dbMax, viewCenterHz = null, viewHzPerPixel = null) {
       gl.viewport(0, 0, canvasW, canvasH);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -427,6 +497,15 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
         viewOffsetUv = Math.max(-1, Math.min(1, viewOffsetUv));
       }
       lastViewOffsetUv = viewOffsetUv;
+      // Draw-time zoom (view-zoom.ts): scale the sampled column about the view
+      // centre when the animated display span differs from the span the
+      // history is rebased at. 1.0 = no zoom. Pure sampling transform — the
+      // texture is rebased to the server span once per step elsewhere.
+      let viewScale = 1;
+      if (viewHzPerPixel !== null && viewHzPerPixel > 0 && lastHzPerPixel > 0) {
+        viewScale = viewHzPerPixel / lastHzPerPixel;
+        if (!Number.isFinite(viewScale) || viewScale <= 0) viewScale = 1;
+      }
       // Premultiplied-alpha blending — matches the fragment output so the
       // noise floor fades cleanly into whatever is behind the canvas.
       gl.enable(gl.BLEND);
@@ -438,20 +517,26 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, lutTex);
       gl.uniform1i(uLut, 1);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, terrainTextures[active]);
+      gl.uniform1i(uTerrainHistory, 2);
       gl.uniform1f(uDbMin, dbMin);
       gl.uniform1f(uDbMax, dbMax);
       gl.uniform1f(uWriteRow, writeRow);
       gl.uniform1f(uH, HISTORY_ROWS);
       gl.uniform1f(uVisibleRows, Math.max(1, canvasH));
       gl.uniform1f(uScrollSpeed, scrollSpeed);
+      gl.uniform1f(uValidRows, validRows);
       gl.uniform1f(uBgAlpha, bgAlpha);
       gl.uniform1f(uViewOffsetUv, viewOffsetUv);
+      gl.uniform1f(uViewScale, viewScale);
       gl.uniform1f(uSeedDbDraw, SEED_DB);
       gl.uniform1f(uPopActive, popActive ? 1 : 0);
       gl.uniform1f(uPopIntensity, popIntensity);
       gl.uniform1f(uReliefDepth, reliefDepth);
       gl.uniform1f(uSmoothness, smoothness);
       gl.uniform1f(uTexW, texWidth);
+      gl.uniform1f(uCanvasW, Math.max(1, canvasW));
       gl.bindVertexArray(vao);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindVertexArray(null);
@@ -461,6 +546,7 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
       return {
         texWidth,
         writeRow,
+        validRows,
         scrollSpeed,
         lastViewOffsetUv,
         contextLost: gl.isContextLost(),
@@ -469,6 +555,8 @@ export function createWfRenderer(gl: WebGL2RenderingContext): WfRenderer {
     dispose() {
       gl.deleteTexture(textures[0]);
       gl.deleteTexture(textures[1]);
+      gl.deleteTexture(terrainTextures[0]);
+      gl.deleteTexture(terrainTextures[1]);
       gl.deleteTexture(lutTex);
       gl.deleteFramebuffer(fbo);
       gl.deleteBuffer(vbo);

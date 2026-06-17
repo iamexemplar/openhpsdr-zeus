@@ -167,6 +167,34 @@ describe('TxFidelityPanel', () => {
     unmount();
   });
 
+  it('opens the Audio Suite window from the Preview row', async () => {
+    const { container, unmount } = render(createElement(TxFidelityPanel));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(useAudioSuiteStore.getState().isOpen).toBe(false);
+
+    const openButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Open Audio Suite"]',
+    );
+    expect(openButton).not.toBeNull();
+
+    await act(async () => {
+      openButton!.click();
+    });
+
+    expect(useAudioSuiteStore.getState().isOpen).toBe(true);
+
+    act(() => {
+      useAudioSuiteStore.setState({ isOpen: false });
+    });
+
+    unmount();
+  });
+
   it('loads saved station profile labels into the selector', async () => {
     vi.mocked(fetchTxStationProfiles).mockResolvedValueOnce([
       {

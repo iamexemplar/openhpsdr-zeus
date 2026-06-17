@@ -52,7 +52,7 @@ import { RotatorCompassPanel } from './panels/RotatorCompassPanel';
 import { RotatorDialPanel } from './panels/RotatorDialPanel';
 import { DspFlexPanel } from './panels/DspFlexPanel';
 import { CwPanel } from './panels/CwPanel';
-import { CwDecoderPanel } from './panels/CwDecoderPanel';
+import { DeepCwDecoderPanel } from '../plugins/deepcw/DeepCwDecoderPanel';
 import { LogbookPanel } from './panels/LogbookPanel';
 import { TxMetersPanel } from './panels/TxMetersPanel';
 import { TxFidelityPanel } from './panels/TxFidelityPanel';
@@ -262,11 +262,11 @@ export const PANELS: Record<string, PanelDef> = {
   },
   cwdecoder: {
     id: 'cwdecoder',
-    name: 'CW Decoder',
-    category: 'tools',
-    tags: ['cw', 'morse', 'decoder', 'receive'],
-    component: CwDecoderPanel,
-    // Headerless: CwDecoderPanel draws its own TileChrome (carrying the
+    name: 'CW Decoder · DeepCW',
+    category: 'plugins',
+    tags: ['cw', 'morse', 'decoder', 'receive', 'deep', 'neural', 'onnx', 'plugin'],
+    component: DeepCwDecoderPanel,
+    // Headerless: DeepCwDecoderPanel draws its own TileChrome (carrying the
     // ON/OFF toggle in the right slot). Without this flag the host renders
     // a second default TileChrome on top, producing a duplicated window
     // header — and the panel's own close button goes dead because PanelTile

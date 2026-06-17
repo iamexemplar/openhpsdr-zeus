@@ -35,8 +35,9 @@ import { useDisplaySettingsStore } from '../state/display-settings-store';
 import { VfoDisplay } from '../components/VfoDisplay';
 import { SMeterLive } from '../components/SMeterLive';
 import { Panadapter } from '../components/Panadapter';
-import { Waterfall } from '../components/Waterfall';
+import { WaterfallSurface } from '../components/WaterfallSurface';
 import { MobilePttButton } from '../components/MobilePttButton';
+import { MobileFrequencyTrackpad } from './MobileFrequencyTrackpad';
 import { TunButton } from '../components/TunButton';
 import { PsToggleButton } from '../components/PsToggleButton';
 import { AudioToggle } from '../components/AudioToggle';
@@ -59,37 +60,8 @@ import './mobile.css';
 
 const MODES: readonly RxMode[] = ['LSB', 'USB', 'CWL', 'CWU', 'AM', 'FM', 'DIGU'];
 
-const MOBILE_QUERY = '(max-width: 900px)';
 const MOBILE_VIEWPORT_LOCK =
   'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
-
-// Reactive viewport check. `?mobile=1` forces the mobile shell on for desktop
-// previews; `?desktop=1` forces it off so the desktop layout survives narrow
-// windows (e.g. a small touchscreen used as a secondary control surface).
-// `?desktop=1` wins when both are present. Otherwise honours the matchMedia
-// breakpoint and updates on resize / device rotation.
-export function useIsMobileViewport(): boolean {
-  const [mobile, setMobile] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('desktop') === '1') return false;
-    if (params.get('mobile') === '1') return true;
-    return window.matchMedia(MOBILE_QUERY).matches;
-  });
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('desktop') === '1') return; // forced off — no listener needed
-    if (params.get('mobile') === '1') return; // forced on — no listener needed
-    const mq = window.matchMedia(MOBILE_QUERY);
-    const onChange = (e: MediaQueryListEvent) => setMobile(e.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-
-  return mobile;
-}
 
 function useMobileZoomLock(): void {
   useEffect(() => {
@@ -332,14 +304,14 @@ export function MobileApp() {
                 )}
                 <div className="m-pan-spectrum">
                   <div className="m-pan">
-                    <Panadapter />
+                    <Panadapter touchMode="pinch-only" />
                   </div>
                   <div className="m-wf">
                     {/* Opaque under beam-map: dark Esri tiles + near-black
                         noise floor blended and the waterfall read as solid
                         black. Transparent under imageMode so the user's
                         picture shows through both halves (matches desktop). */}
-                    <Waterfall transparent={imageMode} />
+                    <WaterfallSurface transparent={imageMode} touchMode="pinch-only" />
                   </div>
                 </div>
               </div>
@@ -385,6 +357,7 @@ export function MobileApp() {
           <ToolDetail tool={toolOpen} onBack={() => setToolOpen(null)} />
         )}
       </main>
+      <MobileFrequencyTrackpad />
     </div>
   );
 }
@@ -684,8 +657,8 @@ function SMeterSection() {
 }
 
 // Padlock toggle that pins the VFO. The lock state lives in vfo-lock-store
-// and is consulted by `api/client.setVfo` so finger-drags on the panadapter,
-// band-button taps, scrolls, and digit edits all no-op while engaged. Glyphs
+// and is consulted by `api/client.setVfo` so the trackpad, band-button taps,
+// scrolls, and digit edits all no-op while engaged. Glyphs
 // are inline SVG so the button looks the same across iOS / Android / desktop
 // without depending on emoji font availability.
 function VfoLockButton() {

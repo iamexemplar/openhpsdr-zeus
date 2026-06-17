@@ -1089,6 +1089,10 @@ describe('POST helpers', () => {
       maxSnrDb: 12.5,
       peakCount: 1,
       coherentSubthresholdSignal: true,
+      adjacentNoiseUsable: true,
+      adjacentNoiseBins: 84,
+      adjacentNoiseFloorDb: -111.2,
+      adjacentNoiseRejectedPct: 4.8,
     }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -1105,6 +1109,10 @@ describe('POST helpers', () => {
       maxSnrDb: 12.5,
       peakCount: 1,
       coherentSubthresholdSignal: true,
+      adjacentNoiseUsable: true,
+      adjacentNoiseBins: 84,
+      adjacentNoiseFloorDb: -111.2,
+      adjacentNoiseRejectedPct: 4.8,
     });
 
     const [url, init] = fetchMock.mock.calls[0]!;
@@ -1123,6 +1131,10 @@ describe('POST helpers', () => {
       maxSnrDb: 12.5,
       peakCount: 1,
       coherentSubthresholdSignal: true,
+      adjacentNoiseUsable: true,
+      adjacentNoiseBins: 84,
+      adjacentNoiseFloorDb: -111.2,
+      adjacentNoiseRejectedPct: 4.8,
     });
     expect(scene.available).toBe(true);
     expect(scene.status).toBe('fresh');
@@ -1136,6 +1148,10 @@ describe('POST helpers', () => {
     expect(scene.smartNrRxChainTone).toBe('protect');
     expect(scene.smartNrRxChainScore).toBe(62);
     expect(scene.coherentSubthresholdSignal).toBe(true);
+    expect(scene.adjacentNoiseUsable).toBe(true);
+    expect(scene.adjacentNoiseBins).toBe(84);
+    expect(scene.adjacentNoiseFloorDb).toBe(-111.2);
+    expect(scene.adjacentNoiseRejectedPct).toBe(4.8);
   });
 
   it('fetchFrontendDspSceneDiagnostics reads the latest frontend scene snapshot', async () => {
@@ -1166,6 +1182,10 @@ describe('POST helpers', () => {
       peakCount: 1,
       coherentPeakCount: 1,
       coherentSubthresholdSignal: true,
+      adjacentNoiseUsable: true,
+      adjacentNoiseBins: 96,
+      adjacentNoiseP50Db: -109.4,
+      adjacentNoiseRejectedPct: 3.1,
     }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -1185,6 +1205,10 @@ describe('POST helpers', () => {
     expect(scene.smartNrRxChainTone).toBe('optimize');
     expect(scene.smartNrRxChainScore).toBe(68);
     expect(scene.coherentSubthresholdSignal).toBe(true);
+    expect(scene.adjacentNoiseUsable).toBe(true);
+    expect(scene.adjacentNoiseBins).toBe(96);
+    expect(scene.adjacentNoiseP50Db).toBe(-109.4);
+    expect(scene.adjacentNoiseRejectedPct).toBe(3.1);
   });
 
   it('fetchSmartNrCondition reads live Smart NR condition evidence', async () => {
@@ -1260,8 +1284,12 @@ describe('POST helpers', () => {
       runtimeAlignmentStatus: 'mismatched',
       runtimeAlignmentRecommendation: 'Smart NR profile NR2 maps to WDSP Emnr, but the backend is requested=Sbnr effective=Off.',
       rxChain: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         source: 'backend-radio-state',
+        filterLowHz: 300,
+        filterHighHz: 2600,
+        filterWidthHz: 2300,
+        filterPresetName: 'NR5-WEAK',
         autoAgcEnabled: true,
         agcMode: 'Fast',
         agcTopDb: 83,
@@ -1323,6 +1351,10 @@ describe('POST helpers', () => {
     expect(condition.runtimeAlignmentStatus).toBe('mismatched');
     expect(condition.runtimeAlignmentRecommendation).toContain('maps to WDSP Emnr');
     expect(condition.rxChain.source).toBe('backend-radio-state');
+    expect(condition.rxChain.filterLowHz).toBe(300);
+    expect(condition.rxChain.filterHighHz).toBe(2600);
+    expect(condition.rxChain.filterWidthHz).toBe(2300);
+    expect(condition.rxChain.filterPresetName).toBe('NR5-WEAK');
     expect(condition.rxChain.autoAgcEnabled).toBe(true);
     expect(condition.rxChain.agcMode).toBe('Fast');
     expect(condition.rxChain.effectiveAgcTopDb).toBe(52);
@@ -1367,6 +1399,10 @@ describe('POST helpers', () => {
       rxChainScore: 94,
       rxChainTone: 'neutral',
       rxChainLabel: 'RX chain optimized',
+      rxChainFilterLowHz: 300,
+      rxChainFilterHighHz: 2600,
+      rxChainFilterWidthHz: 2300,
+      rxChainFilterPresetName: 'NR5-WEAK',
       nr5SignalConfidence: 0.73,
       nr5AgcGate: 0.66,
       nr5SignalProbability: 0.69,
@@ -1380,7 +1416,7 @@ describe('POST helpers', () => {
       nr5PeakLimitDbfs: -3.2,
       nr5PeakReductionDb: 1.4,
       nr5SpnrDiagnostics: {
-        schemaVersion: 7,
+        schemaVersion: 9,
         channelId: 0,
         run: true,
         position: 1,
@@ -1421,6 +1457,18 @@ describe('POST helpers', () => {
         peakLimit: 0.69,
         peakLimitDbfs: -3.2,
         peakReductionDb: 1.4,
+        adjacentNoiseUsable: true,
+        adjacentNoiseBins: 90,
+        adjacentNoiseFloorDb: -105.2,
+        adjacentNoiseTrust: 0.68,
+        adjacentNoiseDrive: 0.21,
+        adjacentNoiseRejectedPct: 7.3,
+        adjacentNoiseLeftBins: 42,
+        adjacentNoiseRightBins: 48,
+        adjacentNoiseLeftFloorDb: -105.5,
+        adjacentNoiseRightFloorDb: -105.1,
+        adjacentNoiseSideBalance: 0.875,
+        adjacentNoiseAsymmetryDb: 0.4,
       },
       evidence: ['wdsp-active', 'ready-for-g2-live-benchmark'],
       constraints: [],
@@ -1468,6 +1516,10 @@ describe('POST helpers', () => {
     expect(diag.wdspNr5SpnrAvailable).toBe(true);
     expect(diag.frontendSceneFresh).toBe(true);
     expect(diag.runtimeAligned).toBe(true);
+    expect(diag.rxChainFilterLowHz).toBe(300);
+    expect(diag.rxChainFilterHighHz).toBe(2600);
+    expect(diag.rxChainFilterWidthHz).toBe(2300);
+    expect(diag.rxChainFilterPresetName).toBe('NR5-WEAK');
     expect(diag.nr5SpnrDiagnostics?.learnedFrames).toBe(80);
     expect(diag.nr5SignalConfidence).toBe(0.73);
     expect(diag.nr5SignalProbability).toBe(0.69);
@@ -1478,6 +1530,10 @@ describe('POST helpers', () => {
     expect(diag.nr5SpnrDiagnostics?.weakSignalMemory).toBe(0.41);
     expect(diag.nr5SpnrDiagnostics?.makeupGainDb).toBe(2.6);
     expect(diag.nr5SpnrDiagnostics?.peakReductionDb).toBe(1.4);
+    expect(diag.nr5SpnrDiagnostics?.adjacentNoiseTrust).toBe(0.68);
+    expect(diag.nr5SpnrDiagnostics?.adjacentNoiseDrive).toBe(0.21);
+    expect(diag.nr5SpnrDiagnostics?.adjacentNoiseSideBalance).toBe(0.875);
+    expect(diag.nr5SpnrDiagnostics?.adjacentNoiseAsymmetryDb).toBe(0.4);
     expect(diag.evidence).toContain('ready-for-g2-live-benchmark');
     expect(diag.candidateTools).toContain('nr5-spnr-diagnostics');
     expect(diag.benchmarkPlanEndpoint).toBe('/api/dsp/benchmark-plan');

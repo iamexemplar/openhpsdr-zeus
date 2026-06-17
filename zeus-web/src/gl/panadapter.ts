@@ -59,6 +59,7 @@ export type PanRenderer = {
     dbMin: number,
     dbMax: number,
     offsetPx: number,
+    scaleX?: number,
   ) => void;
   // Update the trace + fill colour. Components 0..1, premultiplied alpha is
   // applied inside draw via the FILL_ALPHA_TOP uniform; callers pass plain
@@ -100,6 +101,7 @@ export function createPanRenderer(gl: WebGL2RenderingContext): PanRenderer {
   const uTraceDbMin = gl.getUniformLocation(traceProg, 'uDbMin');
   const uTraceDbMax = gl.getUniformLocation(traceProg, 'uDbMax');
   const uTraceOffsetPx = gl.getUniformLocation(traceProg, 'uOffsetPx');
+  const uTraceScaleX = gl.getUniformLocation(traceProg, 'uScaleX');
   const uTraceColor = gl.getUniformLocation(traceProg, 'uColor');
   const uTracePopIntensity = gl.getUniformLocation(traceProg, 'uPopIntensity');
 
@@ -108,6 +110,7 @@ export function createPanRenderer(gl: WebGL2RenderingContext): PanRenderer {
   const uFillDbMin = gl.getUniformLocation(fillProg, 'uDbMin');
   const uFillDbMax = gl.getUniformLocation(fillProg, 'uDbMax');
   const uFillOffsetPx = gl.getUniformLocation(fillProg, 'uOffsetPx');
+  const uFillScaleX = gl.getUniformLocation(fillProg, 'uScaleX');
   const uFillColor = gl.getUniformLocation(fillProg, 'uColor');
   const uFillAlphaTop = gl.getUniformLocation(fillProg, 'uFillAlphaTop');
   const uFillPan = gl.getUniformLocation(fillProg, 'uPan');
@@ -163,7 +166,10 @@ export function createPanRenderer(gl: WebGL2RenderingContext): PanRenderer {
     resize(w, h) {
       gl.viewport(0, 0, w, h);
     },
-    draw(panDb, dbMin, dbMax, offsetPx) {
+    draw(panDb, dbMin, dbMax, offsetPx, scaleX = 1) {
+      // Draw-time zoom about the view centre (view-zoom.ts). 1.0 = no zoom;
+      // mid-glide of a zoom packs/spreads the trace so it tracks the waterfall.
+      const sx = Number.isFinite(scaleX) && scaleX > 0 ? scaleX : 1;
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -213,6 +219,7 @@ export function createPanRenderer(gl: WebGL2RenderingContext): PanRenderer {
       gl.uniform1f(uFillDbMin, dbMin);
       gl.uniform1f(uFillDbMax, dbMax);
       gl.uniform1f(uFillOffsetPx, offsetPx);
+      gl.uniform1f(uFillScaleX, sx);
       gl.uniform3f(uFillColor, traceR, traceG, traceB);
       gl.uniform1f(uFillAlphaTop, FILL_ALPHA_TOP);
       gl.uniform1f(uFillPopIntensity, popIntensity);
@@ -236,6 +243,7 @@ export function createPanRenderer(gl: WebGL2RenderingContext): PanRenderer {
       gl.uniform1f(uTraceDbMin, dbMin);
       gl.uniform1f(uTraceDbMax, dbMax);
       gl.uniform1f(uTraceOffsetPx, offsetPx);
+      gl.uniform1f(uTraceScaleX, sx);
       gl.uniform3f(uTraceColor, traceR, traceG, traceB);
       gl.uniform1f(uTracePopIntensity, popIntensity);
       gl.drawArrays(gl.LINE_STRIP, 0, panDb.length);

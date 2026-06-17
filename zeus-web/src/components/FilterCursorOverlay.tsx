@@ -14,23 +14,28 @@
 // License for details.
 
 import { useEffect, useRef, type RefObject } from 'react';
+import { useSignalEnhanceStore } from '../dsp/signal-estimator';
 import { useConnectionStore } from '../state/connection-store';
-import { useDisplayStore } from '../state/display-store';
-import { snapHz } from '../util/use-pan-tune-gesture';
+import { selectDisplaySlice, useDisplayStore } from '../state/display-store';
+import { resolvePanTuneTarget } from '../util/use-pan-tune-gesture';
 
-// Thetis-style click-tune cursor: a vertical crosshair line tracks the mouse
+// Thetis-style click-tune cursor: a vertical guide line tracks the mouse
 // across the spectrum surface and a translucent grey rectangle previews where
 // the receive filter passband would land if the operator clicked here. The
 // band is the live filter width [filterLowHz, filterHighHz] anchored to the
 // cursor frequency — asymmetric for SSB (USB to the right of the cursor, LSB
 // to the left), centred on the cursor for CW. A small readout follows the
-// pointer showing the exact frequency the click will commit (snapHz, the same
-// snap the gesture applies — so it never lies). Mirrors display.cs's
+// pointer showing the exact frequency the click will commit. In snap mode the
+// cursor and passband jump to the same detected-signal target the click handler
+// will use. Mirrors display.cs's
 // "draw long cursor & filter overlay" block. Pointer-events:none so the
 // underlying pan/tune gesture still owns clicks and drags.
 type FilterCursorOverlayProps = {
   /** The positioned (relative) surface to track the pointer over. */
   containerRef: RefObject<HTMLElement | null>;
+  /** Which receiver's spectrum geometry + snap to preview against. Default 'A';
+   *  'B' drives the RX2 half so its hover crosshair tracks VFO B. */
+  receiver?: 'A' | 'B';
 };
 
 // "14.074.00" — MHz with dot-grouped kHz/Hz, the readout style hams expect.
@@ -41,11 +46,10 @@ function formatTuneHz(hz: number): string {
   return `${mhz}.${String(khz).padStart(3, '0')}.${String(rem).padStart(3, '0')}`;
 }
 
-export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) {
+export function FilterCursorOverlay({ containerRef, receiver = 'A' }: FilterCursorOverlayProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const bandRef = useRef<HTMLDivElement | null>(null);
   const vLineRef = useRef<HTMLDivElement | null>(null);
-  const hLineRef = useRef<HTMLDivElement | null>(null);
   const readoutRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -69,14 +73,30 @@ export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) 
       const rectW = container.clientWidth;
       const rectH = container.clientHeight;
 
-      const vLine = vLineRef.current;
-      const hLine = hLineRef.current;
-      if (vLine) vLine.style.transform = `translateX(${mouseX}px)`;
-      if (hLine) hLine.style.transform = `translateY(${mouseY}px)`;
-
-      const s = useDisplayStore.getState();
+      // Read THIS half's spectrum geometry/snap (RX2: the B half tracks VFO B).
+      // The click commits to the focused VFO (rxFocus) at this frequency — the
+      // preview only needs the frequency under the cursor, which is this half's.
+      const slice = selectDisplaySlice(useDisplayStore.getState(), receiver);
       const conn = useConnectionStore.getState();
-      const hzPerPixel = s.hzPerPixel;
+      const hzPerPixel = slice.hzPerPixel;
+      const len = slice.panDb?.length ?? slice.width;
+      let cursorX = mouseX;
+      let tuneHz: number | null = null;
+      if (hzPerPixel > 0 && len > 0 && rectW > 0) {
+        const spanHz = len * hzPerPixel;
+        const frac = mouseX / rectW;
+        const rawHz = Number(slice.centerHz) + (frac - 0.5) * spanHz;
+        const target = resolvePanTuneTarget(rawHz, true, receiver);
+        tuneHz = target.tuneHz;
+        if (target.snappedToSignal && spanHz > 0) {
+          const startHz = Number(slice.centerHz) - spanHz / 2;
+          cursorX = ((target.tuneHz - startHz) / spanHz) * rectW;
+          cursorX = Math.max(0, Math.min(rectW, cursorX));
+        }
+      }
+
+      const vLine = vLineRef.current;
+      if (vLine) vLine.style.transform = `translateX(${cursorX}px)`;
 
       // Filter passband preview, anchored to the cursor (not the VFO). Filter
       // edges are stored relative to the dial centre. NOTE: hzPerPixel is
@@ -86,7 +106,6 @@ export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) 
       // percentage-of-span based); dividing by hzPerPixel directly rendered the
       // band off by the bins-to-CSS-pixel ratio.
       const band = bandRef.current;
-      const len = s.panDb?.length ?? s.width;
       if (band) {
         if (hzPerPixel > 0 && len > 0 && rectW > 0) {
           const hzPerCssPx = (len * hzPerPixel) / rectW;
@@ -96,7 +115,7 @@ export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) 
           const isCw = conn.mode === 'CWL' || conn.mode === 'CWU';
           // CW centres the passband on the spot you click (the tone lands at
           // the cursor); other modes keep the asymmetric carrier-relative band.
-          const leftPx = isCw ? mouseX - widthPx / 2 : mouseX + lowPx;
+          const leftPx = isCw ? cursorX - widthPx / 2 : cursorX + lowPx;
           band.style.transform = `translateX(${leftPx}px)`;
           band.style.width = `${widthPx}px`;
           band.style.display = '';
@@ -109,19 +128,15 @@ export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) 
       // the operator reads the destination before committing.
       const readout = readoutRef.current;
       if (readout) {
-        const len = s.panDb?.length ?? s.width;
-        if (hzPerPixel > 0 && len > 0 && rectW > 0) {
-          const spanHz = len * hzPerPixel;
-          const frac = mouseX / rectW;
-          const tuneHz = snapHz(Number(s.centerHz) + (frac - 0.5) * spanHz);
+        if (tuneHz !== null) {
           readout.textContent = formatTuneHz(tuneHz);
           readout.style.display = '';
           // Edge-aware placement: nudge the pill to the cursor, flip side near
           // the right edge, and keep it clear of the top/bottom rails.
           const lw = readout.offsetWidth;
           const lh = readout.offsetHeight;
-          let lx = mouseX + 12;
-          if (lx + lw > rectW - 4) lx = mouseX - 12 - lw;
+          let lx = cursorX + 12;
+          if (lx + lw > rectW - 4) lx = cursorX - 12 - lw;
           lx = Math.max(4, Math.min(lx, rectW - lw - 4));
           let ly = mouseY + 14;
           if (ly + lh > rectH - 4) ly = mouseY - 14 - lh;
@@ -174,7 +189,23 @@ export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) 
       }
     });
     const unsubDisplay = useDisplayStore.subscribe((s, prev) => {
-      if (visible && (s.centerHz !== prev.centerHz || s.hzPerPixel !== prev.hzPerPixel)) {
+      if (
+        visible &&
+        (s.centerHz !== prev.centerHz ||
+          s.hzPerPixel !== prev.hzPerPixel ||
+          s.width !== prev.width ||
+          s.lastSeq !== prev.lastSeq)
+      ) {
+        schedule();
+      }
+    });
+    const unsubEnhance = useSignalEnhanceStore.subscribe((s, prev) => {
+      if (
+        visible &&
+        (s.snapEnabled !== prev.snapEnabled ||
+          s.snapRadiusHz !== prev.snapRadiusHz ||
+          s.snapMinSnrDb !== prev.snapMinSnrDb)
+      ) {
         schedule();
       }
     });
@@ -185,14 +216,14 @@ export function FilterCursorOverlay({ containerRef }: FilterCursorOverlayProps) 
       container.removeEventListener('pointerleave', onLeave);
       unsubConn();
       unsubDisplay();
+      unsubEnhance();
     };
-  }, [containerRef]);
+  }, [containerRef, receiver]);
 
   return (
     <div ref={rootRef} aria-hidden className="filter-cursor">
       <div ref={bandRef} className="filter-cursor-band" />
       <div ref={vLineRef} className="filter-cursor-v" />
-      <div ref={hLineRef} className="filter-cursor-h" />
       <div ref={readoutRef} className="filter-cursor-readout" />
     </div>
   );

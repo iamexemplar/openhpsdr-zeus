@@ -7,8 +7,14 @@
 import { useEffect } from 'react';
 import { publishFrontendDspSceneDiagnostics } from '../api/client';
 import { analyzeRxChain } from '../dsp/rx-chain-health';
-import { useSignalEnhanceStore } from '../dsp/signal-estimator';
+import {
+  estimateAdjacentNoiseProfile,
+  getNoiseFloor,
+  getSignalConfidence,
+  useSignalEnhanceStore,
+} from '../dsp/signal-estimator';
 import { useConnectionStore } from '../state/connection-store';
+import { useDisplayStore } from '../state/display-store';
 import { useRxMetersStore } from '../state/rx-meters-store';
 import { useSmartNrStore } from '../state/smart-nr-store';
 import { useTxStore } from '../state/tx-store';
@@ -49,11 +55,24 @@ export function DspSceneDiagnosticsPublisher() {
     let abort: AbortController | null = null;
 
     const publish = (force = false) => {
+      const conn = useConnectionStore.getState();
+      const display = useDisplayStore.getState();
+      const adjacentNoise = estimateAdjacentNoiseProfile({
+        spectrum: display.panValid ? display.panDb : null,
+        floor: getNoiseFloor(),
+        confidence: getSignalConfidence(),
+        centerHz: display.centerHz,
+        hzPerPixel: display.hzPerPixel,
+        dialHz: conn.vfoHz,
+        filterLowHz: conn.filterLowHz,
+        filterHighHz: conn.filterHighHz,
+      });
       const payload = buildFrontendDspSceneDiagnosticsPayload(
-        useConnectionStore.getState().mode,
+        conn.mode,
         useSignalEnhanceStore.getState().sceneStatus,
         useSmartNrStore.getState().status,
         liveRxChainForDiagnostics(),
+        adjacentNoise,
       );
       if (!payload) return;
       const key = JSON.stringify(payload);

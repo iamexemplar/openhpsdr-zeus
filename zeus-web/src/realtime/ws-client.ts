@@ -45,6 +45,7 @@
 import { decodeDisplayFrame, FrameDecodeError, MSG_TYPE_DISPLAY_FRAME } from './frame';
 import { AudioFrameDecodeError, MSG_TYPE_AUDIO_PCM, decodeAudioFrame } from '../audio/frame';
 import { getAudioClient } from '../audio/audio-client';
+import { getAudioBus } from '../audio/audio-bus';
 import { isNativeAudio } from '../audio/host-mode';
 import { useMicUplinkDiagnosticsStore } from '../audio/mic-uplink-diagnostics-store';
 import { useMicPeakStore } from '../audio/mic-peak-store';
@@ -182,16 +183,11 @@ const AUDIO_MASTER_BYPASS_BYTES = 2;
 export const MSG_TYPE_CW_ENGINE_STATUS = 0x30;
 const CW_ENGINE_STATUS_HEADER_BYTES = 9;
 
-// CW receive decoder — broadcast by the server-side CwDecoderService whenever
-// it decodes one or more characters from the demodulated RX audio in a CW
-// mode. Decoding lives server-side so it works in the desktop/native-audio
-// host and headless. Variable-length frame: 13-byte header + UTF-8 text.
-// Contract: Zeus.Contracts/CwDecodedTextFrame.cs.
-//
-// Wire shape:
-//   [0x31][wpm:u16 LE][snrDb:f32 LE][confidence:f32 LE][textLen:u16 LE][text:utf8…]
+// 0x31 CwDecodedText — RESERVED. The classic server-side CW decoder that
+// broadcast this frame was retired in favour of the browser-side DeepCW
+// neural decoder (src/plugins/deepcw). The value stays reserved so the wire
+// gap is preserved; the server no longer emits it and nothing parses it.
 export const MSG_TYPE_CW_DECODED_TEXT = 0x31;
-const CW_DECODED_TEXT_HEADER_BYTES = 13;
 
 // TCI spot list snapshot — broadcast by SpotBroadcastService whenever the
 // spot list changes (add / remove / clear), and pushed once on WS connect.
@@ -210,6 +206,32 @@ const SPOT_LIST_MIN_BYTES = 3; // type + count
 // are no-ops when the socket isn't open.
 let activeWs: WebSocket | null = null;
 let micTransportWaiters: Array<() => void> = [];
+
+// Speaker playback is just another RX audio bus consumer. AudioClient.push()
+// self-suppresses in native/desktop mode, so this single subscription is
+// correct in every host mode — the decoder subscribes separately. Registered
+// once at module load (singleton lifetime).
+getAudioBus().subscribe((frame) => getAudioClient().push(frame));
+
+// Client → server control frame: ask the server to (start|stop) streaming RX
+// audio over the websocket. In web/server mode 0x02 already flows for
+// playback so this is a harmless hint; in desktop/native mode the server
+// withholds 0x02 until a decoder requests it (refcounted server-side), so
+// this is what feeds the browser CW decoder there. No-op when disconnected.
+const MSG_TYPE_AUDIO_STREAM_REQUEST = 0x21;
+export function sendAudioStreamRequest(enable: boolean): void {
+  const ws = activeWs;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const buf = new ArrayBuffer(2);
+  const view = new DataView(buf);
+  view.setUint8(0, MSG_TYPE_AUDIO_STREAM_REQUEST);
+  view.setUint8(1, enable ? 1 : 0);
+  try {
+    ws.send(buf);
+  } catch (err) {
+    warnOnce('ws-audio-stream-request', 'audio stream request send failed', err);
+  }
+}
 
 export type MicPcmSendResult = 'sent' | 'native' | 'closed' | 'bad-size' | 'send-error';
 
@@ -350,14 +372,15 @@ export function startRealtime(path = '/ws'): () => void {
           return;
         }
         if (peekType === MSG_TYPE_AUDIO_PCM) {
-          // Phase 2c — desktop-mode opt-out. When the host process renders
-          // RX audio natively, the server should not emit 0x02 frames at
-          // all (Phase 2b). Drop here without decoding so an in-flight
-          // frame at the moment of mode switch doesn't allocate a
-          // Float32Array we'd immediately throw away.
-          if (isNativeAudio()) return;
+          // Decode once and publish to the RX audio bus, which fans the single
+          // stream out to speaker playback (AudioClient — which self-suppresses
+          // in native/desktop mode) and any taps (the CW decoder). We do NOT
+          // gate on isNativeAudio() here on purpose: in desktop mode the server
+          // sends 0x02 only on demand (when a decoder asks via 0x21), and those
+          // frames must reach the bus so the decoder can consume them. Playback
+          // opts out downstream in AudioClient.push(), not here.
           const audio = decodeAudioFrame(ev.data);
-          getAudioClient().push(audio);
+          getAudioBus().publish(audio);
           return;
         }
         if (peekType === MSG_TYPE_TX_METERS_V2) {
@@ -472,44 +495,10 @@ export function startRealtime(path = '/ws'): () => void {
           });
           return;
         }
-        if (peekType === MSG_TYPE_CW_DECODED_TEXT) {
-          if (ev.data.byteLength < CW_DECODED_TEXT_HEADER_BYTES) {
-            warnOnce(
-              'ws-cw-decoded-short',
-              `cw decoded frame too short: ${ev.data.byteLength}`,
-            );
-            return;
-          }
-          const dv = new DataView(ev.data);
-          const wpm = dv.getUint16(1, true);
-          const snrDb = dv.getFloat32(3, true);
-          const confidence = dv.getFloat32(7, true);
-          const textLen = dv.getUint16(11, true);
-          if (ev.data.byteLength < CW_DECODED_TEXT_HEADER_BYTES + textLen) {
-            warnOnce(
-              'ws-cw-decoded-truncated',
-              `cw decoded text claims ${textLen} bytes but only ${
-                ev.data.byteLength - CW_DECODED_TEXT_HEADER_BYTES
-              } follow`,
-            );
-            return;
-          }
-          if (textLen === 0) return;
-          const text = new TextDecoder('utf-8').decode(
-            new Uint8Array(ev.data, CW_DECODED_TEXT_HEADER_BYTES, textLen),
-          );
-          // Lazy import keeps the cw-decoder-store off the critical path for
-          // clients that never open the decoder panel.
-          void import('../state/cw-decoder-store').then((m) => {
-            const store = m.useCwDecoderStore.getState();
-            // The panel ON/OFF + HOLD are client-side display gates: the
-            // server always decodes in CW mode, but we only surface text
-            // while the operator has the panel actively listening.
-            if (store.state !== 'listening') return;
-            store.appendText(text, wpm, snrDb, confidence);
-          });
-          return;
-        }
+        // 0x31 CwDecodedText (classic server-side decoder) was retired in
+        // favour of the browser-side DeepCW neural decoder (plugins/deepcw).
+        // The MSG_TYPE_CW_DECODED_TEXT value stays reserved; the server no
+        // longer broadcasts it.
         if (peekType === MSG_TYPE_AUDIO_MASTER_BYPASS) {
           if (ev.data.byteLength < AUDIO_MASTER_BYPASS_BYTES) {
             warnOnce(

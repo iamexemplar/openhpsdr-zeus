@@ -5,7 +5,7 @@ import type {
   RxMode,
 } from '../api/client';
 import type { RxChainAnalysis } from '../dsp/rx-chain-health';
-import type { SignalEnhanceSceneStatus } from '../dsp/signal-estimator';
+import type { AdjacentNoiseProfile, SignalEnhanceSceneStatus } from '../dsp/signal-estimator';
 import type { SmartNrStatus } from '../state/smart-nr-store';
 
 let sessionClientId: string | null = null;
@@ -40,6 +40,7 @@ export function buildFrontendDspSceneDiagnosticsPayload(
   signal: SignalEnhanceSceneStatus | null,
   smart: SmartNrStatus | null,
   rxChain: RxChainAnalysis | null = null,
+  adjacentNoise: AdjacentNoiseProfile | null = null,
 ): FrontendDspSceneDiagnosticsPayload | null {
   const rxLabel = smart?.rxChainLabel ?? rxChain?.label ?? null;
   const rxRecommendation = smart?.rxChainRecommendation ?? rxChain?.recommendation ?? null;
@@ -68,5 +69,17 @@ export function buildFrontendDspSceneDiagnosticsPayload(
     peakCount: n(smart?.peakCount ?? signal?.peakCount),
     coherentPeakCount: n(smart?.coherentPeakCount ?? signal?.coherentPeakCount),
     coherentSubthresholdSignal: smart?.coherentSubthresholdSignal ?? null,
+    adjacentNoiseUsable: adjacentNoise?.usable ?? null,
+    adjacentNoiseBins: n(adjacentNoise?.bins),
+    adjacentNoiseLeftBins: n(adjacentNoise?.leftBins),
+    adjacentNoiseRightBins: n(adjacentNoise?.rightBins),
+    adjacentNoiseFloorDb: n(adjacentNoise?.floorDb),
+    adjacentNoiseP10Db: n(adjacentNoise?.p10Db),
+    adjacentNoiseP50Db: n(adjacentNoise?.p50Db),
+    adjacentNoiseP90Db: n(adjacentNoise?.p90Db),
+    adjacentNoiseLeftFloorDb: n(adjacentNoise?.leftFloorDb),
+    adjacentNoiseRightFloorDb: n(adjacentNoise?.rightFloorDb),
+    adjacentNoiseSlopeDbPerKhz: n(adjacentNoise?.slopeDbPerKhz),
+    adjacentNoiseRejectedPct: n(adjacentNoise?.rejectedPct),
   };
 }

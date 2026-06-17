@@ -565,6 +565,18 @@ export type Nr5SpnrDiagnosticsDto = {
   peakLimit: number;
   peakLimitDbfs: number;
   peakReductionDb: number;
+  adjacentNoiseUsable: boolean;
+  adjacentNoiseBins: number;
+  adjacentNoiseFloorDb: number;
+  adjacentNoiseTrust: number;
+  adjacentNoiseDrive: number;
+  adjacentNoiseRejectedPct: number;
+  adjacentNoiseLeftBins: number;
+  adjacentNoiseRightBins: number;
+  adjacentNoiseLeftFloorDb: number;
+  adjacentNoiseRightFloorDb: number;
+  adjacentNoiseSideBalance: number;
+  adjacentNoiseAsymmetryDb: number;
 };
 
 export type HardwareRxDspDiagnosticsDto = {
@@ -754,6 +766,18 @@ export type FrontendDspSceneDiagnosticsDto = {
   peakCount: number | null;
   coherentPeakCount: number | null;
   coherentSubthresholdSignal: boolean | null;
+  adjacentNoiseUsable: boolean | null;
+  adjacentNoiseBins: number | null;
+  adjacentNoiseLeftBins: number | null;
+  adjacentNoiseRightBins: number | null;
+  adjacentNoiseFloorDb: number | null;
+  adjacentNoiseP10Db: number | null;
+  adjacentNoiseP50Db: number | null;
+  adjacentNoiseP90Db: number | null;
+  adjacentNoiseLeftFloorDb: number | null;
+  adjacentNoiseRightFloorDb: number | null;
+  adjacentNoiseSlopeDbPerKhz: number | null;
+  adjacentNoiseRejectedPct: number | null;
 };
 
 export type FrontendDspSceneDiagnosticsPayload = {
@@ -778,6 +802,18 @@ export type FrontendDspSceneDiagnosticsPayload = {
   peakCount?: number | null;
   coherentPeakCount?: number | null;
   coherentSubthresholdSignal?: boolean | null;
+  adjacentNoiseUsable?: boolean | null;
+  adjacentNoiseBins?: number | null;
+  adjacentNoiseLeftBins?: number | null;
+  adjacentNoiseRightBins?: number | null;
+  adjacentNoiseFloorDb?: number | null;
+  adjacentNoiseP10Db?: number | null;
+  adjacentNoiseP50Db?: number | null;
+  adjacentNoiseP90Db?: number | null;
+  adjacentNoiseLeftFloorDb?: number | null;
+  adjacentNoiseRightFloorDb?: number | null;
+  adjacentNoiseSlopeDbPerKhz?: number | null;
+  adjacentNoiseRejectedPct?: number | null;
 };
 
 export type SmartNrConditionDto = {
@@ -809,6 +845,18 @@ export type SmartNrConditionDto = {
   peakCount: number | null;
   coherentPeakCount: number | null;
   coherentSubthresholdSignal: boolean | null;
+  adjacentNoiseUsable: boolean | null;
+  adjacentNoiseBins: number | null;
+  adjacentNoiseLeftBins: number | null;
+  adjacentNoiseRightBins: number | null;
+  adjacentNoiseFloorDb: number | null;
+  adjacentNoiseP10Db: number | null;
+  adjacentNoiseP50Db: number | null;
+  adjacentNoiseP90Db: number | null;
+  adjacentNoiseLeftFloorDb: number | null;
+  adjacentNoiseRightFloorDb: number | null;
+  adjacentNoiseSlopeDbPerKhz: number | null;
+  adjacentNoiseRejectedPct: number | null;
   wdspActive: boolean;
   wdspNativeLoadable: boolean;
   wdspEmnrPost2Available: boolean;
@@ -871,6 +919,18 @@ export type DspLiveDiagnosticsDto = {
   frontendSceneFresh: boolean;
   frontendSceneStale: boolean;
   frontendSceneAgeMs: number | null;
+  frontendAdjacentNoiseUsable: boolean | null;
+  frontendAdjacentNoiseBins: number | null;
+  frontendAdjacentNoiseLeftBins: number | null;
+  frontendAdjacentNoiseRightBins: number | null;
+  frontendAdjacentNoiseFloorDb: number | null;
+  frontendAdjacentNoiseP10Db: number | null;
+  frontendAdjacentNoiseP50Db: number | null;
+  frontendAdjacentNoiseP90Db: number | null;
+  frontendAdjacentNoiseLeftFloorDb: number | null;
+  frontendAdjacentNoiseRightFloorDb: number | null;
+  frontendAdjacentNoiseSlopeDbPerKhz: number | null;
+  frontendAdjacentNoiseRejectedPct: number | null;
   smartNrProfile: string | null;
   expectedNrMode: string | null;
   runtimeAligned: boolean | null;
@@ -881,6 +941,10 @@ export type DspLiveDiagnosticsDto = {
   rxChainScore: number | null;
   rxChainTone: string | null;
   rxChainLabel: string | null;
+  rxChainFilterLowHz: number | null;
+  rxChainFilterHighHz: number | null;
+  rxChainFilterWidthHz: number | null;
+  rxChainFilterPresetName: string | null;
   nr5SpnrDiagnostics: Nr5SpnrDiagnosticsDto | null;
   nr5SignalConfidence: number | null;
   nr5AgcGate: number | null;
@@ -909,6 +973,10 @@ export type DspLiveDiagnosticsDto = {
 export type SmartNrRxChainRuntimeDto = {
   schemaVersion: number;
   source: string;
+  filterLowHz: number;
+  filterHighHz: number;
+  filterWidthHz: number;
+  filterPresetName: string | null;
   autoAgcEnabled: boolean;
   agcMode: string;
   agcTopDb: number;
@@ -2155,6 +2223,18 @@ function normalizeNr5SpnrDiagnostics(raw: unknown): Nr5SpnrDiagnosticsDto | null
     peakLimit: diagNumber(r.peakLimit) ?? 0,
     peakLimitDbfs: diagNumber(r.peakLimitDbfs) ?? -240,
     peakReductionDb: diagNumber(r.peakReductionDb) ?? 0,
+    adjacentNoiseUsable: Boolean(r.adjacentNoiseUsable),
+    adjacentNoiseBins: diagNumber(r.adjacentNoiseBins) ?? 0,
+    adjacentNoiseFloorDb: diagNumber(r.adjacentNoiseFloorDb) ?? 0,
+    adjacentNoiseTrust: diagNumber(r.adjacentNoiseTrust) ?? 0,
+    adjacentNoiseDrive: diagNumber(r.adjacentNoiseDrive) ?? 0,
+    adjacentNoiseRejectedPct: diagNumber(r.adjacentNoiseRejectedPct) ?? 0,
+    adjacentNoiseLeftBins: diagNumber(r.adjacentNoiseLeftBins) ?? 0,
+    adjacentNoiseRightBins: diagNumber(r.adjacentNoiseRightBins) ?? 0,
+    adjacentNoiseLeftFloorDb: diagNumber(r.adjacentNoiseLeftFloorDb) ?? 0,
+    adjacentNoiseRightFloorDb: diagNumber(r.adjacentNoiseRightFloorDb) ?? 0,
+    adjacentNoiseSideBalance: diagNumber(r.adjacentNoiseSideBalance) ?? 0,
+    adjacentNoiseAsymmetryDb: diagNumber(r.adjacentNoiseAsymmetryDb) ?? 0,
   };
 }
 
@@ -2515,6 +2595,18 @@ function normalizeFrontendDspScene(raw: unknown): FrontendDspSceneDiagnosticsDto
     peakCount: diagNumber(r.peakCount),
     coherentPeakCount: diagNumber(r.coherentPeakCount),
     coherentSubthresholdSignal: diagBool(r.coherentSubthresholdSignal),
+    adjacentNoiseUsable: diagBool(r.adjacentNoiseUsable),
+    adjacentNoiseBins: diagNumber(r.adjacentNoiseBins),
+    adjacentNoiseLeftBins: diagNumber(r.adjacentNoiseLeftBins),
+    adjacentNoiseRightBins: diagNumber(r.adjacentNoiseRightBins),
+    adjacentNoiseFloorDb: diagNumber(r.adjacentNoiseFloorDb),
+    adjacentNoiseP10Db: diagNumber(r.adjacentNoiseP10Db),
+    adjacentNoiseP50Db: diagNumber(r.adjacentNoiseP50Db),
+    adjacentNoiseP90Db: diagNumber(r.adjacentNoiseP90Db),
+    adjacentNoiseLeftFloorDb: diagNumber(r.adjacentNoiseLeftFloorDb),
+    adjacentNoiseRightFloorDb: diagNumber(r.adjacentNoiseRightFloorDb),
+    adjacentNoiseSlopeDbPerKhz: diagNumber(r.adjacentNoiseSlopeDbPerKhz),
+    adjacentNoiseRejectedPct: diagNumber(r.adjacentNoiseRejectedPct),
   };
 }
 
@@ -2549,6 +2641,18 @@ function normalizeSmartNrCondition(raw: unknown): SmartNrConditionDto {
     peakCount: diagNumber(r.peakCount),
     coherentPeakCount: diagNumber(r.coherentPeakCount),
     coherentSubthresholdSignal: diagBool(r.coherentSubthresholdSignal),
+    adjacentNoiseUsable: diagBool(r.adjacentNoiseUsable),
+    adjacentNoiseBins: diagNumber(r.adjacentNoiseBins),
+    adjacentNoiseLeftBins: diagNumber(r.adjacentNoiseLeftBins),
+    adjacentNoiseRightBins: diagNumber(r.adjacentNoiseRightBins),
+    adjacentNoiseFloorDb: diagNumber(r.adjacentNoiseFloorDb),
+    adjacentNoiseP10Db: diagNumber(r.adjacentNoiseP10Db),
+    adjacentNoiseP50Db: diagNumber(r.adjacentNoiseP50Db),
+    adjacentNoiseP90Db: diagNumber(r.adjacentNoiseP90Db),
+    adjacentNoiseLeftFloorDb: diagNumber(r.adjacentNoiseLeftFloorDb),
+    adjacentNoiseRightFloorDb: diagNumber(r.adjacentNoiseRightFloorDb),
+    adjacentNoiseSlopeDbPerKhz: diagNumber(r.adjacentNoiseSlopeDbPerKhz),
+    adjacentNoiseRejectedPct: diagNumber(r.adjacentNoiseRejectedPct),
     wdspActive: Boolean(r.wdspActive),
     wdspNativeLoadable: Boolean(r.wdspNativeLoadable),
     wdspEmnrPost2Available: Boolean(r.wdspEmnrPost2Available),
@@ -2622,6 +2726,18 @@ function normalizeDspLiveDiagnostics(raw: unknown): DspLiveDiagnosticsDto {
     frontendSceneFresh: Boolean(r.frontendSceneFresh),
     frontendSceneStale: Boolean(r.frontendSceneStale),
     frontendSceneAgeMs: diagNumber(r.frontendSceneAgeMs),
+    frontendAdjacentNoiseUsable: diagBool(r.frontendAdjacentNoiseUsable),
+    frontendAdjacentNoiseBins: diagNumber(r.frontendAdjacentNoiseBins),
+    frontendAdjacentNoiseLeftBins: diagNumber(r.frontendAdjacentNoiseLeftBins),
+    frontendAdjacentNoiseRightBins: diagNumber(r.frontendAdjacentNoiseRightBins),
+    frontendAdjacentNoiseFloorDb: diagNumber(r.frontendAdjacentNoiseFloorDb),
+    frontendAdjacentNoiseP10Db: diagNumber(r.frontendAdjacentNoiseP10Db),
+    frontendAdjacentNoiseP50Db: diagNumber(r.frontendAdjacentNoiseP50Db),
+    frontendAdjacentNoiseP90Db: diagNumber(r.frontendAdjacentNoiseP90Db),
+    frontendAdjacentNoiseLeftFloorDb: diagNumber(r.frontendAdjacentNoiseLeftFloorDb),
+    frontendAdjacentNoiseRightFloorDb: diagNumber(r.frontendAdjacentNoiseRightFloorDb),
+    frontendAdjacentNoiseSlopeDbPerKhz: diagNumber(r.frontendAdjacentNoiseSlopeDbPerKhz),
+    frontendAdjacentNoiseRejectedPct: diagNumber(r.frontendAdjacentNoiseRejectedPct),
     smartNrProfile: diagString(r.smartNrProfile),
     expectedNrMode: diagString(r.expectedNrMode),
     runtimeAligned: diagBool(r.runtimeAligned),
@@ -2632,6 +2748,10 @@ function normalizeDspLiveDiagnostics(raw: unknown): DspLiveDiagnosticsDto {
     rxChainScore: diagNumber(r.rxChainScore),
     rxChainTone: diagString(r.rxChainTone),
     rxChainLabel: diagString(r.rxChainLabel),
+    rxChainFilterLowHz: diagNumber(r.rxChainFilterLowHz),
+    rxChainFilterHighHz: diagNumber(r.rxChainFilterHighHz),
+    rxChainFilterWidthHz: diagNumber(r.rxChainFilterWidthHz),
+    rxChainFilterPresetName: diagString(r.rxChainFilterPresetName),
     nr5SpnrDiagnostics: normalizeNr5SpnrDiagnostics(r.nr5SpnrDiagnostics),
     nr5SignalConfidence: diagNumber(r.nr5SignalConfidence),
     nr5AgcGate: diagNumber(r.nr5AgcGate),
@@ -2665,6 +2785,10 @@ function normalizeSmartNrRxChainRuntime(raw: unknown): SmartNrRxChainRuntimeDto 
   return {
     schemaVersion: diagNumber(r.schemaVersion) ?? 0,
     source: diagString(r.source) ?? 'unknown',
+    filterLowHz: diagNumber(r.filterLowHz) ?? 0,
+    filterHighHz: diagNumber(r.filterHighHz) ?? 0,
+    filterWidthHz: diagNumber(r.filterWidthHz) ?? 0,
+    filterPresetName: diagString(r.filterPresetName),
     autoAgcEnabled: Boolean(r.autoAgcEnabled),
     agcMode: diagString(r.agcMode) ?? 'unknown',
     agcTopDb: diagNumber(r.agcTopDb) ?? 0,

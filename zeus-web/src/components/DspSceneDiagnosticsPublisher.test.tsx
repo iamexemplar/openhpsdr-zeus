@@ -71,6 +71,38 @@ describe('buildFrontendDspSceneDiagnosticsPayload', () => {
     expect(payload?.sourceClientId).toMatch(/^frontend-/);
   });
 
+  it('mirrors adjacent-band noise profile evidence into diagnostics payloads', () => {
+    const payload = buildFrontendDspSceneDiagnosticsPayload('USB', null, null, null, {
+      usable: true,
+      bins: 72,
+      leftBins: 34,
+      rightBins: 38,
+      floorDb: -111.4,
+      p10Db: -113.2,
+      p50Db: -111.4,
+      p90Db: -108.7,
+      leftFloorDb: -112.0,
+      rightFloorDb: -110.6,
+      slopeDbPerKhz: 0.2,
+      rejectedPct: 5.3,
+    });
+
+    expect(payload).toMatchObject({
+      adjacentNoiseUsable: true,
+      adjacentNoiseBins: 72,
+      adjacentNoiseLeftBins: 34,
+      adjacentNoiseRightBins: 38,
+      adjacentNoiseFloorDb: -111.4,
+      adjacentNoiseP10Db: -113.2,
+      adjacentNoiseP50Db: -111.4,
+      adjacentNoiseP90Db: -108.7,
+      adjacentNoiseLeftFloorDb: -112.0,
+      adjacentNoiseRightFloorDb: -110.6,
+      adjacentNoiseSlopeDbPerKhz: 0.2,
+      adjacentNoiseRejectedPct: 5.3,
+    });
+  });
+
   it('publishes a fresh client heartbeat when no scene evidence exists yet', () => {
     const payload = buildFrontendDspSceneDiagnosticsPayload('USB', null, null);
 

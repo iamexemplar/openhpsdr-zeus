@@ -98,6 +98,7 @@ function AudioSuitePreviewToggle() {
   const previewEnabled = useAudioSuiteStore((s) => s.previewEnabled);
   const setPreviewEnabled = useAudioSuiteStore((s) => s.setPreviewEnabled);
   const loadPreviewState = useAudioSuiteStore((s) => s.loadPreviewState);
+  const openAudioSuite = useAudioSuiteStore((s) => s.open);
 
   useEffect(() => {
     void loadPreviewState();
@@ -108,7 +109,7 @@ function AudioSuitePreviewToggle() {
       aria-label="Audio Suite preview"
       style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) auto',
+        gridTemplateColumns: 'minmax(0, 1fr) auto auto',
         alignItems: 'center',
         gap: 8,
         minWidth: 0,
@@ -131,6 +132,27 @@ function AudioSuitePreviewToggle() {
       >
         Preview
       </span>
+      <button
+        type="button"
+        aria-label="Open Audio Suite"
+        title="Open the Audio Suite window to reorder, preview, and tune chain plugins"
+        onClick={() => openAudioSuite()}
+        style={{
+          height: 24,
+          border: '1px solid var(--accent)',
+          borderRadius: 4,
+          background: 'var(--bg-1)',
+          color: 'var(--fg-0)',
+          cursor: 'pointer',
+          fontSize: 10,
+          fontWeight: 900,
+          padding: '0 9px',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        Open Suite
+      </button>
       <button
         type="button"
         aria-pressed={previewEnabled}

@@ -46,7 +46,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { GripVertical, X } from 'lucide-react';
 import { Panadapter } from '../../components/Panadapter';
-import { Waterfall } from '../../components/Waterfall';
+import { WaterfallSurface } from '../../components/WaterfallSurface';
 import { ZoomControl } from '../../components/ZoomControl';
 import { WaterfallSpeedControl } from '../../components/WaterfallSpeedControl';
 import { SpectrumControls } from '../../components/SpectrumControls';
@@ -486,7 +486,7 @@ export function HeroPanel({ onRemove, tile, layoutId }: HeroPanelProps = {}) {
             rx2Enabled ? (
               <div style={stitchedGridStyle}>
                 <div style={{ minWidth: 0, minHeight: 0 }}>
-                  <Waterfall
+                  <WaterfallSurface
                     receiver="A"
                     transparent={bgActive}
                     stitched
@@ -495,7 +495,7 @@ export function HeroPanel({ onRemove, tile, layoutId }: HeroPanelProps = {}) {
                   />
                 </div>
                 <div style={{ minWidth: 0, minHeight: 0 }}>
-                  <Waterfall
+                  <WaterfallSurface
                     receiver="B"
                     transparent={bgActive}
                     stitched
@@ -505,7 +505,7 @@ export function HeroPanel({ onRemove, tile, layoutId }: HeroPanelProps = {}) {
                 </div>
               </div>
             ) : (
-              <Waterfall transparent={bgActive} />
+              <WaterfallSurface transparent={bgActive} />
             )
           )}
         </div>

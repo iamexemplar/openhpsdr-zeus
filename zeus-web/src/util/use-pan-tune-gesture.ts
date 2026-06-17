@@ -75,6 +75,7 @@ const NOTCH_CLICK_WIDTH_HZ = 150;
 // Scroll-wheel notches normalise mouse clicks (~100px/tick) and trackpad
 // deltas to one discrete tick per this many pixels of deltaY.
 const WHEEL_NOTCH_PX = 40;
+const SPECTRUM_TUNE_CURSOR = 'var(--spectrum-tune-cursor, default)';
 
 // Grid snap helper for ordinary click/drag tuning. Snap-to-signal goes through
 // resolvePanTuneTarget so click and hover share the same carrier target.
@@ -477,7 +478,7 @@ export function usePanTuneGesture(
         const rect = canvas.getBoundingClientRect();
         const frac = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0.5;
         notchDrag = { startHz: view.centerHz + (frac - 0.5) * view.spanHz };
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
         return;
       }
       e.preventDefault();
@@ -492,7 +493,7 @@ export function usePanTuneGesture(
         spanHz: view.spanHz,
         moved: false,
       };
-      canvas.style.cursor = 'crosshair';
+      canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
     };
 
     const onPointerMove = (e: PointerEvent) => {
@@ -592,7 +593,7 @@ export function usePanTuneGesture(
       if (notchDrag) {
         const start = notchDrag;
         notchDrag = null;
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
         if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
         const ns = useNotchStore.getState();
         ns.setPending(null);
@@ -623,20 +624,20 @@ export function usePanTuneGesture(
           // than an enforced clean break.
           cancelPinchRaf();
           pinch = null;
-          canvas.style.cursor = 'crosshair';
+          canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
         }
         return;
       }
       if (mapDrag) {
         mapDrag = null;
-        canvas.style.cursor = 'crosshair';
+        canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
         if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
         return;
       }
       const d = drag;
       if (!d) return;
       drag = null;
-      canvas.style.cursor = 'crosshair';
+      canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
       if (canvas.hasPointerCapture(e.pointerId)) {
         canvas.releasePointerCapture(e.pointerId);
       }
@@ -720,7 +721,7 @@ export function usePanTuneGesture(
       nudgeVfo(dir * useToolbarFavoritesStore.getState().stepHz);
     };
 
-    canvas.style.cursor = 'crosshair';
+    canvas.style.cursor = SPECTRUM_TUNE_CURSOR;
     canvas.addEventListener('pointerdown', onPointerDown);
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);

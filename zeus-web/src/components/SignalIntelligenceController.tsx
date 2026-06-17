@@ -18,6 +18,7 @@ import {
 import {
   getNoiseFloor,
   getSignalConfidence,
+  getSignalStationarity,
   recommendSignalEnhanceScene,
   registerEstimatorConsumer,
   signalEnhanceSettingsFromState,
@@ -230,6 +231,7 @@ export function SignalIntelligenceController() {
         spectrum: display.panValid ? display.panDb : null,
         floor: getNoiseFloor(),
         confidence: getSignalConfidence(),
+        stationarity: getSignalStationarity(),
         centerHz: display.centerHz,
         hzPerPixel: display.hzPerPixel,
         existingNotches: notch.notches,

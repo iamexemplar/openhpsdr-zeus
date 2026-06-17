@@ -57,6 +57,7 @@ import {
 } from '../dsp/signal-estimator';
 import { normalizeStitchedBins, stitchFloorShiftDb } from '../dsp/stitch-normalizer';
 import * as viewCenter from '../state/view-center';
+import * as viewZoom from '../state/view-zoom';
 import { useTxStore } from '../state/tx-store';
 import { usePanTuneGesture, type PanTuneGestureOptions } from '../util/use-pan-tune-gesture';
 import type { RenderColormapId } from '../gl/colormap';
@@ -153,9 +154,11 @@ export function Waterfall({
       if (!renderer) return;
       const signalEnhance = useSignalEnhanceStore.getState();
       const active = isPopRenderActive();
+      const domain = currentValueDomain();
+      const rxRenderable = domain === 'pop' || domain === 'rx-db';
       const intensity = active ? Math.max(0, Math.min(1, signalEnhance.popRenderIntensity / 100)) : 0;
-      const reliefDepth = active ? Math.max(0, Math.min(1, signalEnhance.waterfallReliefDepth / 100)) : 0;
-      const smoothness = active ? Math.max(0, Math.min(1, signalEnhance.waterfallSmoothness / 100)) : 0;
+      const reliefDepth = rxRenderable ? Math.max(0, Math.min(1, signalEnhance.waterfallReliefDepth / 100)) : 0;
+      const smoothness = rxRenderable ? Math.max(0, Math.min(1, signalEnhance.waterfallSmoothness / 100)) : 0;
       const colormap: RenderColormapId = active ? 'pop' : useDisplaySettingsStore.getState().colormap;
       renderer.setScrollSpeed(useDisplaySettingsStore.getState().waterfallScrollSpeed);
       renderer.setPopMode(active, intensity, reliefDepth, smoothness);
@@ -217,6 +220,7 @@ export function Waterfall({
     // (texSubImage2D), so unlike the panadapter texture a single reused buffer
     // is safe — there's no deferred reference-identity dirty check here.
     let enhBuf: Float32Array | null = null;
+    let terrainBuf: Float32Array | null = null;
     let stitchBuf: Float32Array | null = null;
     // Visibility gating: skip the rAF redraw when the waterfall tile is
     // scrolled offscreen or the tab is hidden. We still push frames into
@@ -247,9 +251,10 @@ export function Waterfall({
       // with topographic signal relief, so the waterfall dB slider still owns
       // the range. Keyed/TX keeps the absolute TX dB window.
       const popOn = pop.popEnabled && !keyed;
+      const rxRenderable = !keyed;
       const popIntensity = popOn ? Math.max(0, Math.min(1, pop.popRenderIntensity / 100)) : 0;
-      const reliefDepth = popOn ? Math.max(0, Math.min(1, pop.waterfallReliefDepth / 100)) : 0;
-      const smoothness = popOn ? Math.max(0, Math.min(1, pop.waterfallSmoothness / 100)) : 0;
+      const reliefDepth = rxRenderable ? Math.max(0, Math.min(1, pop.waterfallReliefDepth / 100)) : 0;
+      const smoothness = rxRenderable ? Math.max(0, Math.min(1, pop.waterfallSmoothness / 100)) : 0;
       renderer.setScrollSpeed(useDisplaySettingsStore.getState().waterfallScrollSpeed);
       // Mirror DbScale.tsx — keyed (MOX/TUN) renders the TX waterfall
       // window so the operator's RX noise-floor view stays put.
@@ -260,6 +265,7 @@ export function Waterfall({
         dbMin,
         dbMax,
         visualCenterHz(),
+        viewZoom.isInitialized() ? viewZoom.getDisplayedHzPerPixel() : null,
       );
     };
     const requestRedraw = () => {
@@ -373,6 +379,14 @@ export function Waterfall({
         width: slice.width,
         planKey: receiver,
       });
+      // Drive the shared zoom tween (view-zoom.ts) from RX1 only — zoom is a
+      // single global setting, so one driver avoids RX2's resets interrupting
+      // an in-flight glide. A hard reset snaps (no glide); otherwise ease to
+      // the server span so a zoom step scales smoothly instead of snapping.
+      if (receiver === 'A' && slice.hzPerPixel > 0) {
+        if (decision.kind === 'reset') viewZoom.snapTo(slice.hzPerPixel);
+        else viewZoom.setTarget(slice.hzPerPixel);
+      }
       const wfDb = slice.wfValid && slice.wfDb ? slice.wfDb : null;
       wfFrames++;
       if (wfDb) wfValidFrames++;
@@ -387,6 +401,7 @@ export function Waterfall({
       // coherent carriers get shape before the colormap. Gated off while keyed
       // because TX pixels are a different dB domain.
       let wfForPush: Float32Array | null = null;
+      let terrainForPush: Float32Array | null = null;
       if (wfDb) {
         const { moxOn, tunOn } = useTxStore.getState();
         let rowForPush = wfDb;
@@ -400,19 +415,24 @@ export function Waterfall({
         }
         if (!moxOn && !tunOn) {
           if (!enhBuf || enhBuf.length !== rowForPush.length) enhBuf = new Float32Array(rowForPush.length);
-          if (useSignalEnhanceStore.getState().popEnabled) enhanceInto(rowForPush, enhBuf);
-          else enhanceWaterfallTextureInto(rowForPush, enhBuf);
+          if (!terrainBuf || terrainBuf.length !== rowForPush.length) terrainBuf = new Float32Array(rowForPush.length);
+          if (useSignalEnhanceStore.getState().popEnabled) enhanceInto(rowForPush, enhBuf, terrainBuf);
+          else enhanceWaterfallTextureInto(rowForPush, enhBuf, terrainBuf);
           rowForPush = enhBuf;
+          terrainForPush = terrainBuf;
         }
         wfForPush = rowForPush;
       }
-      renderer.pushFrame(decision, wfForPush, slice.centerHz, slice.hzPerPixel);
+      renderer.pushFrame(decision, wfForPush, slice.centerHz, slice.hzPerPixel, { terrainRow: terrainForPush });
       requestRedraw();
     });
 
     // View-center motion → redraw at display rate while gliding (the
     // fractional sampling offset in draw() moves the visible window).
     const unsubViewCenter = viewCenter.subscribe(requestRedraw);
+    // Zoom motion → redraw while the display span eases to a new server span
+    // (the draw-time scale in draw() animates the zoom). Silent when parked.
+    const unsubViewZoom = viewZoom.subscribe(requestRedraw);
     const unsubConn = useConnectionStore.subscribe((state, prev) => {
       if (receiver === 'B' && state.vfoBHz !== prev.vfoBHz) requestRedraw();
     });
@@ -483,6 +503,7 @@ export function Waterfall({
         state.impulseRejectEnabled !== prev.impulseRejectEnabled ||
         state.impulseRejectDb !== prev.impulseRejectDb
       ) {
+        applyRenderLook();
         requestRedraw();
       }
     });
@@ -490,6 +511,7 @@ export function Waterfall({
     return () => {
       unsub();
       unsubViewCenter();
+      unsubViewZoom();
       unsubConn();
       unsubSettings();
       unsubTx();

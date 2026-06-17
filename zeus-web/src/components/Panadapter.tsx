@@ -52,6 +52,7 @@ import { useConnectionStore } from '../state/connection-store';
 import { enhanceInto, useSignalEnhanceStore } from '../dsp/signal-estimator';
 import { normalizeStitchedBins, stitchFloorShiftDb } from '../dsp/stitch-normalizer';
 import * as viewCenter from '../state/view-center';
+import * as viewZoom from '../state/view-zoom';
 import { useTxStore } from '../state/tx-store';
 import { usePanTuneGesture, type PanTuneGestureOptions } from '../util/use-pan-tune-gesture';
 import { FilterCursorOverlay } from './FilterCursorOverlay';
@@ -198,7 +199,14 @@ export function Panadapter({
         anchorHzPerPixel > 0
           ? (anchorCenterHz - visualCenterHz()) / anchorHzPerPixel
           : 0;
-      renderer.draw(anchorPan, dbMin, dbMax, offsetPx);
+      // Draw-time zoom (view-zoom.ts): scale the trace about the view centre
+      // when the animated display span lags the span this anchor was captured
+      // at, so the trace scales in lock-step with the waterfall during a zoom.
+      const scaleX =
+        viewZoom.isInitialized() && anchorHzPerPixel > 0
+          ? anchorHzPerPixel / viewZoom.getDisplayedHzPerPixel()
+          : 1;
+      renderer.draw(anchorPan, dbMin, dbMax, offsetPx, scaleX);
     };
     const requestRedraw = () => {
       if (!isActive()) return;
@@ -269,6 +277,15 @@ export function Panadapter({
       });
       const frameCenter = Number(slice.centerHz);
 
+      // Drive the shared zoom tween (view-zoom.ts) from RX1 only — see the
+      // matching block in Waterfall.tsx. Idempotent with the waterfall's call;
+      // having both A surfaces drive it keeps zoom animating in layouts where
+      // only one of them is mounted.
+      if (receiver === 'A' && slice.hzPerPixel > 0) {
+        if (decision.kind === 'reset') viewZoom.snapTo(slice.hzPerPixel);
+        else viewZoom.setTarget(slice.hzPerPixel);
+      }
+
       if (decision.kind === 'reset') {
         // Hard reset (first frame / width change / no-overlap jump): the old
         // anchor is meaningless. Snap the view — no glide — and adopt
@@ -328,6 +345,8 @@ export function Panadapter({
     // View-center motion → redraw at display rate while gliding. The
     // subscription is silent when the tween loop is parked (zero idle cost).
     const unsubViewCenter = viewCenter.subscribe(requestRedraw);
+    // Zoom motion → redraw while the display span eases (draw-time scale).
+    const unsubViewZoom = viewZoom.subscribe(requestRedraw);
     const unsubConn = useConnectionStore.subscribe((state, prev) => {
       if (receiver === 'B' && state.vfoBHz !== prev.vfoBHz) requestRedraw();
     });
@@ -368,6 +387,7 @@ export function Panadapter({
     return () => {
       unsub();
       unsubViewCenter();
+      unsubViewZoom();
       unsubConn();
       unsubSettings();
       unsubTx();

@@ -1242,15 +1242,18 @@
 .hero-vfo-switch {
   position: absolute;
   left: 50%;
-  top: 3px;
+  /* Vertically centred in the 26px header strip rather than pinned to the
+   * top — keeps the whole pill inside the header instead of spilling onto
+   * the panadapter freq ruler below. */
+  top: 50%;
   z-index: 4;
   display: grid;
   grid-template-columns: repeat(2, minmax(30px, 1fr));
   gap: 2px;
   max-width: 24%;
-  padding: 2px;
+  padding: 1px;
   overflow: hidden;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   background:
     linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)),
     rgba(0,0,0,0.56);
@@ -1266,7 +1269,7 @@
   justify-content: center;
   gap: 3px;
   min-width: 30px;
-  height: 20px;
+  height: 18px;
   padding: 0 7px;
   color: var(--fg-2);
   background: transparent;
@@ -1295,11 +1298,16 @@
   color: var(--fg-0);
   opacity: 0.86;
 }
+.spectrum-wrap,
+.spectrum-canvas,
+.waterfall-canvas {
+  --spectrum-tune-cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2217%22%20height%3D%2217%22%20viewBox%3D%220%200%2017%2017%22%3E%3Cpath%20d%3D%22M8.5%200v17%22%20stroke%3D%22%23000%22%20stroke-width%3D%223%22%20stroke-opacity%3D%220.75%22/%3E%3Cpath%20d%3D%22M8.5%200v17%22%20stroke%3D%22%23fff%22%20stroke-width%3D%221.4%22/%3E%3C/svg%3E") 8 8, default;
+  cursor: var(--spectrum-tune-cursor);
+}
 .spectrum-wrap {
   position: relative;
   width: 100%;
   height: 100%;
-  cursor: crosshair;
   background: #000;
   user-select: none;
 }
@@ -1572,7 +1580,7 @@
   pointer-events: none;
 }
 
-/* Thetis-style hover crosshair + filter-passband preview (see
+/* Thetis-style hover cursor + filter-passband preview (see
    FilterCursorOverlay.tsx). Translucent grey band mirrors Thetis's
    65/255-alpha white filter brush; the vertical line uses the --accent focus
    token (this is an interactive selection affordance) and marks the exact
@@ -1607,15 +1615,6 @@
   background: var(--accent);
   box-shadow: 0 0 6px var(--accent);
   opacity: 0.9;
-}
-.filter-cursor-h {
-  position: absolute;
-  left: 0; right: 0;
-  top: 0;
-  height: 1px;
-  will-change: transform;
-  background: var(--accent);
-  opacity: 0.25;
 }
 .filter-cursor-readout {
   position: absolute;
@@ -3495,19 +3494,21 @@
 }
 .mobile-ptt-btn.tx .mobile-ptt-hint { color: rgba(255,255,255,0.85); }
 
-/* ===== Mobile responsive layout (≤640 px) =====
+/* ===== Mobile responsive layout (≤900 px) =====
    Shows only frequency (VFO), signal (S-meter), mic level, power level (drive),
    the panadapter/waterfall stack, and a big hold-to-talk PTT button where the
    logbook sits on desktop. Everything else — QRZ, azimuth map, DSP, CW keyer,
    logbook, TX stage meters, mode/bandwidth, front-end, AGC, zoom, status chips,
-   tweaks panel — is hidden via the .hide-mobile utility. */
+   tweaks panel — is hidden via the .hide-mobile utility. Desktop-host loopback
+   views set data-force-desktop so browser and Photino shells stay aligned. */
 @media (max-width: 900px) {
-  .hide-mobile { display: none !important; }
-  .show-mobile { display: flex; }
+  html:not([data-force-desktop="1"]) .hide-mobile { display: none !important; }
+  html:not([data-force-desktop="1"]) .show-mobile { display: flex; }
 
-  html, body { overflow-x: hidden; }
+  html:not([data-force-desktop="1"]),
+  html:not([data-force-desktop="1"]) body { overflow-x: hidden; }
 
-  .app {
+  html:not([data-force-desktop="1"]) .app {
     grid-template-rows: 44px 52px auto 1fr 44px;
     width: 100%;
     padding: 4px;
@@ -3515,20 +3516,20 @@
     overflow-x: hidden;
   }
 
-  .topbar {
+  html:not([data-force-desktop="1"]) .topbar {
     height: 44px;
     padding: 0 8px;
     gap: 6px;
     min-width: 0;
   }
-  .brand { padding: 0 4px; gap: 6px; }
-  .brand-mark { width: 22px; height: 22px; }
-  .brand-name { font-size: 13px; }
+  html:not([data-force-desktop="1"]) .brand { padding: 0 4px; gap: 6px; }
+  html:not([data-force-desktop="1"]) .brand-mark { width: 22px; height: 22px; }
+  html:not([data-force-desktop="1"]) .brand-name { font-size: 13px; }
   /* Compact the connected "RADIO x.x.x.x:pppp" chip — the mono IP overflows
      a 390 px viewport when the Disconnect button sits next to it. */
-  .topbar .chip.accent .v { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+  html:not([data-force-desktop="1"]) .topbar .chip.accent .v { max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
 
-  .control-strip {
+  html:not([data-force-desktop="1"]) .control-strip {
     height: 52px;
     padding: 2px 6px;
     gap: 8px;
@@ -3537,17 +3538,17 @@
   }
   /* Override inline min-width on the visible ZOOM ctrl-group so it shrinks
      to fit narrow viewports. */
-  .control-strip .ctrl-group { min-width: 0 !important; }
-  .control-strip .btn-row { min-width: 0; flex: 1; }
-  .control-strip .knob-group { min-width: 0; flex: 1; }
+  html:not([data-force-desktop="1"]) .control-strip .ctrl-group { min-width: 0 !important; }
+  html:not([data-force-desktop="1"]) .control-strip .btn-row { min-width: 0; flex: 1; }
+  html:not([data-force-desktop="1"]) .control-strip .knob-group { min-width: 0; flex: 1; }
 
-  .workspace {
+  html:not([data-force-desktop="1"]) .workspace {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.85fr) auto;
     gap: 4px;
   }
-  .workspace .hero { grid-column: 1; grid-row: 1; }
-  .workspace .side-stack {
+  html:not([data-force-desktop="1"]) .workspace .hero { grid-column: 1; grid-row: 1; }
+  html:not([data-force-desktop="1"]) .workspace .side-stack {
     grid-column: 1;
     grid-row: 2;
     flex-direction: column;
@@ -3555,46 +3556,46 @@
     overflow-x: hidden;
     gap: 4px;
   }
-  .workspace .side-stack .side-slot {
+  html:not([data-force-desktop="1"]) .workspace .side-stack .side-slot {
     flex: 0 0 auto;
     min-width: 0;
   }
-  .workspace .side-stack .side-slot.grow {
+  html:not([data-force-desktop="1"]) .workspace .side-stack .side-slot.grow {
     flex: 0 0 auto;
     min-height: 0;
   }
-  .workspace .bottom-row {
+  html:not([data-force-desktop="1"]) .workspace .bottom-row {
     grid-column: 1;
     grid-row: 3;
     grid-template-columns: 1fr;
     min-height: 72px;
   }
 
-  .freq-digits { font-size: 26px; margin: 2px 0; }
-  .freq-panel { padding: 6px; gap: 4px; }
-  .smeter { padding: 6px 8px; gap: 4px; }
-  .smeter-scale { height: 40px; padding: 4px; }
+  html:not([data-force-desktop="1"]) .freq-digits { font-size: 26px; margin: 2px 0; }
+  html:not([data-force-desktop="1"]) .freq-panel { padding: 6px; gap: 4px; }
+  html:not([data-force-desktop="1"]) .smeter { padding: 6px 8px; gap: 4px; }
+  html:not([data-force-desktop="1"]) .smeter-scale { height: 40px; padding: 4px; }
 
-  .transport {
+  html:not([data-force-desktop="1"]) .transport {
     height: 44px;
     padding: 0 6px;
     gap: 4px;
     min-width: 0;
     overflow-x: hidden;
   }
-  .transport .knob-group { min-width: 0; flex: 1; }
+  html:not([data-force-desktop="1"]) .transport .knob-group { min-width: 0; flex: 1; }
 
-  .tweaks-fab,
-  .tweaks-panel { display: none !important; }
+  html:not([data-force-desktop="1"]) .tweaks-fab,
+  html:not([data-force-desktop="1"]) .tweaks-panel { display: none !important; }
 }
 
 /* Touch-target floor for coarse pointers (phones, tablets). Keyed off pointer
    type rather than width so a narrow desktop window doesn't inherit the
    bigger tap zones. Apple HIG: 44 px minimum for primary targets. */
 @media (pointer: coarse) and (max-width: 900px) {
-  .btn     { min-height: 36px; }
-  .btn.lg  { min-height: 44px; }
-  .btn-row { gap: 6px; }
+  html:not([data-force-desktop="1"]) .btn     { min-height: 36px; }
+  html:not([data-force-desktop="1"]) .btn.lg  { min-height: 44px; }
+  html:not([data-force-desktop="1"]) .btn-row { gap: 6px; }
 }
 
 /* ===========================================================
@@ -3717,4 +3718,98 @@
   color: var(--fg-1);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ---- DeepCW decoder panel ---------------------------------------- */
+/* Live CW-band spectrogram. Recessed scope well (like the panadapter),
+   amber trace = signal-strength visualization (the sanctioned use of
+   --amber); the 400–1200 Hz decode band is framed so the operator can see
+   exactly what the model listens to. */
+.deepcw-scope {
+  position: relative;
+  height: 104px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: #08080a;
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+.deepcw-scope-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.deepcw-scope-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  border-top: 1px dashed var(--accent-line, rgba(78, 166, 255, 0.4));
+  border-bottom: 1px dashed var(--accent-line, rgba(78, 166, 255, 0.4));
+  box-shadow: inset 0 0 0 100vmax rgba(78, 166, 255, 0.04);
+}
+.deepcw-scope-band-label {
+  position: absolute;
+  top: 2px;
+  right: 6px;
+  font: 600 8px/1 var(--font-sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-bright);
+  opacity: 0.55;
+}
+.deepcw-scope-idle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 500 11px/1 var(--font-sans);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* Decode-window segmented control. */
+.deepcw-win {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.3);
+}
+.deepcw-win-chip {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--fg-3);
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.04em;
+  padding: 4px 7px;
+  border-radius: var(--r-xs, 3px);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.deepcw-win-chip:hover { color: var(--fg-1); }
+.deepcw-win-chip.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Decoding-activity LED: warm amber pulse (distinct from the blue idle/
+   listening LED) so it's obvious the model is actively inferring. */
+.deepcw-led--busy {
+  background: var(--amber) !important;
+  box-shadow: 0 0 6px var(--amber), 0 0 12px var(--amber-soft) !important;
+  animation: cwLedPulse 0.8s ease-in-out infinite !important;
+}
+
+.deepcw-tape { min-height: 64px; }
+.deepcw-cursor {
+  color: var(--accent-bright);
+  text-shadow: 0 0 6px var(--accent-soft);
+  animation: cwCursorBlink 1s steps(2) infinite;
 }
