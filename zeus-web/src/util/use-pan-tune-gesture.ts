@@ -345,7 +345,16 @@ export function usePanTuneGesture(
     };
     const postVfo = (hz: number, signal?: AbortSignal) =>
       receiverIsB ? setVfoB(hz, signal) : setVfo(hz, signal);
-    const tunesOffCenter = () => receiverIsB || useConnectionStore.getState().ctunEnabled;
+    // RX1 (VFO A) drives the shared view-centre tween. RX2 (VFO B) does NOT —
+    // the backend recentres the RX2 window on VfoB every frame (DspPipelineService
+    // stamps the RX2 frame CenterHz = VfoB and applies a matching CTUN shift to
+    // the RX2 DDC), so B's view follows the incoming frame centres rather than a
+    // local glide. We therefore leave the RX1 tween untouched for B.
+    const drivesViewCenter = !receiverIsB;
+    // "CTUN sweep" — absolute cursor→dial mapping over a FROZEN window — applies
+    // ONLY to RX1 with CTUN enabled. RX2 is never frozen (it always recentres on
+    // VfoB), so it pans with a relative drag exactly like RX1 with CTUN off.
+    const ctunSweep = () => !receiverIsB && useConnectionStore.getState().ctunEnabled;
 
     const commandedHz = () => pendingHz ?? readVfo();
 
@@ -375,13 +384,15 @@ export function usePanTuneGesture(
       // the dial marker (vfo − targetCenter) roams off the zero line. We stamp
       // the optimistic-tune clock (poll-guard) but deliberately skip the
       // view-center nudge that would recentre the display.
-      if (tunesOffCenter()) {
-        viewCenter.markOptimisticTune();
-      } else {
-        // Delta against the commanded chain — NOT an absolute write into the
-        // view-center (frame centers are dial ∓ cw-pitch in CW; absolutes
-        // would oscillate the display by ±pitch on every CW commit).
-        viewCenter.nudgeTargetHz(snapped - commandedHz());
+      if (drivesViewCenter) {
+        if (useConnectionStore.getState().ctunEnabled) {
+          viewCenter.markOptimisticTune();
+        } else {
+          // Delta against the commanded chain — NOT an absolute write into the
+          // view-center (frame centers are dial ∓ cw-pitch in CW; absolutes
+          // would oscillate the display by ±pitch on every CW commit).
+          viewCenter.nudgeTargetHz(snapped - commandedHz());
+        }
       }
       writeVfo(snapped);
       pendingAbort?.abort();
@@ -407,10 +418,12 @@ export function usePanTuneGesture(
       // edge; the optimistic store write happens in the SAME synchronous block
       // as the target nudge so the dial marker's (vfo − target) offset is never
       // transiently stale (it is pinned to the center line during glides).
-      if (tunesOffCenter()) {
-        viewCenter.markOptimisticTune();
-      } else {
-        viewCenter.nudgeTargetHz(next - cur);
+      if (drivesViewCenter) {
+        if (useConnectionStore.getState().ctunEnabled) {
+          viewCenter.markOptimisticTune();
+        } else {
+          viewCenter.nudgeTargetHz(next - cur);
+        }
       }
       writeVfo(next);
       pendingHz = next;
@@ -556,11 +569,11 @@ export function usePanTuneGesture(
       drag.moved = true;
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0) return;
-      // CTUN/RX2: drag sweeps the selected dial across the frozen spectrum. The frame center
-      // doesn't move (NCO frozen on the backend), so drag.startHz — the view
-      // center captured at grab — is stationary; resolve the live pointer X to
-      // a frequency against it and tune there, leaving the view put.
-      if (tunesOffCenter()) {
+      // RX1 CTUN: drag sweeps the dial across the frozen spectrum. The frame
+      // center doesn't move (NCO frozen on the backend), so drag.startHz — the
+      // view center captured at grab — is stationary; resolve the live pointer X
+      // to a frequency against it and tune there, leaving the view put.
+      if (ctunSweep()) {
         const frac = (e.clientX - rect.left) / rect.width;
         const cursorHz = snapHz(drag.startHz + (frac - 0.5) * drag.spanHz);
         if (cursorHz !== pendingHz) {
@@ -571,15 +584,15 @@ export function usePanTuneGesture(
         }
         return;
       }
+      // Relative drag-to-pan. RX1 (CTUN off) glides the shared view-center by the
+      // COMMANDED delta, initialised from the live commanded value, never from the
+      // lagging frame center (adversary #12: prevents a one-time backward jump
+      // when a drag starts mid-wheel-glide). RX2/VFO B has no local tween — it just
+      // retunes VfoB and the backend-recentred frames pan the view (drivesViewCenter
+      // is false for B, so the RX1 tween is left untouched).
       const newHz = snapHz(drag.startHz - (dx / rect.width) * drag.spanHz);
-      // Pixel→Hz mapping stays display-relative (drag.startHz is the frame
-      // center at grab — unchanged semantics); the view-center moves by the
-      // COMMANDED delta, initialised from the live commanded value, never
-      // from the lagging frame center (adversary #12: prevents a one-time
-      // backward jump when a drag starts mid-wheel-glide). The display then
-      // glides between the unchanged 500 Hz snap points.
       if (newHz !== pendingHz) {
-        viewCenter.nudgeTargetHz(newHz - commandedHz());
+        if (drivesViewCenter) viewCenter.nudgeTargetHz(newHz - commandedHz());
         // Atomic with the nudge — keeps the marker's (vfo − target) offset
         // consistent within the frame (see nudgeVfo).
         writeVfo(newHz);
@@ -644,13 +657,14 @@ export function usePanTuneGesture(
       const rect = canvas.getBoundingClientRect();
       if (rect.width <= 0) return;
       if (d.moved) {
-        if (tunesOffCenter()) {
-          // CTUN/RX2: commit the selected dial at the release-point frequency (cursor-
+        if (ctunSweep()) {
+          // RX1 CTUN: commit the dial at the release-point frequency (cursor-
           // relative against the frozen view center), matching the drag-move
           // sweep above.
           const frac = (e.clientX - rect.left) / rect.width;
           commitFinal(d.startHz + (frac - 0.5) * d.spanHz);
         } else {
+          // Relative pan commit (RX1 CTUN-off and RX2/VFO B).
           const dx = e.clientX - d.startX;
           commitFinal(d.startHz - (dx / rect.width) * d.spanHz);
         }
