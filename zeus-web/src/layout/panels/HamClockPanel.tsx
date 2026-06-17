@@ -10,13 +10,64 @@
 // then shows the iframe; otherwise it shows install/start state and points the
 // operator at Settings → HamClock.
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import type { ActivationSpotDto } from '../../api/client';
 import { hamclockIframeUrl, useHamClockStore } from '../../state/hamclock-store';
+import { useSpotsStore } from '../../state/spots-store';
+
+const HAMCLOCK_DX_TUNE_MESSAGE = 'zeus.hamclock.dxSpotTune';
+
+interface HamClockDxTuneMessage {
+  type: typeof HAMCLOCK_DX_TUNE_MESSAGE;
+  source?: string;
+  freqHz: number;
+  mode?: string;
+  callsign?: string;
+}
+
+function isHamClockDxTuneMessage(value: unknown): value is HamClockDxTuneMessage {
+  if (!value || typeof value !== 'object') return false;
+  const msg = value as Partial<HamClockDxTuneMessage>;
+  return (
+    msg.type === HAMCLOCK_DX_TUNE_MESSAGE &&
+    typeof msg.freqHz === 'number' &&
+    Number.isFinite(msg.freqHz) &&
+    msg.freqHz > 0
+  );
+}
+
+function toActivationSpot(msg: HamClockDxTuneMessage): ActivationSpotDto {
+  const activator =
+    typeof msg.callsign === 'string' && msg.callsign.trim().length > 0
+      ? msg.callsign.trim().toUpperCase()
+      : 'DX';
+  const mode =
+    typeof msg.mode === 'string' && msg.mode.trim().length > 0
+      ? msg.mode.trim().toUpperCase()
+      : '';
+
+  return {
+    source: 'DX',
+    activator,
+    freqHz: Math.round(msg.freqHz),
+    mode,
+    reference: 'HamClock DX',
+    name: null,
+    location: null,
+    grid: null,
+    comments: null,
+    spotter: null,
+    spotTime: new Date().toISOString().replace(/\.\d{3}Z$/, ''),
+  };
+}
 
 export function HamClockPanel() {
   const status = useHamClockStore((s) => s.status);
   const loadStatus = useHamClockStore((s) => s.loadStatus);
   const start = useHamClockStore((s) => s.start);
+  const loadSpotSettings = useSpotsStore((s) => s.loadSettings);
+  const tuneToSpot = useSpotsStore((s) => s.tuneToSpot);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Auto-start the sidecar on mount if it's installed but not running, then
   // poll until it reaches Running so the iframe appears. Faster tick while an
@@ -48,9 +99,38 @@ export function HamClockPanel() {
   const running = status.running && status.port > 0;
   const url = running ? hamclockIframeUrl(status.port) : '';
 
+  useEffect(() => {
+    if (!running || !url) return;
+
+    let expectedOrigin = '';
+    try {
+      expectedOrigin = new URL(url).origin;
+    } catch {
+      return;
+    }
+
+    const onMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.origin !== expectedOrigin) return;
+      if (!isHamClockDxTuneMessage(event.data)) return;
+      const msg = event.data;
+
+      void (async () => {
+        if (!useSpotsStore.getState().settingsLoaded) {
+          await loadSpotSettings();
+        }
+        await tuneToSpot(toActivationSpot(msg));
+      })();
+    };
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [loadSpotSettings, running, tuneToSpot, url]);
+
   if (running) {
     return (
       <iframe
+        ref={iframeRef}
         title="HamClock"
         src={url}
         style={{ flex: 1, width: '100%', height: '100%', border: 'none', display: 'block', minHeight: 0 }}

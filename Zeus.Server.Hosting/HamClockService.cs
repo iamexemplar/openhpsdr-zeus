@@ -288,6 +288,7 @@ public sealed class HamClockService : IHostedService, IAsyncDisposable
             // frameguard), which blocks embedding it in the Zeus workspace iframe.
             // We own this local copy, so disable frameguard.
             PatchHelmetFrameguard();
+            PatchZeusCatBridge();
 
             lock (_gate) { _phase = HamClockPhase.Installed; _busy = false; }
             Append("HamClock installed. Click Start to launch the panel.");
@@ -341,6 +342,8 @@ public sealed class HamClockService : IHostedService, IAsyncDisposable
             EnsureEnvSettings(port);
             // Covers installs that predate the frameguard patch (idempotent).
             PatchHelmetFrameguard();
+            // Covers installs that predate the Zeus CAT bridge (idempotent).
+            PatchZeusCatBridge();
 
             var psi = MakePsi("node", "server.js", InstallDir);
             // Belt-and-suspenders env (overridden by .env, but harmless).
@@ -828,6 +831,74 @@ public sealed class HamClockService : IHostedService, IAsyncDisposable
         return false;
     }
 
+    internal const string ZeusCatBridgeScriptName = "zeus-cat-bridge.js";
+
+    private const string ZeusCatBridgeScript = """
+        (() => {
+          const messageType = 'zeus.hamclock.dxSpotTune';
+          if (window.__zeusHamClockCatBridgeInstalled) return;
+          window.__zeusHamClockCatBridgeInstalled = true;
+
+          const textOf = (node) => (node?.innerText || node?.textContent || '').replace(/\s+/g, ' ').trim();
+
+          const parseFreqHz = (text) => {
+            const match = String(text || '').match(/(\d+(?:\.\d+)?)/);
+            if (!match) return null;
+            const value = Number(match[1]);
+            if (!Number.isFinite(value) || value <= 0) return null;
+            const lower = String(text || '').toLowerCase();
+            if (lower.includes('khz')) return Math.round(value * 1000);
+            return Math.round(value >= 1000 ? value * 1000 : value * 1000000);
+          };
+
+          const isDxClusterTable = (node) => {
+            const label = node?.getAttribute?.('aria-label') || '';
+            if (/dx\s*cluster/i.test(label)) return true;
+            return /dx\s*cluster/i.test(textOf(node).slice(0, 240));
+          };
+
+          document.addEventListener('click', (event) => {
+            const row = event.target?.closest?.('[role="row"]');
+            if (!row || row.querySelector('[role="columnheader"]')) return;
+
+            const table = row.closest('[role="table"]');
+            if (!table || !isDxClusterTable(table)) return;
+
+            const cells = Array.from(row.querySelectorAll('[role="cell"]'));
+            if (cells.length < 2) return;
+
+            const freqHz = parseFreqHz(textOf(cells[0]));
+            if (!freqHz) return;
+
+            const modeMatch = textOf(cells[2]).match(/[A-Za-z0-9+/-]+/);
+            const callsign = textOf(cells[1]).match(/[A-Z0-9/]+/i)?.[0]?.toUpperCase() || 'DX';
+            window.parent?.postMessage(
+              {
+                type: messageType,
+                source: 'DX',
+                freqHz,
+                mode: modeMatch ? modeMatch[0].toUpperCase() : '',
+                callsign,
+              },
+              '*',
+            );
+          }, true);
+        })();
+        """;
+
+    internal static string InjectZeusCatBridgeTag(string html)
+    {
+        if (html.Contains(ZeusCatBridgeScriptName, StringComparison.Ordinal))
+            return html;
+
+        var tag = $"<script src=\"/{ZeusCatBridgeScriptName}\" defer></script>";
+        var headEnd = html.IndexOf("</head>", StringComparison.OrdinalIgnoreCase);
+        if (headEnd >= 0)
+            return html.Insert(headEnd, $"  {tag}\n  ");
+
+        return html + "\n" + tag + "\n";
+    }
+
     /// <summary>
     /// Disable helmet's frameguard in HamClock's middleware so it stops sending
     /// X-Frame-Options: SAMEORIGIN, which otherwise blocks embedding it in the
@@ -858,6 +929,36 @@ public sealed class HamClockService : IHostedService, IAsyncDisposable
         catch (Exception ex)
         {
             Append($"  (frameguard patch skipped: {ex.Message})");
+        }
+    }
+
+    /// <summary>
+    /// Inject a tiny bridge into HamClock's built frontend so DX-cluster row
+    /// clicks can ask the parent Zeus iframe host to tune through Zeus CAT.
+    /// This avoids depending on OpenHamClock's standalone rig-bridge settings.
+    /// </summary>
+    private void PatchZeusCatBridge()
+    {
+        try
+        {
+            var dist = Path.Combine(InstallDir, "dist");
+            var index = Path.Combine(dist, "index.html");
+            if (!File.Exists(index)) return;
+
+            Directory.CreateDirectory(dist);
+            File.WriteAllText(Path.Combine(dist, ZeusCatBridgeScriptName), ZeusCatBridgeScript);
+
+            var html = File.ReadAllText(index);
+            var updated = InjectZeusCatBridgeTag(html);
+            if (!ReferenceEquals(updated, html) && updated != html)
+            {
+                File.WriteAllText(index, updated);
+                Append("Patched HamClock DX spots to notify Zeus click-to-tune.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Append($"  (Zeus CAT bridge patch skipped: {ex.Message})");
         }
     }
 

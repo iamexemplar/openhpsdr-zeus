@@ -58,4 +58,25 @@ public sealed class HamClockServiceTests
 
         Assert.Equal(HamClockService.DefaultStablePort, port);
     }
+
+    [Fact]
+    public void InjectZeusCatBridgeTag_AddsBridgeOnceBeforeHeadClose()
+    {
+        const string html = """
+            <!doctype html>
+            <html>
+              <head>
+                <title>HamClock</title>
+              </head>
+              <body></body>
+            </html>
+            """;
+
+        var updated = HamClockService.InjectZeusCatBridgeTag(html);
+        var second = HamClockService.InjectZeusCatBridgeTag(updated);
+
+        Assert.Contains($"<script src=\"/{HamClockService.ZeusCatBridgeScriptName}\" defer></script>", updated);
+        Assert.True(updated.IndexOf(HamClockService.ZeusCatBridgeScriptName, StringComparison.Ordinal) < updated.IndexOf("</head>", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(updated, second);
+    }
 }
