@@ -3770,7 +3770,7 @@ public sealed class DspModernizationValidationToolTests
         return new
         {
             schemaVersion = 1,
-            tool = "synthetic-watch-summary",
+            tool = "watch-dsp-live-diagnostics",
             readyForBenchmarkTrace = true,
             trendStatus = "ready",
             okSampleCount = 3,
