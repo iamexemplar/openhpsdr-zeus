@@ -243,6 +243,8 @@ function ConvertTo-G2PeakHuntCandidateSummary {
     $dbfs = Get-NumericValue (Get-JsonValue $Candidate "dbfs")
     $confidence = Get-NumericValue (Get-JsonValue $Candidate "confidence")
     $evidenceScore = Get-NumericValue (Get-JsonValue $Candidate "evidenceScore")
+    $evidenceOutputGapExcess = Get-NumericValue (Get-JsonValue $Candidate "evidenceOutputGapExcessDb")
+    $evidenceFinalAudioGapExcess = Get-NumericValue (Get-JsonValue $Candidate "evidenceFinalAudioGapExcessDb")
 
     return [ordered]@{
         rank = if ($null -eq $rank) { $null } else { [int][Math]::Round($rank) }
@@ -254,6 +256,10 @@ function ConvertTo-G2PeakHuntCandidateSummary {
         confidence = $confidence
         coherent = Get-JsonValue $Candidate "coherent"
         evidenceScore = $evidenceScore
+        evidenceStatus = [string](Get-JsonValue $Candidate "evidenceStatus")
+        evidenceTuningAction = [string](Get-JsonValue $Candidate "evidenceTuningAction")
+        evidenceOutputGapExcessDb = $evidenceOutputGapExcess
+        evidenceFinalAudioGapExcessDb = $evidenceFinalAudioGapExcess
     }
 }
 
@@ -6342,6 +6348,7 @@ $g2RxPeakHuntEvidence = [ordered]@{
     hotMakeupSampleCount = 0
     hardBlockerSampleCount = 0
     agcPumpingRiskRunCount = 0
+    mixedWeakStrongTuningActionCounts = @{}
     peakCandidateCount = 0
     peakCandidates = @()
     retuneAttemptCount = 0
@@ -6377,6 +6384,22 @@ $g2RxPeakHuntEvidence = [ordered]@{
     bestFrequencyHz = $null
     bestScore = $null
     bestStatus = ""
+    bestTuningStatus = ""
+    bestTuningAction = ""
+    bestOutputGapDirection = ""
+    bestOutputGapExcessDb = $null
+    bestWeakOutputLiftNeededDb = $null
+    bestWeakOutputTrimNeededDb = $null
+    bestFinalAudioGapDirection = ""
+    bestFinalAudioGapExcessDb = $null
+    bestWeakFinalAudioLiftNeededDb = $null
+    bestWeakFinalAudioTrimNeededDb = $null
+    bestTopWeakInputCount = 0
+    bestTopStrongInputCount = 0
+    bestTopSpeechQualifiedWeakInputCount = 0
+    bestTopSpeechQualifiedStrongInputCount = 0
+    bestTopPassbandQualifiedWeakInputCount = 0
+    bestTopPassbandQualifiedStrongInputCount = 0
     bestReportPath = ""
     bestJsonlPath = ""
     referencedWindowCount = 0
@@ -13854,6 +13877,10 @@ else {
                 $hotMakeupSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "hotMakeupSampleCount"))
                 $hardBlockerSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "hardBlockerSampleCount"))
                 $agcPumpingRiskRunCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "agcPumpingRiskRunCount"))
+                $mixedWeakStrongTuningActionCounts = Get-JsonValue $artifactJson "mixedWeakStrongTuningActionCounts"
+                if ($null -eq $mixedWeakStrongTuningActionCounts) {
+                    $mixedWeakStrongTuningActionCounts = [ordered]@{}
+                }
                 $peakCandidates = @(Get-JsonArray $artifactJson "peakCandidates")
                 $retuneAttempts = @(Get-JsonArray $artifactJson "retuneAttempts")
                 $safety = Get-JsonValue $artifactJson "safety"
@@ -13945,6 +13972,7 @@ else {
                 $g2RxPeakHuntEvidence["hotMakeupSampleCount"] = $hotMakeupSampleCount
                 $g2RxPeakHuntEvidence["hardBlockerSampleCount"] = $hardBlockerSampleCount
                 $g2RxPeakHuntEvidence["agcPumpingRiskRunCount"] = $agcPumpingRiskRunCount
+                $g2RxPeakHuntEvidence["mixedWeakStrongTuningActionCounts"] = $mixedWeakStrongTuningActionCounts
                 $g2RxPeakHuntEvidence["peakCandidateCount"] = $peakCandidates.Count
                 $g2RxPeakHuntEvidence["peakCandidates"] = @($peakCandidates |
                     Select-Object -First 8 |
@@ -13983,6 +14011,22 @@ else {
                 $g2RxPeakHuntEvidence["bestFrequencyHz"] = $bestFrequencyHz
                 $g2RxPeakHuntEvidence["bestScore"] = Get-JsonValue $bestRun "score"
                 $g2RxPeakHuntEvidence["bestStatus"] = [string](Get-JsonValue $bestRun "mixedWeakStrongEvidenceStatus")
+                $g2RxPeakHuntEvidence["bestTuningStatus"] = [string](Get-JsonValue $bestRun "mixedWeakStrongTuningStatus")
+                $g2RxPeakHuntEvidence["bestTuningAction"] = [string](Get-JsonValue $bestRun "mixedWeakStrongTuningAction")
+                $g2RxPeakHuntEvidence["bestOutputGapDirection"] = [string](Get-JsonValue $bestRun "mixedWeakStrongOutputGapDirection")
+                $g2RxPeakHuntEvidence["bestOutputGapExcessDb"] = Get-JsonValue $bestRun "mixedWeakStrongOutputGapExcessDb"
+                $g2RxPeakHuntEvidence["bestWeakOutputLiftNeededDb"] = Get-JsonValue $bestRun "mixedWeakOutputLiftNeededDb"
+                $g2RxPeakHuntEvidence["bestWeakOutputTrimNeededDb"] = Get-JsonValue $bestRun "mixedWeakOutputTrimNeededDb"
+                $g2RxPeakHuntEvidence["bestFinalAudioGapDirection"] = [string](Get-JsonValue $bestRun "mixedWeakStrongFinalAudioGapDirection")
+                $g2RxPeakHuntEvidence["bestFinalAudioGapExcessDb"] = Get-JsonValue $bestRun "mixedWeakStrongFinalAudioGapExcessDb"
+                $g2RxPeakHuntEvidence["bestWeakFinalAudioLiftNeededDb"] = Get-JsonValue $bestRun "mixedWeakFinalAudioLiftNeededDb"
+                $g2RxPeakHuntEvidence["bestWeakFinalAudioTrimNeededDb"] = Get-JsonValue $bestRun "mixedWeakFinalAudioTrimNeededDb"
+                $g2RxPeakHuntEvidence["bestTopWeakInputCount"] = [int](Get-NumericValueOrDefault (Get-JsonValue $bestRun "mixedWeakStrongTopWeakInputCount"))
+                $g2RxPeakHuntEvidence["bestTopStrongInputCount"] = [int](Get-NumericValueOrDefault (Get-JsonValue $bestRun "mixedWeakStrongTopStrongInputCount"))
+                $g2RxPeakHuntEvidence["bestTopSpeechQualifiedWeakInputCount"] = [int](Get-NumericValueOrDefault (Get-JsonValue $bestRun "mixedWeakStrongTopSpeechQualifiedWeakInputCount"))
+                $g2RxPeakHuntEvidence["bestTopSpeechQualifiedStrongInputCount"] = [int](Get-NumericValueOrDefault (Get-JsonValue $bestRun "mixedWeakStrongTopSpeechQualifiedStrongInputCount"))
+                $g2RxPeakHuntEvidence["bestTopPassbandQualifiedWeakInputCount"] = [int](Get-NumericValueOrDefault (Get-JsonValue $bestRun "mixedWeakStrongTopPassbandQualifiedWeakInputCount"))
+                $g2RxPeakHuntEvidence["bestTopPassbandQualifiedStrongInputCount"] = [int](Get-NumericValueOrDefault (Get-JsonValue $bestRun "mixedWeakStrongTopPassbandQualifiedStrongInputCount"))
                 $g2RxPeakHuntEvidence["bestReportPath"] = [string](Get-JsonValue $bestRun "reportPath")
                 $g2RxPeakHuntEvidence["bestJsonlPath"] = [string](Get-JsonValue $bestRun "jsonlPath")
 
@@ -15768,6 +15812,7 @@ $report = [ordered]@{
     g2RxPeakHuntHotMakeupSampleCount = $g2RxPeakHuntEvidence.hotMakeupSampleCount
     g2RxPeakHuntHardBlockerSampleCount = $g2RxPeakHuntEvidence.hardBlockerSampleCount
     g2RxPeakHuntAgcPumpingRiskRunCount = $g2RxPeakHuntEvidence.agcPumpingRiskRunCount
+    g2RxPeakHuntMixedWeakStrongTuningActionCounts = $g2RxPeakHuntEvidence.mixedWeakStrongTuningActionCounts
     g2RxPeakHuntPeakCandidateCount = $g2RxPeakHuntEvidence.peakCandidateCount
     g2RxPeakHuntPeakCandidates = @($g2RxPeakHuntEvidence.peakCandidates)
     g2RxPeakHuntRetuneAttemptCount = $g2RxPeakHuntEvidence.retuneAttemptCount
@@ -15803,6 +15848,22 @@ $report = [ordered]@{
     g2RxPeakHuntBestFrequencyHz = $g2RxPeakHuntEvidence.bestFrequencyHz
     g2RxPeakHuntBestScore = $g2RxPeakHuntEvidence.bestScore
     g2RxPeakHuntBestStatus = $g2RxPeakHuntEvidence.bestStatus
+    g2RxPeakHuntBestTuningStatus = $g2RxPeakHuntEvidence.bestTuningStatus
+    g2RxPeakHuntBestTuningAction = $g2RxPeakHuntEvidence.bestTuningAction
+    g2RxPeakHuntBestOutputGapDirection = $g2RxPeakHuntEvidence.bestOutputGapDirection
+    g2RxPeakHuntBestOutputGapExcessDb = $g2RxPeakHuntEvidence.bestOutputGapExcessDb
+    g2RxPeakHuntBestWeakOutputLiftNeededDb = $g2RxPeakHuntEvidence.bestWeakOutputLiftNeededDb
+    g2RxPeakHuntBestWeakOutputTrimNeededDb = $g2RxPeakHuntEvidence.bestWeakOutputTrimNeededDb
+    g2RxPeakHuntBestFinalAudioGapDirection = $g2RxPeakHuntEvidence.bestFinalAudioGapDirection
+    g2RxPeakHuntBestFinalAudioGapExcessDb = $g2RxPeakHuntEvidence.bestFinalAudioGapExcessDb
+    g2RxPeakHuntBestWeakFinalAudioLiftNeededDb = $g2RxPeakHuntEvidence.bestWeakFinalAudioLiftNeededDb
+    g2RxPeakHuntBestWeakFinalAudioTrimNeededDb = $g2RxPeakHuntEvidence.bestWeakFinalAudioTrimNeededDb
+    g2RxPeakHuntBestTopWeakInputCount = $g2RxPeakHuntEvidence.bestTopWeakInputCount
+    g2RxPeakHuntBestTopStrongInputCount = $g2RxPeakHuntEvidence.bestTopStrongInputCount
+    g2RxPeakHuntBestTopSpeechQualifiedWeakInputCount = $g2RxPeakHuntEvidence.bestTopSpeechQualifiedWeakInputCount
+    g2RxPeakHuntBestTopSpeechQualifiedStrongInputCount = $g2RxPeakHuntEvidence.bestTopSpeechQualifiedStrongInputCount
+    g2RxPeakHuntBestTopPassbandQualifiedWeakInputCount = $g2RxPeakHuntEvidence.bestTopPassbandQualifiedWeakInputCount
+    g2RxPeakHuntBestTopPassbandQualifiedStrongInputCount = $g2RxPeakHuntEvidence.bestTopPassbandQualifiedStrongInputCount
     g2RxPeakHuntBestReportPath = $g2RxPeakHuntEvidence.bestReportPath
     g2RxPeakHuntBestJsonlPath = $g2RxPeakHuntEvidence.bestJsonlPath
     g2RxPeakHuntReferencedWindowCount = $g2RxPeakHuntEvidence.referencedWindowCount

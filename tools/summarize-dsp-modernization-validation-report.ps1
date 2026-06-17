@@ -142,6 +142,10 @@ function Format-G2PeakHuntCandidateList {
         $snr = Get-JsonValue $candidate "snrDb"
         $dbfs = Get-JsonValue $candidate "dbfs"
         $score = Get-JsonValue $candidate "evidenceScore"
+        $evidenceStatus = [string](Get-JsonValue $candidate "evidenceStatus")
+        $evidenceAction = [string](Get-JsonValue $candidate "evidenceTuningAction")
+        $evidenceOutputGapExcess = Get-JsonValue $candidate "evidenceOutputGapExcessDb"
+        $evidenceFinalAudioGapExcess = Get-JsonValue $candidate "evidenceFinalAudioGapExcessDb"
         if (-not [string]::IsNullOrWhiteSpace($source)) {
             $parts.Add($source) | Out-Null
         }
@@ -156,6 +160,18 @@ function Format-G2PeakHuntCandidateList {
         }
         if ($null -ne $score -and -not [string]::IsNullOrWhiteSpace([string]$score)) {
             $parts.Add("score=$score") | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($evidenceStatus)) {
+            $parts.Add("status=$evidenceStatus") | Out-Null
+        }
+        if (-not [string]::IsNullOrWhiteSpace($evidenceAction)) {
+            $parts.Add("action=$evidenceAction") | Out-Null
+        }
+        if ($null -ne $evidenceOutputGapExcess -and -not [string]::IsNullOrWhiteSpace([string]$evidenceOutputGapExcess)) {
+            $parts.Add("outputGapExcess=$evidenceOutputGapExcess") | Out-Null
+        }
+        if ($null -ne $evidenceFinalAudioGapExcess -and -not [string]::IsNullOrWhiteSpace([string]$evidenceFinalAudioGapExcess)) {
+            $parts.Add("finalAudioGapExcess=$evidenceFinalAudioGapExcess") | Out-Null
         }
 
         $detail = ($parts.ToArray() -join "; ")
@@ -1002,11 +1018,18 @@ function Get-EvidenceGateRecords {
     }
     $g2RxPeakHuntBestFrequencyHz = [string](Get-JsonValue $Validation "g2RxPeakHuntBestFrequencyHz")
     $g2RxPeakHuntBestStatus = [string](Get-JsonValue $Validation "g2RxPeakHuntBestStatus")
+    $g2RxPeakHuntBestTuningAction = [string](Get-JsonValue $Validation "g2RxPeakHuntBestTuningAction")
+    $g2RxPeakHuntBestOutputGapExcessDb = Get-JsonValue $Validation "g2RxPeakHuntBestOutputGapExcessDb"
+    $g2RxPeakHuntBestFinalAudioGapExcessDb = Get-JsonValue $Validation "g2RxPeakHuntBestFinalAudioGapExcessDb"
     $g2RxPeakHuntBestText = if ([string]::IsNullOrWhiteSpace($g2RxPeakHuntBestFrequencyHz)) {
         "none"
     }
     else {
-        "$g2RxPeakHuntBestFrequencyHz Hz score=$(Get-JsonValue $Validation "g2RxPeakHuntBestScore") status=$g2RxPeakHuntBestStatus"
+        $text = "$g2RxPeakHuntBestFrequencyHz Hz score=$(Get-JsonValue $Validation "g2RxPeakHuntBestScore") status=$g2RxPeakHuntBestStatus"
+        if (-not [string]::IsNullOrWhiteSpace($g2RxPeakHuntBestTuningAction)) {
+            $text += " action=$g2RxPeakHuntBestTuningAction outputGapExcess=$g2RxPeakHuntBestOutputGapExcessDb finalAudioGapExcess=$g2RxPeakHuntBestFinalAudioGapExcessDb"
+        }
+        $text
     }
     $g2RxPeakHuntReferencedWindowCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "g2RxPeakHuntReferencedWindowCount")
     $g2RxPeakHuntReferencedWindowReadyCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "g2RxPeakHuntReferencedWindowReadyCount")
@@ -2305,11 +2328,17 @@ function Add-AcceptanceActionForGate {
                     $peakHuntBestFrequencyHz = [string](Get-JsonValue $Validation "g2RxPeakHuntBestFrequencyHz")
                     $peakHuntBestScore = Get-JsonValue $Validation "g2RxPeakHuntBestScore"
                     $peakHuntBestStatus = [string](Get-JsonValue $Validation "g2RxPeakHuntBestStatus")
+                    $peakHuntBestTuningAction = [string](Get-JsonValue $Validation "g2RxPeakHuntBestTuningAction")
+                    $peakHuntBestOutputGapExcessDb = Get-JsonValue $Validation "g2RxPeakHuntBestOutputGapExcessDb"
+                    $peakHuntBestFinalAudioGapExcessDb = Get-JsonValue $Validation "g2RxPeakHuntBestFinalAudioGapExcessDb"
                     $peakHuntBestReportPath = [string](Get-JsonValue $Validation "g2RxPeakHuntBestReportPath")
                     $peakHuntWindowReadyCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "g2RxPeakHuntReferencedWindowReadyCount")
                     $peakHuntWindowCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "g2RxPeakHuntReferencedWindowCount")
                     $peakHuntProblemCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "g2RxPeakHuntReferencedWindowProblemCount")
                     $peakHuntReason = " Latest G2 peak-hunt report status='$peakHuntStatus', weakSamples=$peakHuntWeakSamples, strongSamples=$peakHuntStrongSamples, referencedWindows=$peakHuntWindowReadyCount/$peakHuntWindowCount, referencedProblems=$peakHuntProblemCount, bestFrequencyHz=$peakHuntBestFrequencyHz, bestScore=$peakHuntBestScore, bestStatus='$peakHuntBestStatus', bestReportPath='$peakHuntBestReportPath'."
+                    if (-not [string]::IsNullOrWhiteSpace($peakHuntBestTuningAction)) {
+                        $peakHuntReason += " Best mixed-focus action='$peakHuntBestTuningAction', outputGapExcess=$peakHuntBestOutputGapExcessDb, finalAudioGapExcess=$peakHuntBestFinalAudioGapExcessDb."
+                    }
                     if ($peakHuntStatus -eq "weak-only" -or $peakHuntBestStatus -eq "missing-strong-input" -or ($peakHuntWeakSamples -gt 0 -and $peakHuntStrongSamples -le 0)) {
                         $peakHuntReason += " That weak-only or missing-strong-input scan is useful scouting evidence, but it cannot satisfy mixed weak+strong acceptance."
                         $peakHuntManualContext = " The latest G2 peak hunt was weak-only/missing strong input, so keep scanning or retune to a window with both weak and strong speech before promotion."
@@ -2875,6 +2904,11 @@ function Build-MarkdownReport {
         $bestPeakHuntReportPath = [string](Get-JsonValue $Report "g2RxPeakHuntBestReportPath")
         if (-not [string]::IsNullOrWhiteSpace($bestPeakHuntReportPath)) {
             $lines.Add("- Best run: $(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestFrequencyHz")) Hz score $(Get-JsonValue $Report "g2RxPeakHuntBestScore") status $(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestStatus"))") | Out-Null
+            $bestPeakHuntTuningAction = [string](Get-JsonValue $Report "g2RxPeakHuntBestTuningAction")
+            if (-not [string]::IsNullOrWhiteSpace($bestPeakHuntTuningAction)) {
+                $lines.Add("- Best mixed focus: action $(Format-MarkdownCell $bestPeakHuntTuningAction), output gap excess $(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestOutputGapExcessDb")) dB ($(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestOutputGapDirection"))), final-audio gap excess $(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestFinalAudioGapExcessDb")) dB ($(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestFinalAudioGapDirection")))") | Out-Null
+                $lines.Add("- Best focus top rows weak/strong/speech weak/speech strong/passband weak/passband strong: $(Get-JsonValue $Report "g2RxPeakHuntBestTopWeakInputCount") / $(Get-JsonValue $Report "g2RxPeakHuntBestTopStrongInputCount") / $(Get-JsonValue $Report "g2RxPeakHuntBestTopSpeechQualifiedWeakInputCount") / $(Get-JsonValue $Report "g2RxPeakHuntBestTopSpeechQualifiedStrongInputCount") / $(Get-JsonValue $Report "g2RxPeakHuntBestTopPassbandQualifiedWeakInputCount") / $(Get-JsonValue $Report "g2RxPeakHuntBestTopPassbandQualifiedStrongInputCount")") | Out-Null
+            }
             $lines.Add("- Best run report: $(Format-MarkdownCell $bestPeakHuntReportPath)") | Out-Null
             $lines.Add("- Best run JSONL: $(Format-MarkdownCell (Get-JsonValue $Report "g2RxPeakHuntBestJsonlPath"))") | Out-Null
         }
@@ -3716,6 +3750,7 @@ $report = [ordered]@{
     g2RxPeakHuntHotMakeupSampleCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntHotMakeupSampleCount")
     g2RxPeakHuntHardBlockerSampleCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntHardBlockerSampleCount")
     g2RxPeakHuntAgcPumpingRiskRunCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntAgcPumpingRiskRunCount")
+    g2RxPeakHuntMixedWeakStrongTuningActionCounts = Get-JsonValue $validation "g2RxPeakHuntMixedWeakStrongTuningActionCounts"
     g2RxPeakHuntPeakCandidateCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntPeakCandidateCount")
     g2RxPeakHuntPeakCandidates = @(Get-JsonArray $validation "g2RxPeakHuntPeakCandidates")
     g2RxPeakHuntRetuneAttemptCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntRetuneAttemptCount")
@@ -3751,6 +3786,22 @@ $report = [ordered]@{
     g2RxPeakHuntBestFrequencyHz = Get-JsonValue $validation "g2RxPeakHuntBestFrequencyHz"
     g2RxPeakHuntBestScore = Get-JsonValue $validation "g2RxPeakHuntBestScore"
     g2RxPeakHuntBestStatus = [string](Get-JsonValue $validation "g2RxPeakHuntBestStatus")
+    g2RxPeakHuntBestTuningStatus = [string](Get-JsonValue $validation "g2RxPeakHuntBestTuningStatus")
+    g2RxPeakHuntBestTuningAction = [string](Get-JsonValue $validation "g2RxPeakHuntBestTuningAction")
+    g2RxPeakHuntBestOutputGapDirection = [string](Get-JsonValue $validation "g2RxPeakHuntBestOutputGapDirection")
+    g2RxPeakHuntBestOutputGapExcessDb = Get-JsonValue $validation "g2RxPeakHuntBestOutputGapExcessDb"
+    g2RxPeakHuntBestWeakOutputLiftNeededDb = Get-JsonValue $validation "g2RxPeakHuntBestWeakOutputLiftNeededDb"
+    g2RxPeakHuntBestWeakOutputTrimNeededDb = Get-JsonValue $validation "g2RxPeakHuntBestWeakOutputTrimNeededDb"
+    g2RxPeakHuntBestFinalAudioGapDirection = [string](Get-JsonValue $validation "g2RxPeakHuntBestFinalAudioGapDirection")
+    g2RxPeakHuntBestFinalAudioGapExcessDb = Get-JsonValue $validation "g2RxPeakHuntBestFinalAudioGapExcessDb"
+    g2RxPeakHuntBestWeakFinalAudioLiftNeededDb = Get-JsonValue $validation "g2RxPeakHuntBestWeakFinalAudioLiftNeededDb"
+    g2RxPeakHuntBestWeakFinalAudioTrimNeededDb = Get-JsonValue $validation "g2RxPeakHuntBestWeakFinalAudioTrimNeededDb"
+    g2RxPeakHuntBestTopWeakInputCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntBestTopWeakInputCount")
+    g2RxPeakHuntBestTopStrongInputCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntBestTopStrongInputCount")
+    g2RxPeakHuntBestTopSpeechQualifiedWeakInputCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntBestTopSpeechQualifiedWeakInputCount")
+    g2RxPeakHuntBestTopSpeechQualifiedStrongInputCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntBestTopSpeechQualifiedStrongInputCount")
+    g2RxPeakHuntBestTopPassbandQualifiedWeakInputCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntBestTopPassbandQualifiedWeakInputCount")
+    g2RxPeakHuntBestTopPassbandQualifiedStrongInputCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntBestTopPassbandQualifiedStrongInputCount")
     g2RxPeakHuntBestReportPath = [string](Get-JsonValue $validation "g2RxPeakHuntBestReportPath")
     g2RxPeakHuntBestJsonlPath = [string](Get-JsonValue $validation "g2RxPeakHuntBestJsonlPath")
     g2RxPeakHuntReferencedWindowCount = Get-IntegerValueOrDefault (Get-JsonValue $validation "g2RxPeakHuntReferencedWindowCount")

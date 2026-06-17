@@ -293,6 +293,32 @@ function Get-NullableDoubleValue {
     return $null
 }
 
+function Get-TrimmedStringValue {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return $null
+    }
+
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return $null
+    }
+
+    return $text
+}
+
+function Format-NullableDbText {
+    param($Value)
+
+    $number = Get-NullableDoubleValue $Value
+    if ($null -eq $number) {
+        return "n/a"
+    }
+
+    return ("{0:0.###} dB" -f [double]$number)
+}
+
 function Test-Truthy {
     param($Value)
 
@@ -875,6 +901,9 @@ function Get-AutoPhoneClusterCandidates {
             $nearPassband = Get-IntValue (Get-JsonValue $run "frontendNearPassbandSampleCount")
             $strongInput = Get-IntValue (Get-JsonValue $run "strongInputSampleCount")
             $candidateSource = [string](Get-JsonValue $run "candidateSource")
+            $tuningAction = Get-TrimmedStringValue (Get-JsonValue $run "mixedWeakStrongTuningAction")
+            $outputGapExcess = Get-NullableDoubleValue (Get-JsonValue $run "mixedWeakStrongOutputGapExcessDb")
+            $finalAudioGapExcess = Get-NullableDoubleValue (Get-JsonValue $run "mixedWeakStrongFinalAudioGapExcessDb")
             if (($speechWeak + $speechStrong) -lt $MinSpeechSamples -and ($passbandWeak + $passbandStrong) -le 0 -and $nearPassband -le 0) {
                 continue
             }
@@ -906,6 +935,9 @@ function Get-AutoPhoneClusterCandidates {
                     nearPassband = $nearPassband
                     candidateSource = $candidateSource
                     status = [string](Get-JsonValue $run "mixedWeakStrongEvidenceStatus")
+                    tuningAction = $tuningAction
+                    outputGapExcessDb = $outputGapExcess
+                    finalAudioGapExcessDb = $finalAudioGapExcess
                     reportPath = $file.FullName
                 }
             }
@@ -941,6 +973,9 @@ function Get-AutoPhoneClusterCandidates {
             evidenceNearPassband = [int]$seed.nearPassband
             evidenceCandidateSource = [string]$seed.candidateSource
             evidenceStatus = [string]$seed.status
+            evidenceTuningAction = $seed.tuningAction
+            evidenceOutputGapExcessDb = $seed.outputGapExcessDb
+            evidenceFinalAudioGapExcessDb = $seed.finalAudioGapExcessDb
             evidenceReportPath = [string]$seed.reportPath
         }) | Out-Null
     }
@@ -977,6 +1012,9 @@ function Get-AutoPhoneClusterCandidates {
                         nearPassband = [int]$seed.nearPassband
                         candidateSource = [string]$seed.candidateSource
                         status = [string]$seed.status
+                        tuningAction = $seed.tuningAction
+                        outputGapExcessDb = $seed.outputGapExcessDb
+                        finalAudioGapExcessDb = $seed.finalAudioGapExcessDb
                         reportPath = [string]$seed.reportPath
                         neighborOffsetHz = [long]$offsetHz
                     }
@@ -1032,6 +1070,9 @@ function Get-AutoPhoneClusterCandidates {
                     evidenceNearPassband = [int]$seed.nearPassband
                     evidenceCandidateSource = [string]$seed.candidateSource
                     evidenceStatus = [string]$seed.status
+                    evidenceTuningAction = $seed.tuningAction
+                    evidenceOutputGapExcessDb = $seed.outputGapExcessDb
+                    evidenceFinalAudioGapExcessDb = $seed.finalAudioGapExcessDb
                     evidenceReportPath = [string]$seed.reportPath
                     evidenceNeighborOfFrequencyHz = [long]$seed.sourceFrequencyHz
                     evidenceNeighborOffsetHz = [long]$seed.neighborOffsetHz
@@ -1716,6 +1757,23 @@ try {
                 $frontendNearPassbandSampleCount = Get-IntValue (Get-JsonValue $frontendTopPeakWatch "nearPassbandSampleCount")
                 $readyTrace = Test-Truthy (Get-JsonValue $report "readyForBenchmarkTrace")
                 $mixedReady = Test-Truthy (Get-JsonValue $weak "mixedWeakStrongEvidenceReady")
+                $mixedFocus = Get-JsonValue $weak "mixedWeakStrongTuningFocus"
+                $mixedFocusAction = Get-TrimmedStringValue (Get-JsonValue $mixedFocus "preferredAction")
+                $mixedFocusStatus = Get-TrimmedStringValue (Get-JsonValue $mixedFocus "status")
+                $mixedOutputGapDirection = Get-TrimmedStringValue (Get-JsonValue $mixedFocus "outputGapDirection")
+                $mixedFinalAudioGapDirection = Get-TrimmedStringValue (Get-JsonValue $mixedFocus "finalAudioGapDirection")
+                $mixedOutputGapExcess = Get-NullableDoubleValue (Get-JsonValue $mixedFocus "outputGapExcessDb")
+                $mixedFinalAudioGapExcess = Get-NullableDoubleValue (Get-JsonValue $mixedFocus "finalAudioGapExcessDb")
+                $mixedWeakOutputLiftNeeded = Get-NullableDoubleValue (Get-JsonValue $mixedFocus "weakOutputLiftNeededDb")
+                $mixedWeakOutputTrimNeeded = Get-NullableDoubleValue (Get-JsonValue $mixedFocus "weakOutputTrimNeededDb")
+                $mixedWeakFinalAudioLiftNeeded = Get-NullableDoubleValue (Get-JsonValue $mixedFocus "weakFinalAudioLiftNeededDb")
+                $mixedWeakFinalAudioTrimNeeded = Get-NullableDoubleValue (Get-JsonValue $mixedFocus "weakFinalAudioTrimNeededDb")
+                $mixedTopWeakInputCount = @(Get-JsonArray $mixedFocus "topWeakInputs").Count
+                $mixedTopStrongInputCount = @(Get-JsonArray $mixedFocus "topStrongInputs").Count
+                $mixedTopSpeechQualifiedWeakInputCount = @(Get-JsonArray $mixedFocus "topSpeechQualifiedWeakInputs").Count
+                $mixedTopSpeechQualifiedStrongInputCount = @(Get-JsonArray $mixedFocus "topSpeechQualifiedStrongInputs").Count
+                $mixedTopPassbandQualifiedWeakInputCount = @(Get-JsonArray $mixedFocus "topPassbandQualifiedWeakInputs").Count
+                $mixedTopPassbandQualifiedStrongInputCount = @(Get-JsonArray $mixedFocus "topPassbandQualifiedStrongInputs").Count
                 $score = Get-HuntScore `
                     -WeakInputSampleCount $weakInput `
                     -StrongInputSampleCount $strongInput `
@@ -1784,6 +1842,22 @@ try {
                     weakStrongOutputParityReady = Test-Truthy (Get-JsonValue $weak "weakStrongOutputParityReady")
                     weakStrongFinalAudioParityReady = Test-Truthy (Get-JsonValue $weak "weakStrongFinalAudioParityReady")
                     mixedWeakStrongEvidenceStatus = [string](Get-JsonValue $weak "mixedWeakStrongEvidenceStatus")
+                    mixedWeakStrongTuningStatus = $mixedFocusStatus
+                    mixedWeakStrongTuningAction = $mixedFocusAction
+                    mixedWeakStrongOutputGapDirection = $mixedOutputGapDirection
+                    mixedWeakStrongOutputGapExcessDb = $mixedOutputGapExcess
+                    mixedWeakOutputLiftNeededDb = $mixedWeakOutputLiftNeeded
+                    mixedWeakOutputTrimNeededDb = $mixedWeakOutputTrimNeeded
+                    mixedWeakStrongFinalAudioGapDirection = $mixedFinalAudioGapDirection
+                    mixedWeakStrongFinalAudioGapExcessDb = $mixedFinalAudioGapExcess
+                    mixedWeakFinalAudioLiftNeededDb = $mixedWeakFinalAudioLiftNeeded
+                    mixedWeakFinalAudioTrimNeededDb = $mixedWeakFinalAudioTrimNeeded
+                    mixedWeakStrongTopWeakInputCount = $mixedTopWeakInputCount
+                    mixedWeakStrongTopStrongInputCount = $mixedTopStrongInputCount
+                    mixedWeakStrongTopSpeechQualifiedWeakInputCount = $mixedTopSpeechQualifiedWeakInputCount
+                    mixedWeakStrongTopSpeechQualifiedStrongInputCount = $mixedTopSpeechQualifiedStrongInputCount
+                    mixedWeakStrongTopPassbandQualifiedWeakInputCount = $mixedTopPassbandQualifiedWeakInputCount
+                    mixedWeakStrongTopPassbandQualifiedStrongInputCount = $mixedTopPassbandQualifiedStrongInputCount
                     frontendTopPeakSampleCount = $frontendTopPeakSampleCount
                     frontendNearPassbandSampleCount = $frontendNearPassbandSampleCount
                     frontendNearPassbandThresholdHz = Get-IntValue (Get-JsonValue $frontendTopPeakWatch "nearPassbandThresholdHz")
@@ -1875,6 +1949,7 @@ $passbandQualifiedWeakTotal = 0
 $passbandQualifiedStrongTotal = 0
 $passbandQualifiedNearStrongTotal = 0
 $frontendNearPassbandTotal = 0
+$tuningActionCounts = @{}
 foreach ($run in $runArray) {
     $weakTotal += Get-IntValue $run.weakInputSampleCount
     $strongTotal += Get-IntValue $run.strongInputSampleCount
@@ -1894,6 +1969,13 @@ foreach ($run in $runArray) {
     }
     if (Test-Truthy $run.mixedWeakStrongEvidenceReady) {
         $mixedReadyRunCount++
+    }
+    $tuningAction = Get-TrimmedStringValue $run.mixedWeakStrongTuningAction
+    if ($null -ne $tuningAction) {
+        if (-not $tuningActionCounts.ContainsKey($tuningAction)) {
+            $tuningActionCounts[$tuningAction] = 0
+        }
+        $tuningActionCounts[$tuningAction] = [int]$tuningActionCounts[$tuningAction] + 1
     }
 }
 
@@ -1951,6 +2033,12 @@ if ($pumpingRiskRunCount -gt 0) {
 }
 if ($hardBlockerTotal -gt 0) {
     $recommendations.Add("One or more windows had hard blockers; recapture after clearing endpoint/runtime blockers.") | Out-Null
+}
+if ($null -ne $bestRun -and -not [string]::IsNullOrWhiteSpace($bestRun.mixedWeakStrongTuningAction)) {
+    $recommendations.Add("Best-run mixed focus action is '$($bestRun.mixedWeakStrongTuningAction)' (output gap excess $(Format-NullableDbText $bestRun.mixedWeakStrongOutputGapExcessDb), final-audio gap excess $(Format-NullableDbText $bestRun.mixedWeakStrongFinalAudioGapExcessDb)); use it to choose retune/longer dwell versus bounded NR5 weak-speech lift before changing defaults.") | Out-Null
+}
+if ($runArray | Where-Object { [string]::Equals([string]$_.mixedWeakStrongTuningAction, "tune-bounded-weak-speech-lift-from-top-weak-and-strong-input-rows", [StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1) {
+    $recommendations.Add("At least one window requests bounded weak-speech lift; inspect that window's nr5WeakSignalWatch.mixedWeakStrongTuningFocus top weak/strong rows before changing NR5 or RX leveler thresholds.") | Out-Null
 }
 
 $completedUtc = [DateTimeOffset]::UtcNow
@@ -2066,12 +2154,16 @@ $reportObject = [ordered]@{
     hotMakeupSampleCount = $hotMakeupTotal
     hardBlockerSampleCount = $hardBlockerTotal
     agcPumpingRiskRunCount = $pumpingRiskRunCount
+    mixedWeakStrongTuningActionCounts = [ordered]@{}
     bestRun = $bestRun
     retuneAttempts = @($retuneAttempts.ToArray())
     scanPasses = @($scanPassArray)
     stoppedEarly = $stoppedEarly
     runs = @($runArray)
     recommendations = @($recommendations.ToArray())
+}
+foreach ($key in @($tuningActionCounts.Keys | Sort-Object)) {
+    $reportObject.mixedWeakStrongTuningActionCounts[$key] = [int]$tuningActionCounts[$key]
 }
 
 Write-JsonFile -Path $ReportPath -Value $reportObject
@@ -2087,6 +2179,9 @@ else {
     Write-Host "Runs: $($reportObject.actualRunCount), mixed weak+strong ready: $($reportObject.mixedWeakStrongReady), weak samples: $weakTotal, strong samples: $strongTotal, near-strong samples: $nearStrongTotal"
     if ($null -ne $bestRun) {
         Write-Host "Best run: $($bestRun.frequencyHz) Hz score=$($bestRun.score) status=$($bestRun.mixedWeakStrongEvidenceStatus) report=$($bestRun.reportPath)"
+        if (-not [string]::IsNullOrWhiteSpace($bestRun.mixedWeakStrongTuningAction)) {
+            Write-Host "Best mixed focus: action=$($bestRun.mixedWeakStrongTuningAction), outputGapExcess=$(Format-NullableDbText $bestRun.mixedWeakStrongOutputGapExcessDb) ($($bestRun.mixedWeakStrongOutputGapDirection)), finalAudioGapExcess=$(Format-NullableDbText $bestRun.mixedWeakStrongFinalAudioGapExcessDb) ($($bestRun.mixedWeakStrongFinalAudioGapDirection))"
+        }
     }
 }
 

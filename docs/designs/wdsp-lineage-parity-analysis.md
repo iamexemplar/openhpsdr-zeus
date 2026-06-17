@@ -691,6 +691,11 @@ If live history is blocked before any matrix-ready weak+strong candidate exists,
 `artifacts/g2-rx-peak-hunt-report.json` plus per-window watcher summaries/JSONL traces, and its
 `-AllowRetune` mode is explicitly separated from `/api/dsp/live-diagnostics`: the endpoint remains
 read-only, while the script may temporarily move RX VFO through `/api/vfo` and restore it afterward.
+Peak-hunt reports now also preserve compact `mixedWeakStrongTuningFocus` steering fields from each
+watcher window: best-run action, output/final-audio gap direction and excess, weak lift/trim needs,
+and top weak/strong row counts. These fields decide whether the next live pass should retune/extend
+dwell or inspect bounded weak-speech lift rows; they do not approve NR5/SPNR defaults without the
+required live-history, comparison, and cross-radio evidence gates.
 The optional artifact-manifest entry is `kind=g2-rx-peak-hunt-report-json`; using a trace/index kind
 is incorrect because the peak-hunt report is a summary JSON, not a `files[]` trace index.
 If the same matrix window also carries `liveMatrixArtifactControlStatus=artifact-review`, triage
