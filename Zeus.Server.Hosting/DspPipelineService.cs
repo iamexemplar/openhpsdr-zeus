@@ -456,7 +456,7 @@ public class DspPipelineService : BackgroundService,
                 {
                     nr5SpeechGainHoldLift = Math.Max(
                         nr5SpeechGainHoldLift,
-                        Math.Min(proofLift, heldContinuityLift));
+                        heldContinuityLift);
                 }
             }
             nr5DeepWeakCurrentProof = Math.Max(
