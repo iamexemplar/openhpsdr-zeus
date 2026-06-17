@@ -6060,6 +6060,13 @@ public sealed class DspModernizationValidationToolTests
             Assert.Equal("tools/summarize-dsp-native-stage-timing.ps1", nativeStageTimingReport.GetProperty("source").GetString());
             Assert.Equal("artifacts/native-stage-timing-report.json", nativeStageTimingReport.GetProperty("path").GetString());
 
+            var manualTuneObserverReport = artifacts.Single(artifact => artifact.GetProperty("id").GetString() == "manual-tune-observer-report");
+            Assert.False(manualTuneObserverReport.GetProperty("required").GetBoolean());
+            Assert.Equal("manual-tune-observer-report-json", manualTuneObserverReport.GetProperty("kind").GetString());
+            Assert.Equal("tools/watch-dsp-manual-tune-observer.ps1", manualTuneObserverReport.GetProperty("source").GetString());
+            Assert.Equal("artifacts/manual-tune-observer-report.json", manualTuneObserverReport.GetProperty("path").GetString());
+            Assert.Equal(new[] { "nr5-spnr" }, ReadStringArray(manualTuneObserverReport, "comparisonIds"));
+
             var g2RxPeakHuntReport = artifacts.Single(artifact => artifact.GetProperty("id").GetString() == "g2-rx-peak-hunt-report");
             Assert.False(g2RxPeakHuntReport.GetProperty("required").GetBoolean());
             Assert.Equal("g2-rx-peak-hunt-report-json", g2RxPeakHuntReport.GetProperty("kind").GetString());
@@ -6097,6 +6104,7 @@ public sealed class DspModernizationValidationToolTests
             Assert.DoesNotContain(unexpectedArtifactWarnings, message => message.Contains("live-diagnostics-matrix-report-off-baseline", StringComparison.Ordinal));
             Assert.DoesNotContain(unexpectedArtifactWarnings, message => message.Contains("live-diagnostics-matrix-report-thetis-parity", StringComparison.Ordinal));
             Assert.DoesNotContain(unexpectedArtifactWarnings, message => message.Contains("live-acceptance-cycle-summary", StringComparison.Ordinal));
+            Assert.DoesNotContain(unexpectedArtifactWarnings, message => message.Contains("manual-tune-observer-report", StringComparison.Ordinal));
             Assert.DoesNotContain(unexpectedArtifactWarnings, message => message.Contains("g2-rx-peak-hunt-report", StringComparison.Ordinal));
         }
         finally
@@ -6154,6 +6162,148 @@ public sealed class DspModernizationValidationToolTests
         Assert.Contains("/api/dsp/live-diagnostics", endpoints);
 
         Assert.Contains("watch-dsp-manual-tune-observer.ps1", root.GetProperty("example").GetString(), StringComparison.Ordinal);
+    }
+
+    [SkippableFact]
+    public async Task ManualTuneObserverReportValidatesAndSummarizesReadOnlyEvidence()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell manual-tune observer validator smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-manual-tune-observer-ready-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(bundleDir);
+
+        try
+        {
+            WriteSourcePlanScopeBundle(bundleDir);
+            WriteManualTuneObserverArtifactManifest(bundleDir);
+            WriteManualTuneObserverReport(bundleDir);
+
+            var validationReport = Path.Combine(bundleDir, "validation-manual-tune-observer.json");
+            var validation = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "validate-dsp-modernization-bundle.ps1"),
+                "-BundleDir", bundleDir,
+                "-ArtifactManifestPath", Path.Combine(bundleDir, "artifact-manifest.json"),
+                "-ReportPath", validationReport,
+                "-AllowPreflight",
+                "-JsonOnly");
+
+            Assert.NotEqual(0, validation.ExitCode);
+            Assert.True(File.Exists(validationReport), validation.CombinedOutput);
+
+            using var validationDoc = JsonDocument.Parse(await File.ReadAllTextAsync(validationReport));
+            var validationRoot = validationDoc.RootElement;
+            Assert.True(validationRoot.GetProperty("manualTuneObserverReportPresent").GetBoolean());
+            Assert.True(validationRoot.GetProperty("manualTuneObserverReportReady").GetBoolean());
+            Assert.True(validationRoot.GetProperty("manualTuneObserverReportValid").GetBoolean());
+            Assert.Equal("mixed-ready", validationRoot.GetProperty("manualTuneObserverReportStatus").GetString());
+            Assert.True(validationRoot.GetProperty("manualTuneObserverOk").GetBoolean());
+            Assert.Equal("", validationRoot.GetProperty("manualTuneObserverScanError").GetString());
+            Assert.Equal("http://127.0.0.1:6060", validationRoot.GetProperty("manualTuneObserverBaseUrl").GetString());
+            Assert.Equal("rx-ssb-voice-like-manual", validationRoot.GetProperty("manualTuneObserverScenarioId").GetString());
+            Assert.Equal("nr5-spnr", validationRoot.GetProperty("manualTuneObserverComparisonId").GetString());
+            Assert.Equal(8, validationRoot.GetProperty("manualTuneObserverPollCount").GetInt32());
+            Assert.Equal(8, validationRoot.GetProperty("manualTuneObserverPollSampleCount").GetInt32());
+            Assert.Equal(2, validationRoot.GetProperty("manualTuneObserverCaptureCount").GetInt32());
+            Assert.Equal(2, validationRoot.GetProperty("manualTuneObserverReadyCaptureCount").GetInt32());
+            Assert.True(validationRoot.GetProperty("manualTuneObserverMixedWeakStrongReady").GetBoolean());
+            Assert.Equal(1, validationRoot.GetProperty("manualTuneObserverMixedWeakStrongReadyCaptureCount").GetInt32());
+            Assert.Equal(14, validationRoot.GetProperty("manualTuneObserverWeakInputSampleCount").GetInt32());
+            Assert.Equal(9, validationRoot.GetProperty("manualTuneObserverStrongInputSampleCount").GetInt32());
+            Assert.Equal(3, validationRoot.GetProperty("manualTuneObserverNearStrongInputSampleCount").GetInt32());
+            Assert.Equal(10, validationRoot.GetProperty("manualTuneObserverSpeechQualifiedWeakInputSampleCount").GetInt32());
+            Assert.Equal(7, validationRoot.GetProperty("manualTuneObserverSpeechQualifiedStrongInputSampleCount").GetInt32());
+            Assert.Equal(8, validationRoot.GetProperty("manualTuneObserverPassbandQualifiedWeakInputSampleCount").GetInt32());
+            Assert.Equal(5, validationRoot.GetProperty("manualTuneObserverPassbandQualifiedStrongInputSampleCount").GetInt32());
+            Assert.Equal(0, validationRoot.GetProperty("manualTuneObserverAgcPumpingRiskCaptureCount").GetInt32());
+            Assert.True(validationRoot.GetProperty("manualTuneObserverSafetyRxOnly").GetBoolean());
+            Assert.True(validationRoot.GetProperty("manualTuneObserverSafetyReadOnly").GetBoolean());
+            Assert.False(validationRoot.GetProperty("manualTuneObserverSafetyApiWrites").GetBoolean());
+            Assert.False(validationRoot.GetProperty("manualTuneObserverSafetyRetune").GetBoolean());
+            Assert.Equal(0, validationRoot.GetProperty("manualTuneObserverSafetyVfoWriteAttemptCount").GetInt32());
+            Assert.Equal(0, validationRoot.GetProperty("manualTuneObserverSafetyRadioLoWriteAttemptCount").GetInt32());
+            Assert.False(validationRoot.GetProperty("manualTuneObserverSafetyTxEndpointsTouched").GetBoolean());
+            Assert.Equal(14277000L, validationRoot.GetProperty("manualTuneObserverBestFrequencyHz").GetInt64());
+            Assert.Equal("ready", validationRoot.GetProperty("manualTuneObserverBestStatus").GetString());
+            Assert.Equal(2, validationRoot.GetProperty("manualTuneObserverReferencedCaptureCount").GetInt32());
+            Assert.Equal(2, validationRoot.GetProperty("manualTuneObserverReferencedCaptureReadyCount").GetInt32());
+            Assert.Equal(0, validationRoot.GetProperty("manualTuneObserverReferencedCaptureProblemCount").GetInt32());
+            Assert.Equal(0, validationRoot.GetProperty("manualTuneObserverReferencedCaptureNonPortableCount").GetInt32());
+            Assert.Equal("artifacts/manual-tune-observer/14277000/live-diagnostics-watch.jsonl", validationRoot.GetProperty("manualTuneObserverBestJsonlPath").GetString());
+
+            var referencedFiles = validationRoot.GetProperty("artifactReferencedFiles")
+                .EnumerateArray()
+                .Where(file => file.GetProperty("sourceType").GetString() == "manual-tune-observer-capture")
+                .ToArray();
+            Assert.Equal(2, referencedFiles.Length);
+            Assert.All(referencedFiles, file =>
+            {
+                Assert.True(file.GetProperty("ok").GetBoolean());
+                Assert.Equal("matched", file.GetProperty("sourceStatus").GetString());
+                Assert.Equal("matched", file.GetProperty("jsonlStatus").GetString());
+                Assert.StartsWith("artifacts/manual-tune-observer/", file.GetProperty("path").GetString(), StringComparison.Ordinal);
+            });
+
+            var observerIssueCodes = validationRoot.GetProperty("warnings")
+                .EnumerateArray()
+                .Concat(validationRoot.GetProperty("errors").EnumerateArray())
+                .Select(issue => issue.GetProperty("code").GetString() ?? "")
+                .Where(code => code.StartsWith("manual-tune-observer-", StringComparison.Ordinal))
+                .ToArray();
+            Assert.Empty(observerIssueCodes);
+
+            var summaryReport = Path.Combine(bundleDir, "summary-manual-tune-observer.json");
+            var summaryMarkdown = Path.Combine(bundleDir, "summary-manual-tune-observer.md");
+            var summary = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "summarize-dsp-modernization-validation-report.ps1"),
+                "-ValidationReportPath", validationReport,
+                "-ReportPath", summaryReport,
+                "-MarkdownPath", summaryMarkdown,
+                "-JsonOnly");
+
+            Assert.Equal(0, summary.ExitCode);
+            Assert.True(File.Exists(summaryReport), summary.CombinedOutput);
+            Assert.True(File.Exists(summaryMarkdown), summary.CombinedOutput);
+
+            using var summaryDoc = JsonDocument.Parse(await File.ReadAllTextAsync(summaryReport));
+            var summaryRoot = summaryDoc.RootElement;
+            Assert.True(summaryRoot.GetProperty("manualTuneObserverReportPresent").GetBoolean());
+            Assert.Equal("mixed-ready", summaryRoot.GetProperty("manualTuneObserverReportStatus").GetString());
+            Assert.True(summaryRoot.GetProperty("manualTuneObserverSafetyReadOnly").GetBoolean());
+            Assert.False(summaryRoot.GetProperty("manualTuneObserverSafetyApiWrites").GetBoolean());
+            Assert.False(summaryRoot.GetProperty("manualTuneObserverSafetyRetune").GetBoolean());
+            Assert.Equal(2, summaryRoot.GetProperty("manualTuneObserverCaptureCount").GetInt32());
+            Assert.Equal(14277000L, summaryRoot.GetProperty("manualTuneObserverBestFrequencyHz").GetInt64());
+            Assert.Equal(2, summaryRoot.GetProperty("manualTuneObserverReferencedCaptureReadyCount").GetInt32());
+
+            var observerGate = summaryRoot.GetProperty("evidenceGates")
+                .EnumerateArray()
+                .Single(gate => gate.GetProperty("gateId").GetString() == "manual-tune-observer");
+            Assert.True(observerGate.GetProperty("ready").GetBoolean());
+            Assert.False(observerGate.GetProperty("requiredForAcceptance").GetBoolean());
+            Assert.Equal("mixed-ready", observerGate.GetProperty("status").GetString());
+
+            var markdown = await File.ReadAllTextAsync(summaryMarkdown);
+            Assert.Contains("Manual Tune Observer Evidence", markdown, StringComparison.Ordinal);
+            Assert.Contains("read-only", markdown, StringComparison.Ordinal);
+            Assert.Contains("VFO/radio LO write attempts", markdown, StringComparison.Ordinal);
+            Assert.Contains("Weak/strong/near-strong samples", markdown, StringComparison.Ordinal);
+            Assert.Contains("14277000", markdown, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(bundleDir))
+            {
+                Directory.Delete(bundleDir, recursive: true);
+            }
+        }
     }
 
     [SkippableFact]
@@ -6446,6 +6596,180 @@ public sealed class DspModernizationValidationToolTests
                 Directory.Delete(bundleDir, recursive: true);
             }
         }
+    }
+
+    private static void WriteManualTuneObserverArtifactManifest(string bundleDir)
+    {
+        Directory.CreateDirectory(Path.Combine(bundleDir, "artifacts"));
+
+        var manifest = new
+        {
+            schemaVersion = 1,
+            artifacts = new object[]
+            {
+                new
+                {
+                    id = "manual-tune-observer-report",
+                    kind = "manual-tune-observer-report-json",
+                    source = "tools/watch-dsp-manual-tune-observer.ps1",
+                    path = "artifacts/manual-tune-observer-report.json",
+                    required = false,
+                    comparisonIds = new[] { "nr5-spnr" }
+                }
+            }
+        };
+
+        File.WriteAllText(
+            Path.Combine(bundleDir, "artifact-manifest.json"),
+            JsonSerializer.Serialize(manifest, CamelCaseJson));
+    }
+
+    private static void WriteManualTuneObserverReport(string bundleDir)
+    {
+        var weakCaptureReportPath = "artifacts/manual-tune-observer/14240000/live-diagnostics-watch.json";
+        var weakCaptureJsonlPath = "artifacts/manual-tune-observer/14240000/live-diagnostics-watch.jsonl";
+        var bestCaptureReportPath = "artifacts/manual-tune-observer/14277000/live-diagnostics-watch.json";
+        var bestCaptureJsonlPath = "artifacts/manual-tune-observer/14277000/live-diagnostics-watch.jsonl";
+
+        var report = new
+        {
+            schemaVersion = 1,
+            tool = "watch-dsp-manual-tune-observer",
+            generatedUtc = "2026-06-17T12:00:00.0000000Z",
+            startedUtc = "2026-06-17T11:59:30.0000000Z",
+            completedUtc = "2026-06-17T12:00:00.0000000Z",
+            durationMs = 30000,
+            ok = true,
+            scanError = "",
+            baseUrl = "http://127.0.0.1:6060",
+            outputRoot = "artifacts/manual-tune-observer",
+            label = "synthetic-ready",
+            scenarioId = "rx-ssb-voice-like-manual",
+            comparisonId = "nr5-spnr",
+            pollCount = 8,
+            pollIntervalSec = 1,
+            stablePolls = 2,
+            minCoherentSnrDb = 6.0,
+            sceneProfilePattern = "voice|speech|active",
+            maxCaptures = 2,
+            captureSamples = 24,
+            captureIntervalMs = 250,
+            safety = new
+            {
+                rxOnly = true,
+                readOnly = true,
+                apiWrites = false,
+                retune = false,
+                vfoWriteAttemptCount = 0,
+                radioLoWriteAttemptCount = 0,
+                txEndpointsTouched = false,
+                delegatedCapture = "watch-dsp-live-diagnostics.ps1"
+            },
+            pollSampleCount = 8,
+            captureCount = 2,
+            readyCaptureCount = 2,
+            mixedWeakStrongReady = true,
+            mixedWeakStrongReadyCaptureCount = 1,
+            weakInputSampleCount = 14,
+            strongInputSampleCount = 9,
+            nearStrongInputSampleCount = 3,
+            speechQualifiedWeakInputSampleCount = 10,
+            speechQualifiedStrongInputSampleCount = 7,
+            passbandQualifiedWeakInputSampleCount = 8,
+            passbandQualifiedStrongInputSampleCount = 5,
+            agcPumpingRiskCaptureCount = 0,
+            captures = new object[]
+            {
+                new
+                {
+                    ok = true,
+                    exitCode = 0,
+                    error = "",
+                    vfoHz = 14240000L,
+                    radioLoHz = 14240000L,
+                    mode = "USB",
+                    signalProfile = "voice-like",
+                    coherentMaxSnrDb = 10.0,
+                    reportPath = weakCaptureReportPath,
+                    jsonlPath = weakCaptureJsonlPath,
+                    readyForBenchmarkTrace = true,
+                    trendStatus = "ready",
+                    weakInputSampleCount = 6,
+                    strongInputSampleCount = 0,
+                    nearStrongInputSampleCount = 1,
+                    mixedWeakStrongEvidenceStatus = "missing-strong-input",
+                    mixedWeakStrongEvidenceReady = false,
+                    weakStrongOutputGapDb = (double?)null,
+                    speechQualifiedWeakInputSampleCount = 4,
+                    speechQualifiedStrongInputSampleCount = 0,
+                    passbandQualifiedWeakInputSampleCount = 3,
+                    passbandQualifiedStrongInputSampleCount = 0,
+                    agcStabilityStatus = "stable",
+                    agcPumpingRisk = false
+                },
+                new
+                {
+                    ok = true,
+                    exitCode = 0,
+                    error = "",
+                    vfoHz = 14277000L,
+                    radioLoHz = 14277000L,
+                    mode = "USB",
+                    signalProfile = "speech-with-adjacent-strong",
+                    coherentMaxSnrDb = 18.0,
+                    reportPath = bestCaptureReportPath,
+                    jsonlPath = bestCaptureJsonlPath,
+                    readyForBenchmarkTrace = true,
+                    trendStatus = "ready",
+                    weakInputSampleCount = 8,
+                    strongInputSampleCount = 9,
+                    nearStrongInputSampleCount = 2,
+                    mixedWeakStrongEvidenceStatus = "ready",
+                    mixedWeakStrongEvidenceReady = true,
+                    weakStrongOutputGapDb = 1.5,
+                    speechQualifiedWeakInputSampleCount = 6,
+                    speechQualifiedStrongInputSampleCount = 7,
+                    passbandQualifiedWeakInputSampleCount = 5,
+                    passbandQualifiedStrongInputSampleCount = 5,
+                    agcStabilityStatus = "stable",
+                    agcPumpingRisk = false
+                }
+            },
+            polls = new object[]
+            {
+                new
+                {
+                    poll = 1,
+                    vfoHz = 14240000L,
+                    radioLoHz = 14240000L,
+                    mode = "USB",
+                    stablePollCount = 2,
+                    signalProfile = "voice-like",
+                    captureQualified = true
+                },
+                new
+                {
+                    poll = 5,
+                    vfoHz = 14277000L,
+                    radioLoHz = 14277000L,
+                    mode = "USB",
+                    stablePollCount = 2,
+                    signalProfile = "speech-with-adjacent-strong",
+                    captureQualified = true
+                }
+            },
+            recommendations = new[]
+            {
+                "At least one manual-tune capture has mixed weak+strong evidence; promote that window through live history and strict validation before tuning DSP behavior."
+            }
+        };
+
+        File.WriteAllText(
+            Path.Combine(bundleDir, "artifacts", "manual-tune-observer-report.json"),
+            JsonSerializer.Serialize(report, CamelCaseJson));
+
+        WriteSyntheticG2PeakHuntWatcherFiles(bundleDir, weakCaptureReportPath, weakCaptureJsonlPath, weakInputSampleCount: 6, strongInputSampleCount: 0, mixedReady: false);
+        WriteSyntheticG2PeakHuntWatcherFiles(bundleDir, bestCaptureReportPath, bestCaptureJsonlPath, weakInputSampleCount: 8, strongInputSampleCount: 9, mixedReady: true);
     }
 
     private static void WriteG2RxPeakHuntArtifactManifest(string bundleDir)

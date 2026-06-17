@@ -6119,6 +6119,55 @@ $liveMatrixArtifactControlEvidence = [ordered]@{
     status = "not-evaluated"
 }
 $liveMatrixArtifactControlStatusCountMap = @{}
+$manualTuneObserverArtifactId = "manual-tune-observer-report"
+$manualTuneObserverEvidence = [ordered]@{
+    present = $false
+    readyForReview = $false
+    valid = $false
+    path = ""
+    sha256 = ""
+    schemaVersion = 0
+    tool = ""
+    status = "not-captured"
+    ok = $false
+    scanError = ""
+    baseUrl = ""
+    scenarioId = ""
+    comparisonId = ""
+    pollCount = 0
+    pollSampleCount = 0
+    captureCount = 0
+    readyCaptureCount = 0
+    mixedWeakStrongReady = $false
+    mixedWeakStrongReadyCaptureCount = 0
+    weakInputSampleCount = 0
+    strongInputSampleCount = 0
+    nearStrongInputSampleCount = 0
+    speechQualifiedWeakInputSampleCount = 0
+    speechQualifiedStrongInputSampleCount = 0
+    passbandQualifiedWeakInputSampleCount = 0
+    passbandQualifiedStrongInputSampleCount = 0
+    agcPumpingRiskCaptureCount = 0
+    safetyRxOnly = $false
+    safetyReadOnly = $false
+    safetyApiWrites = $true
+    safetyRetune = $true
+    safetyVfoWriteAttemptCount = 0
+    safetyRadioLoWriteAttemptCount = 0
+    safetyTxEndpointsTouched = $true
+    bestCapture = $null
+    bestFrequencyHz = $null
+    bestStatus = ""
+    bestReportPath = ""
+    bestJsonlPath = ""
+    referencedCaptureCount = 0
+    referencedCaptureReadyCount = 0
+    referencedCaptureProblemCount = 0
+    referencedCaptureMissingCount = 0
+    referencedCaptureNonPortableCount = 0
+    referencedCaptureInvalidCount = 0
+    referencedJsonlMissingCount = 0
+}
 $g2RxPeakHuntArtifactId = "g2-rx-peak-hunt-report"
 $g2RxPeakHuntEvidence = [ordered]@{
     present = $false
@@ -7078,9 +7127,11 @@ else {
     $captureAllArtifactIds[$crossRadioValidationArtifactId] = $true
     $captureAllArtifactIds[$wdspSourceDriftArtifactId] = $true
     $captureAllArtifactIds[$externalEngineBakeoffCycleArtifactId] = $true
+    $captureAllArtifactIds[$manualTuneObserverArtifactId] = $true
     $captureAllArtifactIds[$g2RxPeakHuntArtifactId] = $true
     $captureAllArtifactIds[$pureSignalSafeBypassArtifactId] = $true
     $captureArtifactScenarioIds[$externalEngineBakeoffCycleArtifactId] = @(Get-JsonArray $manifest "scenarioIds")
+    $captureArtifactScenarioIds[$manualTuneObserverArtifactId] = @(Get-JsonArray $manifest "scenarioIds")
     $captureArtifactScenarioIds[$g2RxPeakHuntArtifactId] = @(Get-JsonArray $manifest "scenarioIds")
     $captureArtifactScenarioIds[$pureSignalSafeBypassArtifactId] = @("tx-puresignal-safe-bypass")
     foreach ($matrixReportArtifactId in @(
@@ -12878,6 +12929,353 @@ else {
                 }
             }
 
+            if ($artifactKind -ieq "manual-tune-observer-report-json" -or $artifactId -eq $manualTuneObserverArtifactId) {
+                $manualTuneObserverEvidence["present"] = $true
+                $manualTuneObserverEvidence["path"] = $artifactPath
+                $manualTuneObserverEvidence["sha256"] = Get-FileSha256 $resolvedArtifactPath
+
+                $schemaVersion = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "schemaVersion"))
+                $tool = [string](Get-JsonValue $artifactJson "tool")
+                $reportOkRaw = Get-JsonValue $artifactJson "ok"
+                $reportOk = if ($null -eq $reportOkRaw) { $false } else { Test-Truthy $reportOkRaw }
+                $scanError = [string](Get-JsonValue $artifactJson "scanError")
+                $baseUrl = [string](Get-JsonValue $artifactJson "baseUrl")
+                $scenarioId = [string](Get-JsonValue $artifactJson "scenarioId")
+                $comparisonId = [string](Get-JsonValue $artifactJson "comparisonId")
+                $pollCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "pollCount"))
+                $pollSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "pollSampleCount"))
+                $captureCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "captureCount"))
+                $readyCaptureCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "readyCaptureCount"))
+                $mixedWeakStrongReady = Test-Truthy (Get-JsonValue $artifactJson "mixedWeakStrongReady")
+                $mixedWeakStrongReadyCaptureCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "mixedWeakStrongReadyCaptureCount"))
+                $weakInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "weakInputSampleCount"))
+                $strongInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "strongInputSampleCount"))
+                $nearStrongInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "nearStrongInputSampleCount"))
+                $speechQualifiedWeakInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "speechQualifiedWeakInputSampleCount"))
+                $speechQualifiedStrongInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "speechQualifiedStrongInputSampleCount"))
+                $passbandQualifiedWeakInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "passbandQualifiedWeakInputSampleCount"))
+                $passbandQualifiedStrongInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "passbandQualifiedStrongInputSampleCount"))
+                $agcPumpingRiskCaptureCount = [int](Get-NumericValueOrDefault (Get-JsonValue $artifactJson "agcPumpingRiskCaptureCount"))
+                $safety = Get-JsonValue $artifactJson "safety"
+                $safetyRxOnly = Test-Truthy (Get-JsonValue $safety "rxOnly")
+                $safetyReadOnly = Test-Truthy (Get-JsonValue $safety "readOnly")
+                $safetyApiWrites = Test-Truthy (Get-JsonValue $safety "apiWrites")
+                $safetyRetune = Test-Truthy (Get-JsonValue $safety "retune")
+                $safetyVfoWriteAttemptCount = [int](Get-NumericValueOrDefault (Get-JsonValue $safety "vfoWriteAttemptCount"))
+                $safetyRadioLoWriteAttemptCount = [int](Get-NumericValueOrDefault (Get-JsonValue $safety "radioLoWriteAttemptCount"))
+                $safetyTxEndpointsTouched = Test-Truthy (Get-JsonValue $safety "txEndpointsTouched")
+                $captures = @(Get-JsonArray $artifactJson "captures")
+
+                $bestCapture = $null
+                foreach ($capture in $captures) {
+                    if (Test-Truthy (Get-JsonValue $capture "mixedWeakStrongEvidenceReady")) {
+                        $bestCapture = $capture
+                        break
+                    }
+                }
+                if ($null -eq $bestCapture) {
+                    foreach ($capture in $captures) {
+                        if (Test-Truthy (Get-JsonValue $capture "readyForBenchmarkTrace")) {
+                            $bestCapture = $capture
+                            break
+                        }
+                    }
+                }
+                if ($null -eq $bestCapture -and $captures.Count -gt 0) {
+                    $bestCapture = $captures[0]
+                }
+                $bestFrequencyHz = $null
+                if ($null -ne $bestCapture) {
+                    $bestFrequencyValue = Get-NumericValue (Get-JsonValue $bestCapture "vfoHz")
+                    if ($null -eq $bestFrequencyValue) {
+                        $bestFrequencyValue = Get-NumericValue (Get-JsonValue $bestCapture "frequencyHz")
+                    }
+                    if ($null -ne $bestFrequencyValue) {
+                        $bestFrequencyHz = [long]$bestFrequencyValue
+                    }
+                }
+
+                $manualTuneObserverEvidence["schemaVersion"] = $schemaVersion
+                $manualTuneObserverEvidence["tool"] = $tool
+                $manualTuneObserverEvidence["ok"] = $reportOk
+                $manualTuneObserverEvidence["scanError"] = $scanError
+                $manualTuneObserverEvidence["baseUrl"] = $baseUrl
+                $manualTuneObserverEvidence["scenarioId"] = $scenarioId
+                $manualTuneObserverEvidence["comparisonId"] = $comparisonId
+                $manualTuneObserverEvidence["pollCount"] = $pollCount
+                $manualTuneObserverEvidence["pollSampleCount"] = $pollSampleCount
+                $manualTuneObserverEvidence["captureCount"] = $captureCount
+                $manualTuneObserverEvidence["readyCaptureCount"] = $readyCaptureCount
+                $manualTuneObserverEvidence["mixedWeakStrongReady"] = $mixedWeakStrongReady
+                $manualTuneObserverEvidence["mixedWeakStrongReadyCaptureCount"] = $mixedWeakStrongReadyCaptureCount
+                $manualTuneObserverEvidence["weakInputSampleCount"] = $weakInputSampleCount
+                $manualTuneObserverEvidence["strongInputSampleCount"] = $strongInputSampleCount
+                $manualTuneObserverEvidence["nearStrongInputSampleCount"] = $nearStrongInputSampleCount
+                $manualTuneObserverEvidence["speechQualifiedWeakInputSampleCount"] = $speechQualifiedWeakInputSampleCount
+                $manualTuneObserverEvidence["speechQualifiedStrongInputSampleCount"] = $speechQualifiedStrongInputSampleCount
+                $manualTuneObserverEvidence["passbandQualifiedWeakInputSampleCount"] = $passbandQualifiedWeakInputSampleCount
+                $manualTuneObserverEvidence["passbandQualifiedStrongInputSampleCount"] = $passbandQualifiedStrongInputSampleCount
+                $manualTuneObserverEvidence["agcPumpingRiskCaptureCount"] = $agcPumpingRiskCaptureCount
+                $manualTuneObserverEvidence["safetyRxOnly"] = $safetyRxOnly
+                $manualTuneObserverEvidence["safetyReadOnly"] = $safetyReadOnly
+                $manualTuneObserverEvidence["safetyApiWrites"] = $safetyApiWrites
+                $manualTuneObserverEvidence["safetyRetune"] = $safetyRetune
+                $manualTuneObserverEvidence["safetyVfoWriteAttemptCount"] = $safetyVfoWriteAttemptCount
+                $manualTuneObserverEvidence["safetyRadioLoWriteAttemptCount"] = $safetyRadioLoWriteAttemptCount
+                $manualTuneObserverEvidence["safetyTxEndpointsTouched"] = $safetyTxEndpointsTouched
+                $manualTuneObserverEvidence["bestCapture"] = $bestCapture
+                $manualTuneObserverEvidence["bestFrequencyHz"] = $bestFrequencyHz
+                $manualTuneObserverEvidence["bestStatus"] = [string](Get-JsonValue $bestCapture "mixedWeakStrongEvidenceStatus")
+                $manualTuneObserverEvidence["bestReportPath"] = [string](Get-JsonValue $bestCapture "reportPath")
+                $manualTuneObserverEvidence["bestJsonlPath"] = [string](Get-JsonValue $bestCapture "jsonlPath")
+
+                if ($schemaVersion -lt 1) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-schema-version-missing" "Artifact '$artifactId' must declare schemaVersion >= 1."
+                    $artifactValidationOk = $false
+                }
+                if ($tool -ne "watch-dsp-manual-tune-observer") {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-tool-invalid" "Artifact '$artifactId' must be generated by watch-dsp-manual-tune-observer.ps1."
+                    $artifactValidationOk = $false
+                }
+                if (-not $reportOk -or -not [string]::IsNullOrWhiteSpace($scanError)) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-scan-error" "Artifact '$artifactId' reports scanError='$scanError'. Recapture or inspect partial evidence before promotion."
+                    $artifactValidationOk = $false
+                }
+                if (-not $safetyRxOnly) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-not-rx-only" "Artifact '$artifactId' must declare safety.rxOnly=true."
+                    $artifactValidationOk = $false
+                }
+                if (-not $safetyReadOnly) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-not-read-only" "Artifact '$artifactId' must declare safety.readOnly=true."
+                    $artifactValidationOk = $false
+                }
+                if ($safetyApiWrites) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-api-write" "Artifact '$artifactId' must declare safety.apiWrites=false."
+                    $artifactValidationOk = $false
+                }
+                if ($safetyRetune) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-retuned" "Artifact '$artifactId' must declare safety.retune=false."
+                    $artifactValidationOk = $false
+                }
+                if ($safetyVfoWriteAttemptCount -ne 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-vfo-write-attempt" "Artifact '$artifactId' reports safety.vfoWriteAttemptCount=$safetyVfoWriteAttemptCount; manual observer evidence must not write VFO."
+                    $artifactValidationOk = $false
+                }
+                if ($safetyRadioLoWriteAttemptCount -ne 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-radio-lo-write-attempt" "Artifact '$artifactId' reports safety.radioLoWriteAttemptCount=$safetyRadioLoWriteAttemptCount; manual observer evidence must not write radio LO."
+                    $artifactValidationOk = $false
+                }
+                if ($safetyTxEndpointsTouched) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-tx-endpoint-touched" "Artifact '$artifactId' must declare safety.txEndpointsTouched=false."
+                    $artifactValidationOk = $false
+                }
+                if ($captureCount -le 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-no-captures" "Artifact '$artifactId' did not capture any stable active manual-tune windows."
+                    $artifactValidationOk = $false
+                }
+                if ($captures.Count -ne $captureCount) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-count-mismatch" "Artifact '$artifactId' captureCount=$captureCount but captures contains $($captures.Count) item(s)."
+                    $artifactValidationOk = $false
+                }
+                if ($readyCaptureCount -le 0 -and $captureCount -gt 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-no-ready-captures" "Artifact '$artifactId' captured $captureCount window(s), but none are readyForBenchmarkTrace."
+                    $artifactValidationOk = $false
+                }
+                if ($readyCaptureCount -gt $captureCount) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-ready-capture-count-invalid" "Artifact '$artifactId' readyCaptureCount=$readyCaptureCount exceeds captureCount=$captureCount."
+                    $artifactValidationOk = $false
+                }
+                if ($mixedWeakStrongReadyCaptureCount -gt $captureCount) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-mixed-ready-count-invalid" "Artifact '$artifactId' mixedWeakStrongReadyCaptureCount=$mixedWeakStrongReadyCaptureCount exceeds captureCount=$captureCount."
+                    $artifactValidationOk = $false
+                }
+                if ($mixedWeakStrongReady -and $mixedWeakStrongReadyCaptureCount -le 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-mixed-ready-count-missing" "Artifact '$artifactId' sets mixedWeakStrongReady=true but mixedWeakStrongReadyCaptureCount is zero."
+                    $artifactValidationOk = $false
+                }
+                if ($agcPumpingRiskCaptureCount -gt 0) {
+                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-agc-pumping-risk" "Artifact '$artifactId' reports AGC pumping risk in $agcPumpingRiskCaptureCount capture(s); reject those windows for tuning promotion."
+                    $artifactValidationOk = $false
+                }
+
+                $manualReferencedCaptureCount = 0
+                $manualReferencedCaptureReadyCount = 0
+                $manualReferencedCaptureProblemCount = 0
+                $manualReferencedCaptureMissingCount = 0
+                $manualReferencedCaptureNonPortableCount = 0
+                $manualReferencedCaptureInvalidCount = 0
+                $manualReferencedJsonlMissingCount = 0
+                $manualReferencedReportPaths = @{}
+
+                foreach ($capture in $captures) {
+                    $captureReportPath = [string](Get-JsonValue $capture "reportPath")
+                    $captureJsonlPath = [string](Get-JsonValue $capture "jsonlPath")
+                    $captureVfoHz = Get-JsonValue $capture "vfoHz"
+                    $captureStatus = [string](Get-JsonValue $capture "mixedWeakStrongEvidenceStatus")
+                    $captureRecord = [ordered]@{
+                        artifactId = $artifactId
+                        artifactKind = $artifactKind
+                        sourceType = "manual-tune-observer-capture"
+                        vfoHz = $captureVfoHz
+                        status = $captureStatus
+                        path = $captureReportPath
+                        jsonlPath = $captureJsonlPath
+                        required = $effectiveRequired
+                        ok = $false
+                        sourceStatus = "unchecked"
+                        jsonlStatus = "unchecked"
+                        sourceSha256 = ""
+                        jsonlSha256 = ""
+                    }
+                    $artifactReferencedFiles.Add($captureRecord) | Out-Null
+                    if ($effectiveRequired) {
+                        $requiredArtifactReferencedFileCount++
+                    }
+
+                    $manualReferencedCaptureCount++
+                    $captureOk = $true
+                    if (-not (Test-Truthy (Get-JsonValue $capture "ok"))) {
+                        $captureOk = $false
+                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-not-ok" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' status='$captureStatus' reports ok=false."
+                        $artifactValidationOk = $false
+                    }
+
+                    if ([string]::IsNullOrWhiteSpace($captureReportPath)) {
+                        $captureRecord["sourceStatus"] = "path-missing"
+                        $manualReferencedCaptureMissingCount++
+                        $captureOk = $false
+                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-report-path-missing" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' is missing reportPath."
+                        $artifactValidationOk = $false
+                    }
+                    elseif (-not (Test-BundleRelativeEvidencePath -Path $captureReportPath -BundlePath $bundlePath)) {
+                        $captureRecord["sourceStatus"] = "path-not-portable"
+                        $manualReferencedCaptureNonPortableCount++
+                        $captureOk = $false
+                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-report-path-not-portable" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' reportPath='$captureReportPath' must be bundle-relative and remain inside the bundle."
+                        $artifactValidationOk = $false
+                    }
+                    else {
+                        $manualReferencedReportPaths[(ConvertTo-ComparableEvidencePath -BundlePath $bundlePath -Path $captureReportPath)] = $true
+                        $resolvedCaptureReportPath = Get-BundlePath $bundlePath $captureReportPath
+                        if (-not (Test-Path -LiteralPath $resolvedCaptureReportPath -PathType Leaf)) {
+                            $captureRecord["sourceStatus"] = "file-missing"
+                            $manualReferencedCaptureMissingCount++
+                            $captureOk = $false
+                            Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-report-file-missing" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' references missing watcher summary '$captureReportPath'."
+                            $artifactValidationOk = $false
+                        }
+                        else {
+                            $captureRecord["sourceSha256"] = Get-FileSha256 $resolvedCaptureReportPath
+                            $watchSummary = $null
+                            try {
+                                $watchSummary = Read-JsonFile $resolvedCaptureReportPath
+                            }
+                            catch {
+                                $captureRecord["sourceStatus"] = "json-invalid"
+                                $manualReferencedCaptureInvalidCount++
+                                $captureOk = $false
+                                Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-report-json-invalid" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' references watcher summary '$captureReportPath' that cannot be parsed: $($_.Exception.Message)"
+                                $artifactValidationOk = $false
+                            }
+
+                            if ($null -ne $watchSummary) {
+                                $watchTool = [string](Get-JsonValue $watchSummary "tool")
+                                if ($watchTool -ne "watch-dsp-live-diagnostics") {
+                                    $captureRecord["sourceStatus"] = "tool-invalid"
+                                    $manualReferencedCaptureInvalidCount++
+                                    $captureOk = $false
+                                    Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-report-tool-invalid" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' watcher summary '$captureReportPath' must be generated by watch-dsp-live-diagnostics.ps1; found tool '$watchTool'."
+                                    $artifactValidationOk = $false
+                                }
+                                else {
+                                    $captureRecord["sourceStatus"] = "matched"
+                                }
+                            }
+                        }
+                    }
+
+                    if ([string]::IsNullOrWhiteSpace($captureJsonlPath)) {
+                        $captureRecord["jsonlStatus"] = "path-missing"
+                        $manualReferencedJsonlMissingCount++
+                        $captureOk = $false
+                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-jsonl-path-missing" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' is missing jsonlPath."
+                        $artifactValidationOk = $false
+                    }
+                    elseif (-not (Test-BundleRelativeEvidencePath -Path $captureJsonlPath -BundlePath $bundlePath)) {
+                        $captureRecord["jsonlStatus"] = "path-not-portable"
+                        $manualReferencedCaptureNonPortableCount++
+                        $captureOk = $false
+                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-jsonl-path-not-portable" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' jsonlPath='$captureJsonlPath' must be bundle-relative and remain inside the bundle."
+                        $artifactValidationOk = $false
+                    }
+                    else {
+                        $resolvedCaptureJsonlPath = Get-BundlePath $bundlePath $captureJsonlPath
+                        if (-not (Test-Path -LiteralPath $resolvedCaptureJsonlPath -PathType Leaf)) {
+                            $captureRecord["jsonlStatus"] = "file-missing"
+                            $manualReferencedJsonlMissingCount++
+                            $captureOk = $false
+                            Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-capture-jsonl-file-missing" "Artifact '$artifactId' capture vfoHz='$captureVfoHz' references missing JSONL trace '$captureJsonlPath'."
+                            $artifactValidationOk = $false
+                        }
+                        else {
+                            $captureRecord["jsonlStatus"] = "matched"
+                            $captureRecord["jsonlSha256"] = Get-FileSha256 $resolvedCaptureJsonlPath
+                        }
+                    }
+
+                    if ($captureOk) {
+                        $captureRecord["ok"] = $true
+                        $manualReferencedCaptureReadyCount++
+                    }
+                    else {
+                        $manualReferencedCaptureProblemCount++
+                    }
+                }
+
+                $bestReportPath = [string](Get-JsonValue $bestCapture "reportPath")
+                if (-not [string]::IsNullOrWhiteSpace($bestReportPath)) {
+                    $bestComparableReportPath = ConvertTo-ComparableEvidencePath -BundlePath $bundlePath -Path $bestReportPath
+                    if (-not $manualReferencedReportPaths.ContainsKey($bestComparableReportPath)) {
+                        Add-ArtifactIssue $errors $warnings -Required:$effectiveRequired "manual-tune-observer-best-capture-report-path-untracked" "Artifact '$artifactId' best capture reportPath='$bestReportPath' does not match any validated captures[].reportPath entry."
+                        $artifactValidationOk = $false
+                    }
+                }
+
+                $manualTuneObserverEvidence["referencedCaptureCount"] = $manualReferencedCaptureCount
+                $manualTuneObserverEvidence["referencedCaptureReadyCount"] = $manualReferencedCaptureReadyCount
+                $manualTuneObserverEvidence["referencedCaptureProblemCount"] = $manualReferencedCaptureProblemCount
+                $manualTuneObserverEvidence["referencedCaptureMissingCount"] = $manualReferencedCaptureMissingCount
+                $manualTuneObserverEvidence["referencedCaptureNonPortableCount"] = $manualReferencedCaptureNonPortableCount
+                $manualTuneObserverEvidence["referencedCaptureInvalidCount"] = $manualReferencedCaptureInvalidCount
+                $manualTuneObserverEvidence["referencedJsonlMissingCount"] = $manualReferencedJsonlMissingCount
+
+                $manualTuneObserverStatus = if (-not $artifactValidationOk) {
+                    "invalid"
+                }
+                elseif ($mixedWeakStrongReady) {
+                    "mixed-ready"
+                }
+                elseif ($captureCount -le 0) {
+                    "no-captures"
+                }
+                elseif ($weakInputSampleCount -gt 0 -and $strongInputSampleCount -le 0) {
+                    "weak-only"
+                }
+                elseif ($strongInputSampleCount -gt 0 -and $weakInputSampleCount -le 0) {
+                    "strong-only"
+                }
+                elseif ($weakInputSampleCount -gt 0 -and $strongInputSampleCount -gt 0) {
+                    "mixed-not-ready"
+                }
+                else {
+                    "no-signal"
+                }
+
+                $manualTuneObserverEvidence["valid"] = $artifactValidationOk
+                $manualTuneObserverEvidence["readyForReview"] = $artifactValidationOk
+                $manualTuneObserverEvidence["status"] = $manualTuneObserverStatus
+            }
+
             if ($artifactKind -ieq "g2-rx-peak-hunt-report-json" -or $artifactId -eq $g2RxPeakHuntArtifactId) {
                 $g2RxPeakHuntEvidence["present"] = $true
                 $g2RxPeakHuntEvidence["path"] = $artifactPath
@@ -14670,6 +15068,52 @@ $report = [ordered]@{
     liveMatrixMixedWeakStrongStrongInputSampleCount = $liveMatrixMixedWeakStrongEvidence.strongInputSampleCount
     liveMatrixMixedWeakStrongStatusCounts = @($liveMatrixMixedWeakStrongEvidence.statusCounts)
     liveMatrixMixedWeakStrongBestRun = $liveMatrixMixedWeakStrongEvidence.bestRun
+    manualTuneObserverReportPresent = $manualTuneObserverEvidence.present
+    manualTuneObserverReportReady = $manualTuneObserverEvidence.readyForReview
+    manualTuneObserverReportValid = $manualTuneObserverEvidence.valid
+    manualTuneObserverReportStatus = $manualTuneObserverEvidence.status
+    manualTuneObserverReportPath = $manualTuneObserverEvidence.path
+    manualTuneObserverReportSha256 = $manualTuneObserverEvidence.sha256
+    manualTuneObserverSchemaVersion = $manualTuneObserverEvidence.schemaVersion
+    manualTuneObserverTool = $manualTuneObserverEvidence.tool
+    manualTuneObserverOk = $manualTuneObserverEvidence.ok
+    manualTuneObserverScanError = $manualTuneObserverEvidence.scanError
+    manualTuneObserverBaseUrl = $manualTuneObserverEvidence.baseUrl
+    manualTuneObserverScenarioId = $manualTuneObserverEvidence.scenarioId
+    manualTuneObserverComparisonId = $manualTuneObserverEvidence.comparisonId
+    manualTuneObserverPollCount = $manualTuneObserverEvidence.pollCount
+    manualTuneObserverPollSampleCount = $manualTuneObserverEvidence.pollSampleCount
+    manualTuneObserverCaptureCount = $manualTuneObserverEvidence.captureCount
+    manualTuneObserverReadyCaptureCount = $manualTuneObserverEvidence.readyCaptureCount
+    manualTuneObserverMixedWeakStrongReady = $manualTuneObserverEvidence.mixedWeakStrongReady
+    manualTuneObserverMixedWeakStrongReadyCaptureCount = $manualTuneObserverEvidence.mixedWeakStrongReadyCaptureCount
+    manualTuneObserverWeakInputSampleCount = $manualTuneObserverEvidence.weakInputSampleCount
+    manualTuneObserverStrongInputSampleCount = $manualTuneObserverEvidence.strongInputSampleCount
+    manualTuneObserverNearStrongInputSampleCount = $manualTuneObserverEvidence.nearStrongInputSampleCount
+    manualTuneObserverSpeechQualifiedWeakInputSampleCount = $manualTuneObserverEvidence.speechQualifiedWeakInputSampleCount
+    manualTuneObserverSpeechQualifiedStrongInputSampleCount = $manualTuneObserverEvidence.speechQualifiedStrongInputSampleCount
+    manualTuneObserverPassbandQualifiedWeakInputSampleCount = $manualTuneObserverEvidence.passbandQualifiedWeakInputSampleCount
+    manualTuneObserverPassbandQualifiedStrongInputSampleCount = $manualTuneObserverEvidence.passbandQualifiedStrongInputSampleCount
+    manualTuneObserverAgcPumpingRiskCaptureCount = $manualTuneObserverEvidence.agcPumpingRiskCaptureCount
+    manualTuneObserverSafetyRxOnly = $manualTuneObserverEvidence.safetyRxOnly
+    manualTuneObserverSafetyReadOnly = $manualTuneObserverEvidence.safetyReadOnly
+    manualTuneObserverSafetyApiWrites = $manualTuneObserverEvidence.safetyApiWrites
+    manualTuneObserverSafetyRetune = $manualTuneObserverEvidence.safetyRetune
+    manualTuneObserverSafetyVfoWriteAttemptCount = $manualTuneObserverEvidence.safetyVfoWriteAttemptCount
+    manualTuneObserverSafetyRadioLoWriteAttemptCount = $manualTuneObserverEvidence.safetyRadioLoWriteAttemptCount
+    manualTuneObserverSafetyTxEndpointsTouched = $manualTuneObserverEvidence.safetyTxEndpointsTouched
+    manualTuneObserverBestCapture = $manualTuneObserverEvidence.bestCapture
+    manualTuneObserverBestFrequencyHz = $manualTuneObserverEvidence.bestFrequencyHz
+    manualTuneObserverBestStatus = $manualTuneObserverEvidence.bestStatus
+    manualTuneObserverBestReportPath = $manualTuneObserverEvidence.bestReportPath
+    manualTuneObserverBestJsonlPath = $manualTuneObserverEvidence.bestJsonlPath
+    manualTuneObserverReferencedCaptureCount = $manualTuneObserverEvidence.referencedCaptureCount
+    manualTuneObserverReferencedCaptureReadyCount = $manualTuneObserverEvidence.referencedCaptureReadyCount
+    manualTuneObserverReferencedCaptureProblemCount = $manualTuneObserverEvidence.referencedCaptureProblemCount
+    manualTuneObserverReferencedCaptureMissingCount = $manualTuneObserverEvidence.referencedCaptureMissingCount
+    manualTuneObserverReferencedCaptureNonPortableCount = $manualTuneObserverEvidence.referencedCaptureNonPortableCount
+    manualTuneObserverReferencedCaptureInvalidCount = $manualTuneObserverEvidence.referencedCaptureInvalidCount
+    manualTuneObserverReferencedJsonlMissingCount = $manualTuneObserverEvidence.referencedJsonlMissingCount
     g2RxPeakHuntReportPresent = $g2RxPeakHuntEvidence.present
     g2RxPeakHuntReportReady = $g2RxPeakHuntEvidence.readyForReview
     g2RxPeakHuntReportValid = $g2RxPeakHuntEvidence.valid
@@ -15346,6 +15790,7 @@ $report = [ordered]@{
     nativeStageTimingEvidence = $nativeStageTimingEvidence
     externalEngineCandidateEvidence = $externalEngineCandidateEvidence
     crossRadioValidationEvidence = $crossRadioValidationEvidence
+    manualTuneObserverEvidence = $manualTuneObserverEvidence
     g2RxPeakHuntEvidence = $g2RxPeakHuntEvidence
     externalEngineBakeoffEvidence = $externalEngineBakeoffEvidence
     externalEngineBakeoffCycleEvidence = $externalEngineBakeoffCycleEvidence

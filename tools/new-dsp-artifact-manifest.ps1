@@ -634,6 +634,21 @@ if ($externalEngineBakeoffInScope -and -not $seenArtifactIds.ContainsKey("extern
         -ComparisonIds @("candidate-external-engine-opt-in")
 }
 
+if (($IncludeOptionalArtifacts -or $RequireLiveAcceptanceArtifacts) -and -not $seenArtifactIds.ContainsKey("manual-tune-observer-report")) {
+    Add-ArtifactRecord `
+        -Artifacts $artifacts `
+        -SeenArtifactIds $seenArtifactIds `
+        -Id "manual-tune-observer-report" `
+        -Kind "manual-tune-observer-report-json" `
+        -Source "tools/watch-dsp-manual-tune-observer.ps1" `
+        -Purpose "Summarize read-only operator/manual tuning captures, no-retune/no-write safety, stable active VFO evidence, weak/strong NR5 sample coverage, and AGC pumping risk before selecting a live-history recapture window." `
+        -Cadence "optional-while-operator-manually-tunes-g2-active-frequencies" `
+        -Path "artifacts/manual-tune-observer-report.json" `
+        -Required $false `
+        -ScenarioIds @(Get-JsonArray $captureManifest "scenarioIds") `
+        -ComparisonIds @("nr5-spnr")
+}
+
 if (($IncludeOptionalArtifacts -or $RequireLiveAcceptanceArtifacts) -and -not $seenArtifactIds.ContainsKey("g2-rx-peak-hunt-report")) {
     Add-ArtifactRecord `
         -Artifacts $artifacts `
@@ -743,6 +758,7 @@ $output = [ordered]@{
         "Use compare-dsp-live-diagnostics-traces.ps1 with -BundleDir to compare baseline and candidate live traces before accepting a candidate window while keeping report paths portable.",
         "Use compare-dsp-live-diagnostics-matrix.ps1 with -BundleDir to compare baseline and candidate trace indexes across all captured live scenarios while keeping report paths portable; pass -BaselineComparisonId current-zeus and -CandidateComparisonId nr5-spnr for the required Zeus live acceptance comparison, then repeat with -BaselineComparisonId thetis-parity for the required WDSP authority comparison.",
         "live-diagnostics-trace-comparison reports carry capture-readiness comparison evidence into strict validation and validation triage, including hard-gate pass/fail, strict-preflight pass/fail, top soft constraints, and top hard gates.",
+        "Use watch-dsp-manual-tune-observer.ps1 while the operator is manually tuning active G2 frequencies; the optional report is read-only/no-retune evidence that helps choose the next mixed weak+strong live-history recapture target.",
         "Use run-dsp-g2-rx-peak-hunt.ps1 before mixed weak+strong live-history recapture when G2 windows are weak-only or off-signal; the optional report keeps RX-only safety, VFO restore, weak/strong sample coverage, and best-window recommendation evidence portable.",
         "Use summarize-dsp-live-diagnostics-history.ps1 with -BundleDir after several NR5/NR2 live attempts so best weak-signal, lowest-pumping, latest tuning directions, and per-trace watcher-summary/JSONL hashes are preserved as portable review evidence.",
         "Use summarize-dsp-external-engine-candidates.ps1 with -BundleDir before any external DSP/ML bakeoff so RNNoise/DeepFilterNet/SpeexDSP/WebRTC blockers, risk, and required evidence stay explicit.",
