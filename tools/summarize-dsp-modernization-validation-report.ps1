@@ -1953,14 +1953,20 @@ function Add-AcceptanceActionForGate {
                 $manualObserverPresent = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverReportPresent")
                 $manualObserverReady = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverReportReady")
                 $manualObserverValid = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverReportValid")
+                $manualObserverSchemaVersion = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverSchemaVersion")
+                $manualObserverTool = [string](Get-JsonValue $Validation "manualTuneObserverTool")
+                $manualObserverOk = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverOk")
+                $manualObserverScanError = [string](Get-JsonValue $Validation "manualTuneObserverScanError")
                 $manualObserverMixedReady = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverMixedWeakStrongReady")
                 $manualObserverBundleRelativePaths = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverBundleRelativePaths")
+                $manualObserverSafetyRxOnly = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverSafetyRxOnly")
                 $manualObserverSafetyReadOnly = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverSafetyReadOnly")
                 $manualObserverSafetyApiWrites = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverSafetyApiWrites")
                 $manualObserverSafetyRetune = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverSafetyRetune")
                 $manualObserverSafetyTxTouched = Test-Truthy (Get-JsonValue $Validation "manualTuneObserverSafetyTxEndpointsTouched")
                 $manualObserverVfoWrites = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverSafetyVfoWriteAttemptCount")
                 $manualObserverRadioLoWrites = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverSafetyRadioLoWriteAttemptCount")
+                $manualObserverCaptureCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverCaptureCount")
                 $manualObserverReferencedCaptureCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverReferencedCaptureCount")
                 $manualObserverReferencedCaptureReadyCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverReferencedCaptureReadyCount")
                 $manualObserverReferencedCaptureProblemCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverReferencedCaptureProblemCount")
@@ -2027,6 +2033,99 @@ function Add-AcceptanceActionForGate {
                                 -FollowUp "Acceptance remains blocked until strict validation reports liveDiagnosticsHistoryMixedWeakStrongEvidenceReady=true and the G2/Thetis/current-Zeus comparisons still pass.")) | Out-Null
                 }
                 else {
+                    $manualObservedVfoCount = Get-IntegerValueOrDefault (Get-JsonValue $Validation "manualTuneObserverObservedVfoCount")
+                    $manualBestObservedVfo = Get-JsonValue $Validation "manualTuneObserverBestObservedVfo"
+                    $manualBestObservedVfoHz = Get-JsonValue $Validation "manualTuneObserverBestObservedVfoHz"
+                    $manualBestObservedVfoMhz = Get-JsonValue $Validation "manualTuneObserverBestObservedVfoMhz"
+                    $manualBestObservedVfoStatus = [string](Get-JsonValue $Validation "manualTuneObserverBestObservedVfoStatus")
+                    $manualBestObservedVfoScore = Get-JsonValue $Validation "manualTuneObserverBestObservedVfoScore"
+                    $manualBestObservedVfoHzNumber = 0.0
+                    $manualBestObservedHasVfo =
+                        [double]::TryParse([string]$manualBestObservedVfoHz, [ref]$manualBestObservedVfoHzNumber) -and
+                        $manualBestObservedVfoHzNumber -gt 0.0
+                    $manualBestObservedSuggestedVfoHz = Get-JsonValue $Validation "manualTuneObserverBestObservedVfoSuggestedVfoHz"
+                    $manualBestObservedSuggestedVfoMhz = Get-JsonValue $Validation "manualTuneObserverBestObservedVfoSuggestedVfoMhz"
+                    $manualBestObservedSuggestedShiftHz = Get-JsonValue $Validation "manualTuneObserverBestObservedVfoSuggestedDialShiftHz"
+                    $manualBestObservedSuggestedReason = [string](Get-JsonValue $Validation "manualTuneObserverBestObservedVfoSuggestedTuneReason")
+                    $manualBestObservedSuggestedVfoHzNumber = 0.0
+                    $manualBestObservedSuggestedVfoMhzNumber = 0.0
+                    $manualBestObservedHasSuggestedVfo =
+                        [double]::TryParse([string]$manualBestObservedSuggestedVfoHz, [ref]$manualBestObservedSuggestedVfoHzNumber) -and
+                        [double]::TryParse([string]$manualBestObservedSuggestedVfoMhz, [ref]$manualBestObservedSuggestedVfoMhzNumber) -and
+                        $manualBestObservedSuggestedVfoHzNumber -gt 0.0 -and
+                        $manualBestObservedSuggestedVfoMhzNumber -gt 0.0
+                    $manualObserverScoutingMetadataUsable =
+                        $manualObserverPresent -and
+                        $manualObserverSchemaVersion -ge 1 -and
+                        $manualObserverTool -eq "watch-dsp-manual-tune-observer" -and
+                        $manualObserverOk -and
+                        [string]::IsNullOrWhiteSpace($manualObserverScanError) -and
+                        $manualObserverBundleRelativePaths
+                    $manualObserverObservedTargetNoCapture =
+                        (-not $manualObserverValid) -and
+                        $manualObserverCaptureCount -eq 0 -and
+                        $manualObserverReferencedCaptureCount -eq 0 -and
+                        $manualObserverReferencedCaptureReadyCount -eq 0 -and
+                        $manualObserverReferencedCaptureProblemCount -eq 0
+                    $manualObserverObservedTargetSourceUsable =
+                        $manualObserverValid -or
+                        $manualObserverObservedTargetNoCapture
+                    $manualObserverHasObservedTarget =
+                        $manualObserverScoutingMetadataUsable -and
+                        $manualObserverObservedTargetSourceUsable -and
+                        $manualObserverSafetyRxOnly -and
+                        $manualObserverSafetyReadOnly -and
+                        (-not $manualObserverSafetyApiWrites) -and
+                        (-not $manualObserverSafetyRetune) -and
+                        (-not $manualObserverSafetyTxTouched) -and
+                        $manualObserverVfoWrites -eq 0 -and
+                        $manualObserverRadioLoWrites -eq 0 -and
+                        $manualObservedVfoCount -gt 0 -and
+                        $null -ne $manualBestObservedVfo -and
+                        $manualBestObservedHasVfo
+
+                    if ($manualObserverHasObservedTarget) {
+                        $manualObservedTuneText = if ($manualBestObservedHasSuggestedVfo) {
+                            "suggestedVfoMhz=$manualBestObservedSuggestedVfoMhz, suggestedVfoHz=$manualBestObservedSuggestedVfoHz, shiftHz=$manualBestObservedSuggestedShiftHz, reason='$manualBestObservedSuggestedReason'"
+                        }
+                        else {
+                            "observedVfoHz=$manualBestObservedVfoHz, observedVfoMhz=$manualBestObservedVfoMhz"
+                        }
+                        $manualObservedReason = "Live history mixed weak/strong evidence is not ready, and the read-only manual-tune observer did not produce a promotable mixed-ready capture. It did identify an observed manual VFO target: reportValid=$manualObserverValid, captureCount=$manualObserverCaptureCount, referencedCaptures=$manualObserverReferencedCaptureReadyCount/$manualObserverReferencedCaptureCount, referencedProblems=$manualObserverReferencedCaptureProblemCount, observedVfoCount=$manualObservedVfoCount, bestObservedVfoHz=$manualBestObservedVfoHz, status='$manualBestObservedVfoStatus', score=$manualBestObservedVfoScore, $manualObservedTuneText. Use this as the next operator-tuned capture target; it is scouting guidance, not acceptance evidence."
+                        $manualObservedCommandSteps = @(
+                            'powershell -NoProfile -ExecutionPolicy Bypass -File tools\watch-dsp-manual-tune-observer.ps1 -BaseUrl http://127.0.0.1:6060 -BundleDir "$bundleDir" -OutputRoot "$bundleDir\artifacts\manual-tune-observer" -ReportPath "$bundleDir\artifacts\manual-tune-observer-report.json" -PollCount 90 -StablePolls 2 -MaxCaptures 4 -MaxCapturesPerVfo 2 -RequireFrontendNearPassband -AllowStaleSceneCapture -CaptureSamples 24 -CaptureIntervalMs 250 -ContinueOnError',
+                            'powershell -NoProfile -ExecutionPolicy Bypass -File tools\summarize-dsp-live-diagnostics-history.ps1 -BundleDir "$bundleDir" -ReportPath "$bundleDir\artifacts\live-diagnostics-history.json"',
+                            'powershell -NoProfile -ExecutionPolicy Bypass -File tools\validate-dsp-modernization-bundle.ps1 -BundleDir "$bundleDir" -RequireArtifactFiles -ReportPath "$bundleDir\validation-report.json"',
+                            'powershell -NoProfile -ExecutionPolicy Bypass -File tools\summarize-dsp-modernization-validation-report.ps1 -BundleDir "$bundleDir" -ReportPath "$bundleDir\validation-triage-report.json" -MarkdownPath "$bundleDir\validation-triage-report.md" -FailOnIssues'
+                        )
+                        $manualObservedActionText = if ($manualBestObservedHasSuggestedVfo) {
+                            "Manually tune G2 near $manualBestObservedSuggestedVfoMhz MHz (shift $manualBestObservedSuggestedShiftHz Hz from the observed VFO; reason '$manualBestObservedSuggestedReason'), wait for stable active audio, then rerun the manual observer command. Do not use retune/VFO-writing tools on this path."
+                        }
+                        else {
+                            "Manually keep G2 near the best observed VFO $manualBestObservedVfoHz Hz, wait for stable active audio, then rerun the manual observer command. Do not use retune/VFO-writing tools on this path."
+                        }
+
+                        $Actions.Add((New-AcceptanceActionRecord `
+                                    -ActionId "capture-manual-observer-best-observed-vfo" `
+                                    -Priority 78 `
+                                    -StageId "opt-in-candidate-comparison" `
+                                    -GateId $gateId `
+                                    -Category "live-diagnostics" `
+                                    -RequiredForAcceptance:$gateRequired `
+                                    -BlocksDefaultChange:$true `
+                                    -Reason $manualObservedReason `
+                                    -CommandSteps $manualObservedCommandSteps `
+                                    -ManualAction $manualObservedActionText `
+                                    -ExpectedArtifact 'artifacts/manual-tune-observer-report.json' `
+                                    -ExpectedArtifacts @(
+                                        'artifacts/manual-tune-observer-report.json',
+                                        'artifacts/live-diagnostics-history.json',
+                                        'validation-report.json',
+                                        'validation-triage-report.json',
+                                        'validation-triage-report.md'
+                                    ) `
+                                    -FollowUp "If the follow-up manual observer produces a mixed-ready capture, promote it through live history and rerun strict validation. If it remains tuning-hint or weak-only evidence, keep it as scouting data and continue collecting active windows.")) | Out-Null
+                    }
                 $peakHuntReason = ""
                 $peakHuntManualContext = ""
                 if (Test-Truthy (Get-JsonValue $Validation "g2RxPeakHuntReportPresent")) {
