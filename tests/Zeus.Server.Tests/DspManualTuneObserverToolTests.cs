@@ -289,6 +289,116 @@ public sealed class DspManualTuneObserverToolTests
         }
     }
 
+    [SkippableFact]
+    public async Task ManualTuneObserverPromotesNearStrongWeakOnlyCapture()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell manual-tune observer smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-manual-tune-observer-near-strong-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(bundleDir);
+        var liveDiagnosticCall = -1;
+
+        try
+        {
+            using var server = JsonRouteServer.Start(new Dictionary<string, Func<string>>
+            {
+                ["/api/state"] = () => Json(new
+                {
+                    status = "Connected",
+                    vfoHz = 14_249_000,
+                    radioLoHz = 14_249_000,
+                    mode = "USB",
+                    filterLowHz = 100,
+                    filterHighHz = 3_100
+                }),
+                ["/api/radio/diagnostics/dsp-scene"] = () => Json(new
+                {
+                    status = "fresh",
+                    fresh = true,
+                    signalProfile = "voice-like",
+                    coherentMaxSnrDb = 24.0,
+                    maxSnrDb = 24.0,
+                    topPeaks = new object[]
+                    {
+                        FrontendTopPeak(14_249_938, 938, 18.5, -84.3)
+                    }
+                }),
+                ["/api/dsp/live-diagnostics"] = () =>
+                {
+                    var call = Interlocked.Increment(ref liveDiagnosticCall);
+                    return Json(call is 2 or 3
+                        ? ManualTuneObserverLiveDiagnostics(inputDbfs: -24.5, outputDbfs: -27.0, audioRmsDbfs: -28.5)
+                        : ManualTuneObserverLiveDiagnostics(inputDbfs: -34.0, outputDbfs: -31.0, audioRmsDbfs: -32.5));
+                }
+            });
+
+            var reportPath = Path.Combine(bundleDir, "manual-observer-near-strong.json");
+            var run = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "watch-dsp-manual-tune-observer.ps1"),
+                "-BaseUrl", server.BaseUrl,
+                "-ReportPath", reportPath,
+                "-OutputRoot", Path.Combine(bundleDir, "captures"),
+                "-PollCount", "1",
+                "-PollIntervalSec", "0",
+                "-StablePolls", "1",
+                "-MinCoherentSnrDb", "6",
+                "-SceneProfilePattern", "voice",
+                "-MaxCaptures", "1",
+                "-CaptureSamples", "4",
+                "-CaptureIntervalMs", "0",
+                "-RequireFrontendNearPassband",
+                "-JsonOnly");
+
+            Assert.True(run.ExitCode == 0, run.CombinedOutput);
+            using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+            var root = doc.RootElement;
+            Assert.Equal(1, root.GetProperty("captureCount").GetInt32());
+            Assert.Equal(1, root.GetProperty("missingStrongInputCaptureCount").GetInt32());
+            Assert.Equal(1, root.GetProperty("weakOnlyCaptureCount").GetInt32());
+            Assert.Equal(1, root.GetProperty("nearStrongPromotionCandidateCaptureCount").GetInt32());
+            Assert.Equal(14_249_000, root.GetProperty("bestNearStrongPromotionCandidateVfoHz").GetInt64());
+            Assert.Equal(14.249, root.GetProperty("bestNearStrongPromotionCandidateVfoMhz").GetDouble(), precision: 6);
+            Assert.Equal(2.5, root.GetProperty("bestNearStrongPromotionCandidateDistanceToStrongThresholdDb").GetDouble(), precision: 3);
+            Assert.True(root.GetProperty("bestNearStrongPromotionCandidateNearStrongInputSampleCount").GetInt32() >= 1);
+
+            var statusCount = root.GetProperty("mixedWeakStrongEvidenceStatusCounts").EnumerateArray().Single();
+            Assert.Equal("missing-strong-input", statusCount.GetProperty("status").GetString());
+            Assert.Equal(1, statusCount.GetProperty("count").GetInt32());
+
+            var capture = root.GetProperty("captures").EnumerateArray().Single();
+            Assert.Equal(-22.0, capture.GetProperty("strongInputThresholdDbfs").GetDouble(), precision: 3);
+            Assert.Equal(-26.0, capture.GetProperty("nearStrongInputThresholdDbfs").GetDouble(), precision: 3);
+            Assert.True(capture.GetProperty("weakInputSampleCount").GetInt32() > 0);
+            Assert.Equal(0, capture.GetProperty("strongInputSampleCount").GetInt32());
+            Assert.True(capture.GetProperty("nearStrongInputSampleCount").GetInt32() > 0);
+            Assert.NotEmpty(capture.GetProperty("topNearStrongInputs").EnumerateArray());
+            Assert.Equal(2.5, capture.GetProperty("topNearStrongInputs").EnumerateArray().First().GetProperty("distanceToStrongThresholdDb").GetDouble(), precision: 3);
+
+            var bestCandidate = root.GetProperty("bestNearStrongPromotionCandidateCapture");
+            Assert.NotEmpty(bestCandidate.GetProperty("topNearStrongInputs").EnumerateArray());
+            Assert.Equal(capture.GetProperty("reportPath").GetString(), root.GetProperty("bestNearStrongPromotionCandidateReportPath").GetString());
+
+            var recommendations = root.GetProperty("recommendations")
+                .EnumerateArray()
+                .Select(item => item.GetString() ?? "")
+                .ToArray();
+            Assert.Contains(recommendations, value => value.Contains("Best near-strong promotion candidate", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(bundleDir))
+            {
+                Directory.Delete(bundleDir, recursive: true);
+            }
+        }
+    }
+
     private static object FrontendTopPeak(long frequencyHz, int offsetHz, double snrDb, double dbfs) => new
     {
         frequencyHz,
@@ -298,38 +408,97 @@ public sealed class DspManualTuneObserverToolTests
         confidence = 0.9
     };
 
-    private static object ManualTuneObserverLiveDiagnostics() => new
+    private static object ManualTuneObserverLiveDiagnostics(
+        double inputDbfs = -34.0,
+        double outputDbfs = -31.0,
+        double audioRmsDbfs = -34.0,
+        double outputPeakDbfs = -9.0) => new
     {
         status = "ready-for-live-benchmark",
+        qualityTone = "ready",
+        readinessScore = 92,
+        readyForLiveBenchmark = true,
         requestedNrMode = "Nr5",
         effectiveNrMode = "Nr5",
         readyForNr5Tuning = true,
+        nr5TuningStatus = "ready-for-nr5-live-tuning",
+        wdspActive = true,
+        frontendSceneAvailable = true,
+        frontendSceneStatus = "fresh",
+        frontendSceneFresh = true,
+        frontendSceneAgeMs = 100,
+        frontendTopPeaks = new object[]
+        {
+            FrontendTopPeak(14_249_938, 938, 18.5, -84.3)
+        },
+        frontendAdjacentNoiseUsable = true,
+        frontendAdjacentNoiseBins = 96,
+        frontendAdjacentNoiseFloorDb = -104.0,
+        rxChainFilterLowHz = 100,
+        rxChainFilterHighHz = 3_100,
+        rxChainFilterWidthHz = 3_000,
+        rxChainFilterPresetName = "3.0k",
         runtimeEvidence = new
         {
             status = "ready",
+            rxMetersFresh = true,
+            rxMetersStale = false,
+            rxMetersAgeMs = 10,
+            agcGainDb = -42.5,
+            adcHeadroomDb = 58.0,
+            audioFresh = true,
+            audioStale = false,
+            audioAgeMs = 10,
             audioStatus = "ready",
-            audioRmsDbfs = -34.0,
+            audioRmsDbfs,
             audioPeakDbfs = -12.0,
-            rxAudioLevelerInputRmsDbfs = -34.0,
-            rxAudioLevelerOutputRmsDbfs = -34.0,
+            rxAudioLevelerInputRmsDbfs = audioRmsDbfs,
+            rxAudioLevelerOutputRmsDbfs = audioRmsDbfs,
+            rxAudioLevelerInputPeakDbfs = -12.0,
+            rxAudioLevelerOutputPeakDbfs = -12.0,
             rxAudioLevelerDesiredGainDb = 0.0,
             rxAudioLevelerAppliedGainDb = 0.0,
             rxAudioLevelerGainDeltaDb = 0.0,
+            rxAudioLevelerPeakHeadroomDb = 58.0,
+            rxAudioLevelerPreLimitPeakDbfs = -12.0,
+            rxAudioLevelerOutputLimitReductionDb = 0.0,
+            rxAudioLevelerOutputLimitSampleCount = 0,
+            rxAudioLevelerPauseHoldBlocks = 0,
             rxAudioLevelerNr5SpeechHoldBlocks = 0,
             rxAudioLevelerBoostSlewLimited = false,
+            rxAudioLevelerPeakLimited = false,
             rxAudioLevelerOutputLimited = false
         },
         nr5SpnrDiagnostics = new
         {
+            schemaVersion = 9,
+            run = true,
+            learnedFrames = 100,
             signalConfidence = 0.7,
             signalProbability = 0.6,
+            textureFill = 0.02,
             agcGate = 0.6,
+            levelDrive = 0.6,
             recoveryDrive = 0.2,
             weakSignalMemory = 0.5,
+            makeupGainDb = 0.0,
             maskSmoothing = 0.3,
-            inputDbfs = -34.0,
-            outputDbfs = -31.0,
-            outputPeakDbfs = -9.0
+            inputDbfs,
+            outputDbfs,
+            outputPeakDbfs,
+            meanGain = 0.5,
+            floorReductionDb = 6.0,
+            peakEvidence = 0.1,
+            peakLimitDbfs = -4.3,
+            peakReductionDb = 0.0,
+            adjacentNoiseUsable = true,
+            adjacentNoiseBins = 96,
+            adjacentNoiseFloorDb = -104.0,
+            adjacentNoiseTrust = 0.5,
+            adjacentNoiseDrive = 0.2,
+            adjacentNoiseRejectedPct = 20.0,
+            adjacentNoiseSideBalance = 0.5,
+            adjacentNoiseAsymmetryDb = 0.5
         }
     };
 
@@ -441,11 +610,11 @@ public sealed class DspManualTuneObserverToolTests
     private sealed class JsonRouteServer : IDisposable
     {
         private readonly TcpListener _listener;
-        private readonly IReadOnlyDictionary<string, string> _routes;
+        private readonly IReadOnlyDictionary<string, Func<string>> _routes;
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _loop;
 
-        private JsonRouteServer(TcpListener listener, IReadOnlyDictionary<string, string> routes)
+        private JsonRouteServer(TcpListener listener, IReadOnlyDictionary<string, Func<string>> routes)
         {
             _listener = listener;
             _routes = routes;
@@ -457,6 +626,15 @@ public sealed class DspManualTuneObserverToolTests
         public string BaseUrl { get; }
 
         public static JsonRouteServer Start(IReadOnlyDictionary<string, string> routes)
+            => Start(routes.ToDictionary(
+                pair => pair.Key,
+                pair =>
+                {
+                    var body = pair.Value;
+                    return (Func<string>)(() => body);
+                }));
+
+        public static JsonRouteServer Start(IReadOnlyDictionary<string, Func<string>> routes)
         {
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -518,8 +696,8 @@ public sealed class DspManualTuneObserverToolTests
                 path = uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString.Split('?', 2)[0];
             }
 
-            var found = _routes.TryGetValue(path, out var json);
-            var body = found ? json! : "{\"error\":\"not found\"}";
+            var found = _routes.TryGetValue(path, out var jsonFactory);
+            var body = found ? jsonFactory!() : "{\"error\":\"not found\"}";
             var status = found ? "200 OK" : "404 Not Found";
             var bytes = Encoding.UTF8.GetBytes(body);
             var header = Encoding.ASCII.GetBytes(

@@ -932,15 +932,20 @@ try {
                     readyForBenchmarkTrace = $captureReady
                     trendStatus = [string](Get-JsonValue $watchReport "trendStatus")
                     weakInputSampleCount = Get-IntValue (Get-JsonValue $weak "weakInputSampleCount")
+                    strongInputThresholdDbfs = Get-NullableDoubleValue (Get-JsonValue $weak "strongInputThresholdDbfs")
                     strongInputSampleCount = Get-IntValue (Get-JsonValue $weak "strongInputSampleCount")
+                    nearStrongInputThresholdDbfs = Get-NullableDoubleValue (Get-JsonValue $weak "nearStrongInputThresholdDbfs")
                     nearStrongInputSampleCount = Get-IntValue (Get-JsonValue $weak "nearStrongInputSampleCount")
                     mixedWeakStrongEvidenceStatus = $captureStatus
                     mixedWeakStrongEvidenceReady = $captureMixedReady
                     weakStrongOutputGapDb = Get-NullableDoubleValue (Get-JsonValue $weak "weakStrongOutputGapDb")
                     speechQualifiedWeakInputSampleCount = Get-IntValue (Get-JsonValue $weak "speechQualifiedWeakInputSampleCount")
                     speechQualifiedStrongInputSampleCount = Get-IntValue (Get-JsonValue $weak "speechQualifiedStrongInputSampleCount")
+                    speechQualifiedNearStrongInputSampleCount = Get-IntValue (Get-JsonValue $weak "speechQualifiedNearStrongInputSampleCount")
                     passbandQualifiedWeakInputSampleCount = Get-IntValue (Get-JsonValue $weak "passbandQualifiedWeakInputSampleCount")
                     passbandQualifiedStrongInputSampleCount = Get-IntValue (Get-JsonValue $weak "passbandQualifiedStrongInputSampleCount")
+                    passbandQualifiedNearStrongInputSampleCount = Get-IntValue (Get-JsonValue $weak "passbandQualifiedNearStrongInputSampleCount")
+                    topNearStrongInputs = @(Get-JsonArray $weak "topNearStrongInputs")
                     agcStabilityStatus = [string](Get-JsonValue $agc "status")
                     agcPumpingRisk = Test-Truthy (Get-JsonValue $agc "agcPumpingRisk")
                 }) | Out-Null
@@ -982,6 +987,21 @@ $readyCaptureCount = 0
 $mixedReadyCount = 0
 $pumpingRiskCount = 0
 $staleSceneCaptureCount = 0
+$mixedWeakStrongStatusCounts = @{}
+$missingStrongInputCaptureCount = 0
+$missingWeakInputCaptureCount = 0
+$missingWeakAndStrongInputCaptureCount = 0
+$missingOutputGapCaptureCount = 0
+$weakStrongOutputGapWatchCaptureCount = 0
+$weakOnlyCaptureCount = 0
+$readyWeakOnlyCaptureCount = 0
+$strongOnlyCaptureCount = 0
+$bestWeakOnlyCapture = $null
+$bestWeakOnlyCaptureScore = [double]::NegativeInfinity
+$nearStrongPromotionCandidateCaptureCount = 0
+$bestNearStrongPromotionCandidateCapture = $null
+$bestNearStrongPromotionCandidateScore = [double]::NegativeInfinity
+$bestNearStrongPromotionCandidateDistanceToStrongThresholdDb = $null
 $vfoCaptureCounts = @{}
 foreach ($capture in $captureArray) {
     $captureVfoKey = [string]$capture.vfoHz
@@ -1010,7 +1030,93 @@ foreach ($capture in $captureArray) {
     if (Test-Truthy $capture.staleSceneCapture) {
         $staleSceneCaptureCount++
     }
+
+    $captureStatus = [string]$capture.mixedWeakStrongEvidenceStatus
+    if ([string]::IsNullOrWhiteSpace($captureStatus)) {
+        $captureStatus = "unknown"
+    }
+    if (-not $mixedWeakStrongStatusCounts.ContainsKey($captureStatus)) {
+        $mixedWeakStrongStatusCounts[$captureStatus] = 0
+    }
+    $mixedWeakStrongStatusCounts[$captureStatus] = [int]$mixedWeakStrongStatusCounts[$captureStatus] + 1
+    switch ($captureStatus) {
+        "missing-strong-input" { $missingStrongInputCaptureCount++ }
+        "missing-weak-input" { $missingWeakInputCaptureCount++ }
+        "missing-weak-and-strong-input" { $missingWeakAndStrongInputCaptureCount++ }
+        "missing-output-gap" { $missingOutputGapCaptureCount++ }
+        "weak-strong-output-gap-watch" { $weakStrongOutputGapWatchCaptureCount++ }
+    }
+
+    $captureWeakInput = Get-IntValue $capture.weakInputSampleCount
+    $captureStrongInput = Get-IntValue $capture.strongInputSampleCount
+    $captureNearStrongInput = Get-IntValue $capture.nearStrongInputSampleCount
+    if ($captureWeakInput -gt 0 -and $captureStrongInput -le 0) {
+        $weakOnlyCaptureCount++
+        if (Test-Truthy $capture.readyForBenchmarkTrace) {
+            $readyWeakOnlyCaptureCount++
+        }
+
+        $captureReadyBoost = if (Test-Truthy $capture.readyForBenchmarkTrace) { 100000.0 } else { 0.0 }
+        $captureWeakOnlyScore =
+            $captureReadyBoost +
+            ([double]$captureWeakInput * 100.0) +
+            ([double](Get-IntValue $capture.passbandQualifiedWeakInputSampleCount) * 50.0) +
+            ([double](Get-IntValue $capture.speechQualifiedWeakInputSampleCount) * 25.0) +
+            ([double](Get-IntValue $capture.nearStrongInputSampleCount) * 10.0)
+        $captureSnr = Get-NullableDoubleValue $capture.coherentMaxSnrDb
+        if ($null -ne $captureSnr) {
+            $captureWeakOnlyScore += [Math]::Max(0.0, [double]$captureSnr)
+        }
+        if ($null -eq $bestWeakOnlyCapture -or [double]$captureWeakOnlyScore -gt [double]$bestWeakOnlyCaptureScore) {
+            $bestWeakOnlyCapture = $capture
+            $bestWeakOnlyCaptureScore = [Math]::Round([double]$captureWeakOnlyScore, 3)
+        }
+    }
+    elseif ($captureStrongInput -gt 0 -and $captureWeakInput -le 0) {
+        $strongOnlyCaptureCount++
+    }
+
+    if ([string]::Equals($captureStatus, "missing-strong-input", [StringComparison]::OrdinalIgnoreCase) -and
+        $captureWeakInput -gt 0 -and
+        $captureNearStrongInput -gt 0) {
+        $nearStrongPromotionCandidateCaptureCount++
+        $candidateDistance = $null
+        foreach ($nearStrongInput in @(Get-JsonArray $capture "topNearStrongInputs")) {
+            $distance = Get-NullableDoubleValue (Get-JsonValue $nearStrongInput "distanceToStrongThresholdDb")
+            if ($null -ne $distance -and ($null -eq $candidateDistance -or [double]$distance -lt [double]$candidateDistance)) {
+                $candidateDistance = $distance
+            }
+        }
+
+        $distanceScore = if ($null -ne $candidateDistance) { 100.0 - [Math]::Min(100.0, [Math]::Max(0.0, [double]$candidateDistance * 10.0)) } else { 0.0 }
+        $captureTriggerPoll = Get-IntValue (Get-JsonValue (Get-JsonValue $capture "trigger") "poll")
+        $candidateScore =
+            ([double](Get-IntValue $capture.passbandQualifiedNearStrongInputSampleCount) * 10000.0) +
+            ([double](Get-IntValue $capture.speechQualifiedNearStrongInputSampleCount) * 5000.0) +
+            ([double]$captureNearStrongInput * 1000.0) +
+            ([double]$captureWeakInput * 100.0) +
+            $distanceScore +
+            ([double](Get-IntValue $capture.vfoCaptureIndex) * 10.0) +
+            ([double]$captureTriggerPoll / 1000.0)
+
+        if ($null -eq $bestNearStrongPromotionCandidateCapture -or
+            [double]$candidateScore -gt [double]$bestNearStrongPromotionCandidateScore) {
+            $bestNearStrongPromotionCandidateCapture = $capture
+            $bestNearStrongPromotionCandidateScore = [Math]::Round([double]$candidateScore, 3)
+            $bestNearStrongPromotionCandidateDistanceToStrongThresholdDb = $candidateDistance
+        }
+    }
 }
+$mixedWeakStrongStatusCountRecords = @(
+    $mixedWeakStrongStatusCounts.GetEnumerator() |
+        Sort-Object -Property @{ Expression = { $_.Value }; Descending = $true }, @{ Expression = { $_.Key }; Ascending = $true } |
+        ForEach-Object {
+            [pscustomobject][ordered]@{
+                status = [string]$_.Key
+                count = [int]$_.Value
+            }
+        }
+)
 $staleScenePollCount = 0
 $frontendNearPassbandPollCount = 0
 $frontendOffPassbandPollCount = 0
@@ -1282,6 +1388,34 @@ elseif ($mixedReadyCount -gt 0) {
     $recommendations.Add("At least one manual-tune capture has mixed weak+strong evidence; promote that window through live history and strict validation before tuning DSP behavior.") | Out-Null
 }
 elseif ($weakTotal -gt 0 -and $strongTotal -le 0) {
+    if ($null -ne $bestNearStrongPromotionCandidateCapture) {
+        $candidateVfoHz = Get-NullableLongValue (Get-JsonValue $bestNearStrongPromotionCandidateCapture "vfoHz")
+        $candidateVfoText = if ($null -ne $candidateVfoHz) {
+            "{0:N6} MHz" -f ([double]$candidateVfoHz / 1000000.0)
+        }
+        else {
+            "the best near-strong capture"
+        }
+        $distanceText = if ($null -ne $bestNearStrongPromotionCandidateDistanceToStrongThresholdDb) {
+            "{0:N1} dB below the strict strong threshold" -f [double]$bestNearStrongPromotionCandidateDistanceToStrongThresholdDb
+        }
+        else {
+            "near the strict strong threshold"
+        }
+        $recommendations.Add("Best near-strong promotion candidate is at $candidateVfoText with top near-strong input $distanceText; extend dwell or recapture this VFO before rejecting the window as weak-only.") | Out-Null
+    }
+    if ($null -ne $bestWeakOnlyCapture) {
+        $bestWeakVfoHz = Get-NullableLongValue $bestWeakOnlyCapture.vfoHz
+        $bestWeakVfoText = if ($null -ne $bestWeakVfoHz) {
+            "{0:N6} MHz" -f ([double]$bestWeakVfoHz / 1000000.0)
+        }
+        else {
+            "the best weak-only VFO"
+        }
+        $bestWeakCount = Get-IntValue $bestWeakOnlyCapture.weakInputSampleCount
+        $bestWeakNearStrong = Get-IntValue $bestWeakOnlyCapture.nearStrongInputSampleCount
+        $recommendations.Add("Best weak-only capture is at $bestWeakVfoText with $bestWeakCount weak-input sample(s) and $bestWeakNearStrong near-strong sample(s); keep collecting or recapture that VFO until strict strongInputSampleCount becomes non-zero.") | Out-Null
+    }
     if ($MaxCapturesPerVfo -le 1) {
         $recommendations.Add("Manual-tune captures are weak-only by the strict NR5 input threshold; rerun with -MaxCapturesPerVfo 2 or keep collecting active windows until strongInputSampleCount is non-zero.") | Out-Null
     }
@@ -1312,6 +1446,20 @@ foreach ($capture in $captureArray) {
         $bundleRelativePaths = $false
         break
     }
+}
+$bestWeakOnlyCaptureVfoHz = Get-NullableLongValue (Get-JsonValue $bestWeakOnlyCapture "vfoHz")
+$bestWeakOnlyCaptureVfoMhz = if ($null -ne $bestWeakOnlyCaptureVfoHz) {
+    [Math]::Round([double]$bestWeakOnlyCaptureVfoHz / 1000000.0, 6)
+}
+else {
+    $null
+}
+$bestNearStrongPromotionCandidateVfoHz = Get-NullableLongValue (Get-JsonValue $bestNearStrongPromotionCandidateCapture "vfoHz")
+$bestNearStrongPromotionCandidateVfoMhz = if ($null -ne $bestNearStrongPromotionCandidateVfoHz) {
+    [Math]::Round([double]$bestNearStrongPromotionCandidateVfoHz / 1000000.0, 6)
+}
+else {
+    $null
 }
 
 $report = [ordered]@{
@@ -1385,6 +1533,34 @@ $report = [ordered]@{
     readyCaptureCount = $readyCaptureCount
     mixedWeakStrongReady = ($mixedReadyCount -gt 0)
     mixedWeakStrongReadyCaptureCount = $mixedReadyCount
+    mixedWeakStrongEvidenceStatusCounts = @($mixedWeakStrongStatusCountRecords)
+    missingStrongInputCaptureCount = $missingStrongInputCaptureCount
+    missingWeakInputCaptureCount = $missingWeakInputCaptureCount
+    missingWeakAndStrongInputCaptureCount = $missingWeakAndStrongInputCaptureCount
+    missingOutputGapCaptureCount = $missingOutputGapCaptureCount
+    weakStrongOutputGapWatchCaptureCount = $weakStrongOutputGapWatchCaptureCount
+    weakOnlyCaptureCount = $weakOnlyCaptureCount
+    readyWeakOnlyCaptureCount = $readyWeakOnlyCaptureCount
+    strongOnlyCaptureCount = $strongOnlyCaptureCount
+    bestWeakOnlyCapture = $bestWeakOnlyCapture
+    bestWeakOnlyCaptureScore = if ($null -ne $bestWeakOnlyCapture) { $bestWeakOnlyCaptureScore } else { $null }
+    bestWeakOnlyCaptureVfoHz = $bestWeakOnlyCaptureVfoHz
+    bestWeakOnlyCaptureVfoMhz = $bestWeakOnlyCaptureVfoMhz
+    bestWeakOnlyCaptureReportPath = [string](Get-JsonValue $bestWeakOnlyCapture "reportPath")
+    bestWeakOnlyCaptureWeakInputSampleCount = Get-IntValue (Get-JsonValue $bestWeakOnlyCapture "weakInputSampleCount")
+    bestWeakOnlyCaptureNearStrongInputSampleCount = Get-IntValue (Get-JsonValue $bestWeakOnlyCapture "nearStrongInputSampleCount")
+    bestWeakOnlyCapturePassbandQualifiedWeakInputSampleCount = Get-IntValue (Get-JsonValue $bestWeakOnlyCapture "passbandQualifiedWeakInputSampleCount")
+    bestWeakOnlyCaptureAgcStabilityStatus = [string](Get-JsonValue $bestWeakOnlyCapture "agcStabilityStatus")
+    nearStrongPromotionCandidateCaptureCount = $nearStrongPromotionCandidateCaptureCount
+    bestNearStrongPromotionCandidateCapture = $bestNearStrongPromotionCandidateCapture
+    bestNearStrongPromotionCandidateScore = if ($null -ne $bestNearStrongPromotionCandidateCapture) { $bestNearStrongPromotionCandidateScore } else { $null }
+    bestNearStrongPromotionCandidateReportPath = [string](Get-JsonValue $bestNearStrongPromotionCandidateCapture "reportPath")
+    bestNearStrongPromotionCandidateVfoHz = $bestNearStrongPromotionCandidateVfoHz
+    bestNearStrongPromotionCandidateVfoMhz = $bestNearStrongPromotionCandidateVfoMhz
+    bestNearStrongPromotionCandidateDistanceToStrongThresholdDb = $bestNearStrongPromotionCandidateDistanceToStrongThresholdDb
+    bestNearStrongPromotionCandidateNearStrongInputSampleCount = Get-IntValue (Get-JsonValue $bestNearStrongPromotionCandidateCapture "nearStrongInputSampleCount")
+    bestNearStrongPromotionCandidateSpeechQualifiedNearStrongInputSampleCount = Get-IntValue (Get-JsonValue $bestNearStrongPromotionCandidateCapture "speechQualifiedNearStrongInputSampleCount")
+    bestNearStrongPromotionCandidatePassbandQualifiedNearStrongInputSampleCount = Get-IntValue (Get-JsonValue $bestNearStrongPromotionCandidateCapture "passbandQualifiedNearStrongInputSampleCount")
     weakInputSampleCount = $weakTotal
     strongInputSampleCount = $strongTotal
     nearStrongInputSampleCount = $nearStrongTotal
