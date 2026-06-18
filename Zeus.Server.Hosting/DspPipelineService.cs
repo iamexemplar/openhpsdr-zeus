@@ -233,6 +233,8 @@ public class DspPipelineService : BackgroundService,
     private const double RxLevelerNr5RmNoiseNoSignalGate = 0.300;
     private const double RxLevelerNr5RmNoiseFloorDbfs = -66.0;
     private const double RxLevelerNr5RmNoiseMaxFloorDbfs = -54.0;
+    private const double RxLevelerNr5RmNoiseQuietFloorDbfs = -96.0;
+    private const double RxLevelerNr5RmNoiseQuietMaxFloorDbfs = -84.0;
     private const double RxLevelerSmoothCutDb = 6.0;
     private const int RxLevelerPauseHoldBlocks = 18;
     private const double RxLevelerPauseMemoryDecayDbPerBlock = 4.5;
@@ -2613,13 +2615,24 @@ public class DspPipelineService : BackgroundService,
                     nr5StrongFrameParityCap = true;
                 }
             }
+            bool nr5RmNoiseQuietResidualCandidate =
+                inputRmsDbfs < RxLevelerGateRmsDb &&
+                inputPeakDbfs <= -50.0 &&
+                nr5.OutputDbfs <= -62.0 &&
+                nr5.OutputPeakDbfs <= -45.0 &&
+                nr5.AdjacentNoiseUsable &&
+                nr5.AdjacentNoiseTrust >= 0.500 &&
+                nr5.AdjacentNoiseDrive >= 0.480;
+            bool nr5RmNoiseNoSignalPriorEligible = nr5RmNoiseQuietResidualCandidate
+                ? nr5NoSignalNoisePrior >= 0.220
+                : nr5NoSignalNoisePrior >= RxLevelerNr5RmNoiseNoSignalGate;
             bool nr5RmNoiseGateEligible =
                 IsNr5RmNoiseGateEnabled() &&
                 desiredDb > RxLevelerMaxCutDb + 1.0e-6 &&
-                inputRmsDbfs >= -72.0 &&
+                inputRmsDbfs >= (nr5RmNoiseQuietResidualCandidate ? -108.0 : -72.0) &&
                 inputRmsDbfs <= -34.0 &&
                 nr5NoiseProfilePriorBeforeFrame >= RxLevelerNr5RmNoiseProfileGate &&
-                nr5NoSignalNoisePrior >= RxLevelerNr5RmNoiseNoSignalGate &&
+                nr5RmNoiseNoSignalPriorEligible &&
                 nr5HybridSpeechPrior < 0.180 &&
                 nr5SpeechEvidence < 0.180 &&
                 nr5ContinuitySpeechProof < 0.050 &&
@@ -2641,6 +2654,7 @@ public class DspPipelineService : BackgroundService,
                 !nr5NativeSuppressedWeakFragmentCandidate &&
                 (nr5FrontendNoProofNoiseCap ||
                     nr5FrontendFarPeakNoiseCap ||
+                    nr5RmNoiseQuietResidualCandidate ||
                     (nr5.AdjacentNoiseUsable &&
                         nr5.AdjacentNoiseTrust >= 0.520 &&
                         nr5.AdjacentNoiseDrive >= 0.520));
@@ -2649,14 +2663,22 @@ public class DspPipelineService : BackgroundService,
                 double residualSpeechBlend = Math.Max(
                     nr5HybridSpeechPrior,
                     Math.Max(nr5SpeechEvidence, 0.72 * nr5.SignalProbability));
-                double rmNoiseTargetDbfs =
-                    RxLevelerNr5RmNoiseFloorDbfs
-                    + 12.0 * ClampUnit((residualSpeechBlend - 0.040) / 0.140)
-                    + 4.0 * ClampUnit((nr5.OutputDbfs + 36.0) / 14.0);
-                rmNoiseTargetDbfs = Math.Clamp(
-                    rmNoiseTargetDbfs,
-                    RxLevelerNr5RmNoiseFloorDbfs,
-                    RxLevelerNr5RmNoiseMaxFloorDbfs);
+                double rmNoiseTargetDbfs = nr5RmNoiseQuietResidualCandidate
+                    ? RxLevelerNr5RmNoiseQuietFloorDbfs
+                        + 12.0 * ClampUnit((residualSpeechBlend - 0.020) / 0.160)
+                        + 2.0 * ClampUnit((nr5.OutputPeakDbfs + 58.0) / 14.0)
+                    : RxLevelerNr5RmNoiseFloorDbfs
+                        + 12.0 * ClampUnit((residualSpeechBlend - 0.040) / 0.140)
+                        + 4.0 * ClampUnit((nr5.OutputDbfs + 36.0) / 14.0);
+                rmNoiseTargetDbfs = nr5RmNoiseQuietResidualCandidate
+                    ? Math.Clamp(
+                        rmNoiseTargetDbfs,
+                        RxLevelerNr5RmNoiseQuietFloorDbfs,
+                        RxLevelerNr5RmNoiseQuietMaxFloorDbfs)
+                    : Math.Clamp(
+                        rmNoiseTargetDbfs,
+                        RxLevelerNr5RmNoiseFloorDbfs,
+                        RxLevelerNr5RmNoiseMaxFloorDbfs);
                 double rmNoiseDesiredDb = Math.Clamp(
                     rmNoiseTargetDbfs - inputRmsDbfs,
                     RxLevelerMaxCutDb,
@@ -3604,10 +3626,16 @@ public class DspPipelineService : BackgroundService,
         bool boostSlewLimited = false;
         if (belowGate)
         {
+            if (nr5RmNoiseGate && desiredDb < 0.0)
+            {
+                nextDb = desiredDb;
+                memoryDb = 0.0;
+                state.PauseHoldBlocks = 0;
+            }
             // Do not amplify NR-muted/squelched gaps, but keep gain memory
             // through normal SSB word spacing so the next weak syllable does
             // not audibly fade upward from 0 dB again.
-            if (nr5QuietComfortTailCandidate && desiredDb > 0.0)
+            else if (nr5QuietComfortTailCandidate && desiredDb > 0.0)
             {
                 nextDb = desiredDb;
                 if (currentDb > 0.0)
