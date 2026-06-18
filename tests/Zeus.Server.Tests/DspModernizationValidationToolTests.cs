@@ -2076,7 +2076,7 @@ public sealed class DspModernizationValidationToolTests
                 g2RxPeakHuntReportPresent = true,
                 g2RxPeakHuntReportReady = true,
                 g2RxPeakHuntReportValid = true,
-                g2RxPeakHuntReportStatus = "weak-only",
+                g2RxPeakHuntReportStatus = "weak-only-rx-state-drift",
                 g2RxPeakHuntAllowRetune = true,
                 g2RxPeakHuntActualRunCount = 7,
                 g2RxPeakHuntFailedRunCount = 0,
@@ -2086,6 +2086,10 @@ public sealed class DspModernizationValidationToolTests
                 g2RxPeakHuntMixedWeakStrongReady = false,
                 g2RxPeakHuntWeakInputSampleCount = 147,
                 g2RxPeakHuntStrongInputSampleCount = 0,
+                g2RxPeakHuntPassbandQualifiedWeakInputSampleCount = 0,
+                g2RxPeakHuntFrontendNearPassbandSampleCount = 7,
+                g2RxPeakHuntPassbandEvidenceMissing = true,
+                g2RxPeakHuntRxStateDriftRunCount = 1,
                 g2RxPeakHuntCandidateWeakLossSampleCount = 0,
                 g2RxPeakHuntHotMakeupSampleCount = 0,
                 g2RxPeakHuntHardBlockerSampleCount = 0,
@@ -2136,14 +2140,19 @@ public sealed class DspModernizationValidationToolTests
             Assert.Contains("weak-only", reason, StringComparison.Ordinal);
             Assert.Contains("weakSamples=147", reason, StringComparison.Ordinal);
             Assert.Contains("strongSamples=0", reason, StringComparison.Ordinal);
+            Assert.Contains("passbandWeakSamples=0", reason, StringComparison.Ordinal);
+            Assert.Contains("frontendNearPassbandSamples=7", reason, StringComparison.Ordinal);
+            Assert.Contains("passbandEvidenceMissing=True", reason, StringComparison.Ordinal);
+            Assert.Contains("rxStateDriftRuns=1", reason, StringComparison.Ordinal);
             Assert.Contains("bestFrequencyHz=14127164", reason, StringComparison.Ordinal);
             Assert.Contains("bestStatus='missing-strong-input'", reason, StringComparison.Ordinal);
             Assert.Contains("cannot satisfy mixed weak+strong acceptance", reason, StringComparison.Ordinal);
+            Assert.Contains("lacks stable passband-qualified weak evidence", reason, StringComparison.Ordinal);
 
             var manualAction = action.GetProperty("manualAction").GetString() ?? "";
             Assert.Contains("watch-dsp-manual-tune-observer", manualAction, StringComparison.Ordinal);
             Assert.Contains("no VFO/LO writes", manualAction, StringComparison.Ordinal);
-            Assert.Contains("weak-only/missing strong input", manualAction, StringComparison.Ordinal);
+            Assert.Contains("incomplete passband evidence or RX state drift", manualAction, StringComparison.Ordinal);
             Assert.Contains("both weak and strong speech", manualAction, StringComparison.Ordinal);
 
             var steps = ReadStringArray(action, "commandSteps");
@@ -8823,6 +8832,144 @@ public sealed class DspModernizationValidationToolTests
     }
 
     [SkippableFact]
+    public async Task G2RxPeakHuntReportClassifiesWeakOnlyPassbandEvidenceQuality()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell G2 peak-hunt validator smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var cases = new[]
+        {
+            new
+            {
+                Name = "passband-qualified",
+                WeakOnly = true,
+                PassbandIncomplete = false,
+                OffPassband = false,
+                RxStateDrift = false,
+                ExpectedStatus = "weak-only-passband",
+                ExpectedQualified = true,
+                ExpectedIncomplete = false,
+                ExpectedOffPassband = false,
+                ExpectedMissing = false,
+                ExpectedMissingRunCount = 0,
+                ExpectedDriftRunCount = 0,
+                ExpectedReadyPassbandRunCount = 2,
+                ExpectedQualifiedRunCount = 2
+            },
+            new
+            {
+                Name = "passband-incomplete",
+                WeakOnly = false,
+                PassbandIncomplete = true,
+                OffPassband = false,
+                RxStateDrift = false,
+                ExpectedStatus = "weak-only-passband-incomplete",
+                ExpectedQualified = false,
+                ExpectedIncomplete = true,
+                ExpectedOffPassband = false,
+                ExpectedMissing = true,
+                ExpectedMissingRunCount = 2,
+                ExpectedDriftRunCount = 0,
+                ExpectedReadyPassbandRunCount = 0,
+                ExpectedQualifiedRunCount = 0
+            },
+            new
+            {
+                Name = "off-passband",
+                WeakOnly = false,
+                PassbandIncomplete = false,
+                OffPassband = true,
+                RxStateDrift = false,
+                ExpectedStatus = "weak-only-off-passband",
+                ExpectedQualified = false,
+                ExpectedIncomplete = false,
+                ExpectedOffPassband = true,
+                ExpectedMissing = true,
+                ExpectedMissingRunCount = 2,
+                ExpectedDriftRunCount = 0,
+                ExpectedReadyPassbandRunCount = 0,
+                ExpectedQualifiedRunCount = 0
+            },
+            new
+            {
+                Name = "rx-state-drift",
+                WeakOnly = false,
+                PassbandIncomplete = false,
+                OffPassband = false,
+                RxStateDrift = true,
+                ExpectedStatus = "weak-only-rx-state-drift",
+                ExpectedQualified = false,
+                ExpectedIncomplete = true,
+                ExpectedOffPassband = false,
+                ExpectedMissing = true,
+                ExpectedMissingRunCount = 0,
+                ExpectedDriftRunCount = 1,
+                ExpectedReadyPassbandRunCount = 0,
+                ExpectedQualifiedRunCount = 0
+            }
+        };
+
+        foreach (var testCase in cases)
+        {
+            var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-g2-rx-peak-hunt-{testCase.Name}-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(bundleDir);
+
+            try
+            {
+                WriteSourcePlanScopeBundle(bundleDir);
+                WriteG2RxPeakHuntArtifactManifest(bundleDir);
+                WriteG2RxPeakHuntReport(
+                    bundleDir,
+                    weakOnly: testCase.WeakOnly,
+                    weakOnlyPassbandIncomplete: testCase.PassbandIncomplete,
+                    weakOnlyOffPassband: testCase.OffPassband,
+                    rxStateDrift: testCase.RxStateDrift);
+
+                var validationReport = Path.Combine(bundleDir, "validation-g2-rx-peak-hunt.json");
+                var validation = await RunPowerShellAsync(
+                    powerShell,
+                    repoRoot,
+                    Path.Combine(repoRoot, "tools", "validate-dsp-modernization-bundle.ps1"),
+                    "-BundleDir", bundleDir,
+                    "-ArtifactManifestPath", Path.Combine(bundleDir, "artifact-manifest.json"),
+                    "-ReportPath", validationReport,
+                    "-AllowPreflight",
+                    "-JsonOnly");
+
+                Assert.NotEqual(0, validation.ExitCode);
+                Assert.True(File.Exists(validationReport), validation.CombinedOutput);
+
+                using var validationDoc = JsonDocument.Parse(await File.ReadAllTextAsync(validationReport));
+                var validationRoot = validationDoc.RootElement;
+                Assert.True(validationRoot.GetProperty("g2RxPeakHuntReportPresent").GetBoolean());
+                Assert.True(validationRoot.GetProperty("g2RxPeakHuntReportReady").GetBoolean());
+                Assert.True(validationRoot.GetProperty("g2RxPeakHuntReportValid").GetBoolean());
+                Assert.Equal(testCase.ExpectedStatus, validationRoot.GetProperty("g2RxPeakHuntReportStatus").GetString());
+                Assert.Equal(18, validationRoot.GetProperty("g2RxPeakHuntWeakInputSampleCount").GetInt32());
+                Assert.Equal(0, validationRoot.GetProperty("g2RxPeakHuntStrongInputSampleCount").GetInt32());
+                Assert.Equal(testCase.ExpectedQualified, validationRoot.GetProperty("g2RxPeakHuntWeakOnlyPassbandQualified").GetBoolean());
+                Assert.Equal(testCase.ExpectedIncomplete, validationRoot.GetProperty("g2RxPeakHuntWeakOnlyPassbandIncomplete").GetBoolean());
+                Assert.Equal(testCase.ExpectedOffPassband, validationRoot.GetProperty("g2RxPeakHuntWeakOnlyOffPassband").GetBoolean());
+                Assert.Equal(testCase.ExpectedMissing, validationRoot.GetProperty("g2RxPeakHuntPassbandEvidenceMissing").GetBoolean());
+                Assert.Equal(testCase.ExpectedMissingRunCount, validationRoot.GetProperty("g2RxPeakHuntPassbandEvidenceMissingRunCount").GetInt32());
+                Assert.Equal(testCase.ExpectedDriftRunCount, validationRoot.GetProperty("g2RxPeakHuntRxStateDriftRunCount").GetInt32());
+                Assert.Equal(testCase.ExpectedReadyPassbandRunCount, validationRoot.GetProperty("g2RxPeakHuntReadyPassbandWeakRunCount").GetInt32());
+                Assert.Equal(testCase.ExpectedQualifiedRunCount, validationRoot.GetProperty("g2RxPeakHuntWeakOnlyPassbandQualifiedRunCount").GetInt32());
+            }
+            finally
+            {
+                if (Directory.Exists(bundleDir))
+                {
+                    Directory.Delete(bundleDir, recursive: true);
+                }
+            }
+        }
+    }
+
+    [SkippableFact]
     public async Task G2RxPeakHuntReportRejectsNonPortableWindowPaths()
     {
         Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell G2 peak-hunt validator smoke runs on Windows.");
@@ -9249,8 +9396,34 @@ public sealed class DspModernizationValidationToolTests
     private static void WriteG2RxPeakHuntReport(
         string bundleDir,
         bool nonPortableWindowPaths = false,
-        bool modeRestoreFailed = false)
+        bool modeRestoreFailed = false,
+        bool weakOnly = false,
+        bool weakOnlyPassbandIncomplete = false,
+        bool weakOnlyOffPassband = false,
+        bool rxStateDrift = false)
     {
+        var weakOnlyScenario = weakOnly || weakOnlyPassbandIncomplete || weakOnlyOffPassband || rxStateDrift;
+        var mixedReady = !weakOnlyScenario;
+        var totalStrongInputSampleCount = weakOnlyScenario ? 0 : 14;
+        var totalNearStrongInputSampleCount = weakOnlyScenario ? 0 : 3;
+        var totalSpeechQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 11;
+        var totalSpeechQualifiedNearStrongInputSampleCount = weakOnlyScenario ? 0 : 2;
+        var totalPassbandQualifiedWeakInputSampleCount = weakOnlyPassbandIncomplete || weakOnlyOffPassband || rxStateDrift ? 0 : 9;
+        var totalPassbandQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 8;
+        var totalPassbandQualifiedNearStrongInputSampleCount = weakOnlyScenario ? 0 : 1;
+        var totalFrontendNearPassbandSampleCount = weakOnlyOffPassband ? 0 : rxStateDrift ? 7 : 20;
+        var currentRunStrongInputSampleCount = weakOnlyScenario ? 0 : 5;
+        var bestRunStrongInputSampleCount = weakOnlyScenario ? 0 : 9;
+        var currentRunPassbandQualifiedWeakInputSampleCount = totalPassbandQualifiedWeakInputSampleCount > 0 ? 4 : 0;
+        var bestRunPassbandQualifiedWeakInputSampleCount = totalPassbandQualifiedWeakInputSampleCount > 0 ? 5 : 0;
+        var currentRunPassbandQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 4;
+        var bestRunPassbandQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 4;
+        var currentRunFrontendNearPassbandSampleCount = weakOnlyOffPassband ? 0 : rxStateDrift ? 7 : 8;
+        var bestRunFrontendNearPassbandSampleCount = weakOnlyOffPassband ? 0 : rxStateDrift ? 0 : 12;
+        var currentRunTrendStatus = weakOnlyPassbandIncomplete || weakOnlyOffPassband ? "passband-evidence-missing" : "ready";
+        var bestRunTrendStatus = rxStateDrift ? "rx-state-drift" : weakOnlyPassbandIncomplete || weakOnlyOffPassband ? "passband-evidence-missing" : "ready";
+        var mixedWeakStrongEvidenceStatus = weakOnlyScenario ? "missing-strong-input" : "ready";
+
         var currentRunReportPath = nonPortableWindowPaths
             ? Path.Combine(Path.GetTempPath(), $"zeus-g2-rx-peak-hunt-outside-{Guid.NewGuid():N}", "current-vfo", "live-diagnostics-watch.json")
             : "artifacts/g2-rx-peak-hunt/current-vfo-14290000/window-01/live-diagnostics-watch.json";
@@ -9387,18 +9560,18 @@ public sealed class DspModernizationValidationToolTests
             plannedRunCount = 2,
             actualRunCount = 2,
             failedRunCount = 0,
-            mixedWeakStrongReady = true,
-            mixedWeakStrongReadyRunCount = 1,
+            mixedWeakStrongReady = mixedReady,
+            mixedWeakStrongReadyRunCount = mixedReady ? 1 : 0,
             weakInputSampleCount = 18,
-            strongInputSampleCount = 14,
-            nearStrongInputSampleCount = 3,
+            strongInputSampleCount = totalStrongInputSampleCount,
+            nearStrongInputSampleCount = totalNearStrongInputSampleCount,
             speechQualifiedWeakInputSampleCount = 13,
-            speechQualifiedStrongInputSampleCount = 11,
-            speechQualifiedNearStrongInputSampleCount = 2,
-            passbandQualifiedWeakInputSampleCount = 9,
-            passbandQualifiedStrongInputSampleCount = 8,
-            passbandQualifiedNearStrongInputSampleCount = 1,
-            frontendNearPassbandSampleCount = 20,
+            speechQualifiedStrongInputSampleCount = totalSpeechQualifiedStrongInputSampleCount,
+            speechQualifiedNearStrongInputSampleCount = totalSpeechQualifiedNearStrongInputSampleCount,
+            passbandQualifiedWeakInputSampleCount = totalPassbandQualifiedWeakInputSampleCount,
+            passbandQualifiedStrongInputSampleCount = totalPassbandQualifiedStrongInputSampleCount,
+            passbandQualifiedNearStrongInputSampleCount = totalPassbandQualifiedNearStrongInputSampleCount,
+            frontendNearPassbandSampleCount = totalFrontendNearPassbandSampleCount,
             candidateWeakLossSampleCount = 0,
             hotMakeupSampleCount = 0,
             hardBlockerSampleCount = 0,
@@ -9417,8 +9590,8 @@ public sealed class DspModernizationValidationToolTests
                     window = 1,
                     reportPath = bestRunReportPath,
                     jsonlPath = bestRunJsonlPath,
-                    trendStatus = "ready",
-                    readyForBenchmarkTrace = true,
+                    trendStatus = bestRunTrendStatus,
+                    readyForBenchmarkTrace = !rxStateDrift,
                     okSampleCount = 24,
                     failedSampleCount = 0,
                     readySampleCount = 24,
@@ -9428,7 +9601,7 @@ public sealed class DspModernizationValidationToolTests
                     agcStabilityStatus = "stable",
                     agcPumpingRisk = false,
                     weakInputSampleCount = 10,
-                    strongInputSampleCount = 9,
+                    strongInputSampleCount = bestRunStrongInputSampleCount,
                     weakRecoveredSampleCount = 7,
                     weakDropoutSampleCount = 1,
                     weakDropoutCandidateLossSampleCount = 0,
@@ -9436,27 +9609,27 @@ public sealed class DspModernizationValidationToolTests
                     weakStrongOutputGapDb = 1.5,
                     weakStrongFinalAudioGapDb = 1.2,
                     speechQualifiedWeakInputSampleCount = 7,
-                    speechQualifiedStrongInputSampleCount = 6,
+                    speechQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 6,
                     speechQualifiedWeakStrongOutputGapDb = 1.4,
                     speechQualifiedWeakStrongFinalAudioGapDb = 1.1,
-                    speechQualifiedMixedWeakStrongEvidenceReady = true,
-                    speechQualifiedWeakStrongOutputParityReady = true,
-                    speechQualifiedWeakStrongFinalAudioParityReady = true,
-                    speechQualifiedMixedWeakStrongEvidenceStatus = "ready-final-audio",
-                    passbandQualifiedWeakInputSampleCount = 5,
-                    passbandQualifiedStrongInputSampleCount = 4,
+                    speechQualifiedMixedWeakStrongEvidenceReady = mixedReady,
+                    speechQualifiedWeakStrongOutputParityReady = mixedReady,
+                    speechQualifiedWeakStrongFinalAudioParityReady = mixedReady,
+                    speechQualifiedMixedWeakStrongEvidenceStatus = mixedReady ? "ready-final-audio" : "missing-strong-input",
+                    passbandQualifiedWeakInputSampleCount = bestRunPassbandQualifiedWeakInputSampleCount,
+                    passbandQualifiedStrongInputSampleCount = bestRunPassbandQualifiedStrongInputSampleCount,
                     passbandQualifiedWeakStrongOutputGapDb = 1.3,
                     passbandQualifiedWeakStrongFinalAudioGapDb = 1.0,
-                    passbandQualifiedMixedWeakStrongEvidenceReady = true,
-                    passbandQualifiedWeakStrongOutputParityReady = true,
-                    passbandQualifiedWeakStrongFinalAudioParityReady = true,
-                    passbandQualifiedMixedWeakStrongEvidenceStatus = "ready-final-audio",
-                    mixedWeakStrongEvidenceReady = true,
-                    weakStrongOutputParityReady = true,
-                    weakStrongFinalAudioParityReady = true,
-                    mixedWeakStrongEvidenceStatus = "ready",
+                    passbandQualifiedMixedWeakStrongEvidenceReady = mixedReady,
+                    passbandQualifiedWeakStrongOutputParityReady = mixedReady,
+                    passbandQualifiedWeakStrongFinalAudioParityReady = mixedReady,
+                    passbandQualifiedMixedWeakStrongEvidenceStatus = mixedReady ? "ready-final-audio" : "missing-strong-input",
+                    mixedWeakStrongEvidenceReady = mixedReady,
+                    weakStrongOutputParityReady = mixedReady,
+                    weakStrongFinalAudioParityReady = mixedReady,
+                    mixedWeakStrongEvidenceStatus = mixedWeakStrongEvidenceStatus,
                     frontendTopPeakSampleCount = 12,
-                    frontendNearPassbandSampleCount = 12,
+                    frontendNearPassbandSampleCount = bestRunFrontendNearPassbandSampleCount,
                     frontendNearPassbandThresholdHz = 3000,
                     score = 52.0
                 }
@@ -9617,19 +9790,20 @@ public sealed class DspModernizationValidationToolTests
                     reportPath = currentRunReportPath,
                     jsonlPath = currentRunJsonlPath,
                     weakInputSampleCount = 8,
-                    strongInputSampleCount = 5,
+                    strongInputSampleCount = currentRunStrongInputSampleCount,
                     speechQualifiedWeakInputSampleCount = 6,
-                    speechQualifiedStrongInputSampleCount = 5,
-                    passbandQualifiedWeakInputSampleCount = 4,
-                    passbandQualifiedStrongInputSampleCount = 4,
+                    speechQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 5,
+                    passbandQualifiedWeakInputSampleCount = currentRunPassbandQualifiedWeakInputSampleCount,
+                    passbandQualifiedStrongInputSampleCount = currentRunPassbandQualifiedStrongInputSampleCount,
                     weakDropoutCandidateLossSampleCount = 0,
                     hotMakeupSampleCount = 0,
                     hardBlockerSampleCount = 0,
                     agcPumpingRisk = false,
                     mixedWeakStrongEvidenceReady = false,
-                    mixedWeakStrongEvidenceStatus = "mixed-not-ready",
+                    mixedWeakStrongEvidenceStatus = weakOnlyScenario ? "missing-strong-input" : "mixed-not-ready",
+                    trendStatus = currentRunTrendStatus,
                     frontendTopPeakSampleCount = 8,
-                    frontendNearPassbandSampleCount = 8,
+                    frontendNearPassbandSampleCount = currentRunFrontendNearPassbandSampleCount,
                     frontendNearPassbandThresholdHz = 3000,
                     score = 18.0
                 },
@@ -9643,19 +9817,20 @@ public sealed class DspModernizationValidationToolTests
                     reportPath = bestRunReportPath,
                     jsonlPath = bestRunJsonlPath,
                     weakInputSampleCount = 10,
-                    strongInputSampleCount = 9,
+                    strongInputSampleCount = bestRunStrongInputSampleCount,
                     speechQualifiedWeakInputSampleCount = 7,
-                    speechQualifiedStrongInputSampleCount = 6,
-                    passbandQualifiedWeakInputSampleCount = 5,
-                    passbandQualifiedStrongInputSampleCount = 4,
+                    speechQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 6,
+                    passbandQualifiedWeakInputSampleCount = bestRunPassbandQualifiedWeakInputSampleCount,
+                    passbandQualifiedStrongInputSampleCount = bestRunPassbandQualifiedStrongInputSampleCount,
                     weakDropoutCandidateLossSampleCount = 0,
                     hotMakeupSampleCount = 0,
                     hardBlockerSampleCount = 0,
                     agcPumpingRisk = false,
-                    mixedWeakStrongEvidenceReady = true,
-                    mixedWeakStrongEvidenceStatus = "ready",
+                    mixedWeakStrongEvidenceReady = mixedReady,
+                    mixedWeakStrongEvidenceStatus = mixedWeakStrongEvidenceStatus,
+                    trendStatus = bestRunTrendStatus,
                     frontendTopPeakSampleCount = 12,
-                    frontendNearPassbandSampleCount = 12,
+                    frontendNearPassbandSampleCount = bestRunFrontendNearPassbandSampleCount,
                     frontendNearPassbandThresholdHz = 3000,
                     score = 52.0
                 }
@@ -9672,8 +9847,8 @@ public sealed class DspModernizationValidationToolTests
 
         if (!nonPortableWindowPaths)
         {
-            WriteSyntheticG2PeakHuntWatcherFiles(bundleDir, currentRunReportPath, currentRunJsonlPath, weakInputSampleCount: 8, strongInputSampleCount: 5, mixedReady: false);
-            WriteSyntheticG2PeakHuntWatcherFiles(bundleDir, bestRunReportPath, bestRunJsonlPath, weakInputSampleCount: 10, strongInputSampleCount: 9, mixedReady: true);
+            WriteSyntheticG2PeakHuntWatcherFiles(bundleDir, currentRunReportPath, currentRunJsonlPath, weakInputSampleCount: 8, strongInputSampleCount: currentRunStrongInputSampleCount, mixedReady: false);
+            WriteSyntheticG2PeakHuntWatcherFiles(bundleDir, bestRunReportPath, bestRunJsonlPath, weakInputSampleCount: 10, strongInputSampleCount: bestRunStrongInputSampleCount, mixedReady: mixedReady);
         }
     }
 

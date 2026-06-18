@@ -6402,6 +6402,21 @@ $g2RxPeakHuntEvidence = [ordered]@{
     weakInputSampleCount = 0
     strongInputSampleCount = 0
     nearStrongInputSampleCount = 0
+    speechQualifiedWeakInputSampleCount = 0
+    speechQualifiedStrongInputSampleCount = 0
+    speechQualifiedNearStrongInputSampleCount = 0
+    passbandQualifiedWeakInputSampleCount = 0
+    passbandQualifiedStrongInputSampleCount = 0
+    passbandQualifiedNearStrongInputSampleCount = 0
+    frontendNearPassbandSampleCount = 0
+    weakOnlyPassbandQualified = $false
+    weakOnlyPassbandIncomplete = $false
+    weakOnlyOffPassband = $false
+    passbandEvidenceMissing = $false
+    passbandEvidenceMissingRunCount = 0
+    rxStateDriftRunCount = 0
+    readyPassbandWeakRunCount = 0
+    weakOnlyPassbandQualifiedRunCount = 0
     candidateWeakLossSampleCount = 0
     hotMakeupSampleCount = 0
     hardBlockerSampleCount = 0
@@ -14237,6 +14252,10 @@ else {
                 $g2ReferencedWindowNonPortableCount = 0
                 $g2ReferencedWindowInvalidCount = 0
                 $g2ReferencedJsonlMissingCount = 0
+                $g2PassbandEvidenceMissingRunCount = 0
+                $g2RxStateDriftRunCount = 0
+                $g2ReadyPassbandWeakRunCount = 0
+                $g2WeakOnlyPassbandQualifiedRunCount = 0
                 $g2ReferencedReportPaths = @{}
                 $g2Runs = @(Get-JsonArray $artifactJson "runs")
 
@@ -14251,6 +14270,23 @@ else {
                     $runFrequencyHz = Get-JsonValue $run "frequencyHz"
                     $runCandidateSource = [string](Get-JsonValue $run "candidateSource")
                     $runWindow = Get-JsonValue $run "window"
+                    $runTrendStatus = [string](Get-JsonValue $run "trendStatus")
+                    $runMixedStatus = [string](Get-JsonValue $run "mixedWeakStrongEvidenceStatus")
+                    $runWeakInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $run "weakInputSampleCount"))
+                    $runStrongInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $run "strongInputSampleCount"))
+                    $runPassbandQualifiedWeakInputSampleCount = [int](Get-NumericValueOrDefault (Get-JsonValue $run "passbandQualifiedWeakInputSampleCount"))
+                    if ($runTrendStatus -eq "rx-state-drift") {
+                        $g2RxStateDriftRunCount++
+                    }
+                    if ($runTrendStatus -eq "passband-evidence-missing" -or $runMixedStatus -eq "passband-evidence-missing") {
+                        $g2PassbandEvidenceMissingRunCount++
+                    }
+                    if ($runPassbandQualifiedWeakInputSampleCount -gt 0) {
+                        $g2ReadyPassbandWeakRunCount++
+                    }
+                    if ($runWeakInputSampleCount -gt 0 -and $runStrongInputSampleCount -le 0 -and $runPassbandQualifiedWeakInputSampleCount -gt 0 -and $runTrendStatus -ne "rx-state-drift") {
+                        $g2WeakOnlyPassbandQualifiedRunCount++
+                    }
                     $windowRecord = [ordered]@{
                         artifactId = $artifactId
                         artifactKind = $artifactKind
@@ -14383,6 +14419,21 @@ else {
                 $g2RxPeakHuntEvidence["referencedWindowInvalidCount"] = $g2ReferencedWindowInvalidCount
                 $g2RxPeakHuntEvidence["referencedJsonlMissingCount"] = $g2ReferencedJsonlMissingCount
 
+                $g2WeakOnlyEvidence = $weakInputSampleCount -gt 0 -and $strongInputSampleCount -le 0
+                $g2WeakOnlyPassbandQualified = $g2WeakOnlyEvidence -and $passbandQualifiedWeakInputSampleCount -gt 0 -and $g2RxStateDriftRunCount -le 0
+                $g2PassbandEvidenceMissing = $g2WeakOnlyEvidence -and $passbandQualifiedWeakInputSampleCount -le 0
+                $g2WeakOnlyPassbandIncomplete = $g2PassbandEvidenceMissing -and $frontendNearPassbandSampleCount -gt 0
+                $g2WeakOnlyOffPassband = $g2PassbandEvidenceMissing -and $frontendNearPassbandSampleCount -le 0
+
+                $g2RxPeakHuntEvidence["weakOnlyPassbandQualified"] = $g2WeakOnlyPassbandQualified
+                $g2RxPeakHuntEvidence["weakOnlyPassbandIncomplete"] = $g2WeakOnlyPassbandIncomplete
+                $g2RxPeakHuntEvidence["weakOnlyOffPassband"] = $g2WeakOnlyOffPassband
+                $g2RxPeakHuntEvidence["passbandEvidenceMissing"] = $g2PassbandEvidenceMissing
+                $g2RxPeakHuntEvidence["passbandEvidenceMissingRunCount"] = $g2PassbandEvidenceMissingRunCount
+                $g2RxPeakHuntEvidence["rxStateDriftRunCount"] = $g2RxStateDriftRunCount
+                $g2RxPeakHuntEvidence["readyPassbandWeakRunCount"] = $g2ReadyPassbandWeakRunCount
+                $g2RxPeakHuntEvidence["weakOnlyPassbandQualifiedRunCount"] = $g2WeakOnlyPassbandQualifiedRunCount
+
                 $g2PeakHuntStatus = if (-not $artifactValidationOk) {
                     "invalid"
                 }
@@ -14392,8 +14443,22 @@ else {
                 elseif ($actualRunCount -le 0) {
                     "no-runs"
                 }
-                elseif ($weakInputSampleCount -gt 0 -and $strongInputSampleCount -le 0) {
-                    "weak-only"
+                elseif ($g2WeakOnlyEvidence) {
+                    if ($g2RxStateDriftRunCount -gt 0) {
+                        "weak-only-rx-state-drift"
+                    }
+                    elseif ($g2WeakOnlyPassbandQualified) {
+                        "weak-only-passband"
+                    }
+                    elseif ($g2WeakOnlyPassbandIncomplete) {
+                        "weak-only-passband-incomplete"
+                    }
+                    elseif ($g2WeakOnlyOffPassband) {
+                        "weak-only-off-passband"
+                    }
+                    else {
+                        "weak-only"
+                    }
                 }
                 elseif ($strongInputSampleCount -gt 0 -and $weakInputSampleCount -le 0) {
                     "strong-only"
@@ -15970,6 +16035,14 @@ $report = [ordered]@{
     g2RxPeakHuntPassbandQualifiedStrongInputSampleCount = $g2RxPeakHuntEvidence.passbandQualifiedStrongInputSampleCount
     g2RxPeakHuntPassbandQualifiedNearStrongInputSampleCount = $g2RxPeakHuntEvidence.passbandQualifiedNearStrongInputSampleCount
     g2RxPeakHuntFrontendNearPassbandSampleCount = $g2RxPeakHuntEvidence.frontendNearPassbandSampleCount
+    g2RxPeakHuntWeakOnlyPassbandQualified = $g2RxPeakHuntEvidence.weakOnlyPassbandQualified
+    g2RxPeakHuntWeakOnlyPassbandIncomplete = $g2RxPeakHuntEvidence.weakOnlyPassbandIncomplete
+    g2RxPeakHuntWeakOnlyOffPassband = $g2RxPeakHuntEvidence.weakOnlyOffPassband
+    g2RxPeakHuntPassbandEvidenceMissing = $g2RxPeakHuntEvidence.passbandEvidenceMissing
+    g2RxPeakHuntPassbandEvidenceMissingRunCount = $g2RxPeakHuntEvidence.passbandEvidenceMissingRunCount
+    g2RxPeakHuntRxStateDriftRunCount = $g2RxPeakHuntEvidence.rxStateDriftRunCount
+    g2RxPeakHuntReadyPassbandWeakRunCount = $g2RxPeakHuntEvidence.readyPassbandWeakRunCount
+    g2RxPeakHuntWeakOnlyPassbandQualifiedRunCount = $g2RxPeakHuntEvidence.weakOnlyPassbandQualifiedRunCount
     g2RxPeakHuntCandidateWeakLossSampleCount = $g2RxPeakHuntEvidence.candidateWeakLossSampleCount
     g2RxPeakHuntHotMakeupSampleCount = $g2RxPeakHuntEvidence.hotMakeupSampleCount
     g2RxPeakHuntHardBlockerSampleCount = $g2RxPeakHuntEvidence.hardBlockerSampleCount
