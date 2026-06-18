@@ -1327,6 +1327,13 @@ function New-SampleSummary {
         nr5PeakEvidence = Get-JsonValue $nr5 "peakEvidence"
         nr5PeakLimitDbfs = Get-JsonValue $nr5 "peakLimitDbfs"
         nr5PeakReductionDb = Get-JsonValue $nr5 "peakReductionDb"
+        nr5ManagedChannelGeneration = Get-JsonValue $nr5 "managedChannelGeneration"
+        nr5ManagedNr5ApplyCount = Get-JsonValue $nr5 "managedNr5ApplyCount"
+        nr5ManagedNr5PositionApplyCount = Get-JsonValue $nr5 "managedNr5PositionApplyCount"
+        nr5ManagedNr5PolicyApplyCount = Get-JsonValue $nr5 "managedNr5PolicyApplyCount"
+        nr5ManagedNr5NoopApplyCount = Get-JsonValue $nr5 "managedNr5NoopApplyCount"
+        nr5ManagedNr5RunApplyCount = Get-JsonValue $nr5 "managedNr5RunApplyCount"
+        nr5ManagedNr5LastApplyReason = [string](Get-JsonValue $nr5 "managedNr5LastApplyReason")
         nr5AdjacentNoiseUsable = Get-JsonValue $nr5 "adjacentNoiseUsable"
         nr5AdjacentNoiseBins = Get-JsonValue $nr5 "adjacentNoiseBins"
         nr5AdjacentNoiseFloorDb = Get-JsonValue $nr5 "adjacentNoiseFloorDb"
@@ -1611,6 +1618,13 @@ function Build-Report {
     $nr5AdjacentNoiseAsymmetryValues = New-Object System.Collections.Generic.List[double]
     $nr5AudioInputDeltaValues = New-Object System.Collections.Generic.List[double]
     $nr5AudioOutputDeltaValues = New-Object System.Collections.Generic.List[double]
+    $nr5LearnedFrameValues = New-Object System.Collections.Generic.List[double]
+    $nr5ManagedChannelGenerationValues = New-Object System.Collections.Generic.List[double]
+    $nr5ManagedApplyCountValues = New-Object System.Collections.Generic.List[double]
+    $nr5ManagedPositionApplyCountValues = New-Object System.Collections.Generic.List[double]
+    $nr5ManagedPolicyApplyCountValues = New-Object System.Collections.Generic.List[double]
+    $nr5ManagedNoopApplyCountValues = New-Object System.Collections.Generic.List[double]
+    $nr5ManagedRunApplyCountValues = New-Object System.Collections.Generic.List[double]
     $sampleSummaries = New-Object System.Collections.Generic.List[object]
     $recommendations = New-Object System.Collections.Generic.List[string]
     $nr5WeakInputSamples = New-Object System.Collections.Generic.List[object]
@@ -1628,6 +1642,9 @@ function Build-Report {
     $nr5LowEvidenceSuppressedSamples = New-Object System.Collections.Generic.List[object]
     $nr5AudioAlignmentMismatchSamples = New-Object System.Collections.Generic.List[object]
     $nr5AudioLevelerNormalizedSamples = New-Object System.Collections.Generic.List[object]
+    $nr5LearnerResetSamples = New-Object System.Collections.Generic.List[object]
+    $nr5ManagedReapplySamples = New-Object System.Collections.Generic.List[object]
+    $nr5ManagedGenerationChangeSamples = New-Object System.Collections.Generic.List[object]
     $rxAudioLevelerBoostSlewLimitedSamples = New-Object System.Collections.Generic.List[object]
     $rxAudioLevelerPeakLimitedSamples = New-Object System.Collections.Generic.List[object]
     $rxAudioLevelerOutputLimitedSamples = New-Object System.Collections.Generic.List[object]
@@ -1684,6 +1701,11 @@ function Build-Report {
     $nr5AgcDiagnosticCount = 0
     $nr5ProbabilityDiagnosticCount = 0
     $nr5PeakDiagnosticCount = 0
+    $nr5LearnedFrameSampleCount = 0
+    $nr5ManagedCounterSampleCount = 0
+    $nr5ManagedPositionReapplyCount = 0
+    $nr5ManagedPolicyReapplyCount = 0
+    $nr5ManagedGenerationChangeCount = 0
     $nr5AudioAlignmentSampleCount = 0
     $nr5AudioAlignedAfterLevelerCount = 0
     $nr5AudioLevelerNormalizedCount = 0
@@ -1730,6 +1752,11 @@ function Build-Report {
     $rxStateFilterCounts = @{}
     $rxStateCtunCounts = @{}
     $rxStateEvidenceSampleCount = 0
+    $nr5PreviousLearnedFrames = $null
+    $nr5PreviousManagedChannelGeneration = $null
+    $nr5PreviousManagedApplyCount = $null
+    $nr5PreviousManagedPositionApplyCount = $null
+    $nr5PreviousManagedPolicyApplyCount = $null
 
     foreach ($sample in @($SampleRecords)) {
         if (-not (Test-Truthy (Get-JsonValue $sample "ok"))) {
@@ -1962,6 +1989,111 @@ function Build-Report {
 
         if ($null -ne $nr5) {
             $nr5SampleCount++
+            $nr5LearnedFramesNumber = Get-NumericValue (Get-JsonValue $nr5 "learnedFrames")
+            $nr5ManagedChannelGenerationNumber = Get-NumericValue (Get-JsonValue $nr5 "managedChannelGeneration")
+            $nr5ManagedApplyCountNumber = Get-NumericValue (Get-JsonValue $nr5 "managedNr5ApplyCount")
+            $nr5ManagedPositionApplyCountNumber = Get-NumericValue (Get-JsonValue $nr5 "managedNr5PositionApplyCount")
+            $nr5ManagedPolicyApplyCountNumber = Get-NumericValue (Get-JsonValue $nr5 "managedNr5PolicyApplyCount")
+            $nr5ManagedNoopApplyCountNumber = Get-NumericValue (Get-JsonValue $nr5 "managedNr5NoopApplyCount")
+            $nr5ManagedRunApplyCountNumber = Get-NumericValue (Get-JsonValue $nr5 "managedNr5RunApplyCount")
+            $nr5ManagedLastApplyReason = [string](Get-JsonValue $nr5 "managedNr5LastApplyReason")
+            Add-Number $nr5LearnedFrameValues $nr5LearnedFramesNumber
+            Add-Number $nr5ManagedChannelGenerationValues $nr5ManagedChannelGenerationNumber
+            Add-Number $nr5ManagedApplyCountValues $nr5ManagedApplyCountNumber
+            Add-Number $nr5ManagedPositionApplyCountValues $nr5ManagedPositionApplyCountNumber
+            Add-Number $nr5ManagedPolicyApplyCountValues $nr5ManagedPolicyApplyCountNumber
+            Add-Number $nr5ManagedNoopApplyCountValues $nr5ManagedNoopApplyCountNumber
+            Add-Number $nr5ManagedRunApplyCountValues $nr5ManagedRunApplyCountNumber
+            if ($null -ne $nr5LearnedFramesNumber) {
+                $nr5LearnedFrameSampleCount++
+            }
+            $sampleHasManagedCounters = (
+                $null -ne $nr5ManagedPositionApplyCountNumber -and
+                $null -ne $nr5ManagedPolicyApplyCountNumber)
+            if ($sampleHasManagedCounters) {
+                $nr5ManagedCounterSampleCount++
+            }
+            $nr5SameManagedGeneration = $true
+            if ($null -ne $nr5PreviousManagedChannelGeneration -and $null -ne $nr5ManagedChannelGenerationNumber -and
+                [double]$nr5ManagedChannelGenerationNumber -ne [double]$nr5PreviousManagedChannelGeneration) {
+                $nr5SameManagedGeneration = $false
+                $nr5ManagedGenerationChangeCount++
+                $nr5ManagedGenerationChangeSamples.Add([ordered]@{
+                    sampleIndex = [int](Get-JsonValue $sample "sampleIndex")
+                    sampledUtc = Get-JsonValue $sample "sampledUtc"
+                    previousGeneration = [int][Math]::Round([double]$nr5PreviousManagedChannelGeneration)
+                    generation = [int][Math]::Round([double]$nr5ManagedChannelGenerationNumber)
+                    previousLearnedFrames = if ($null -ne $nr5PreviousLearnedFrames) { [int][Math]::Round([double]$nr5PreviousLearnedFrames) } else { $null }
+                    learnedFrames = if ($null -ne $nr5LearnedFramesNumber) { [int][Math]::Round([double]$nr5LearnedFramesNumber) } else { $null }
+                    lastApplyReason = $nr5ManagedLastApplyReason
+                }) | Out-Null
+            }
+            if ($null -ne $nr5PreviousLearnedFrames -and $null -ne $nr5LearnedFramesNumber -and
+                [double]$nr5LearnedFramesNumber -lt [double]$nr5PreviousLearnedFrames -and
+                $nr5SameManagedGeneration) {
+                $nr5LearnerResetSamples.Add([ordered]@{
+                    sampleIndex = [int](Get-JsonValue $sample "sampleIndex")
+                    sampledUtc = Get-JsonValue $sample "sampledUtc"
+                    previousLearnedFrames = [int][Math]::Round([double]$nr5PreviousLearnedFrames)
+                    learnedFrames = [int][Math]::Round([double]$nr5LearnedFramesNumber)
+                    channelGeneration = if ($null -ne $nr5ManagedChannelGenerationNumber) { [int][Math]::Round([double]$nr5ManagedChannelGenerationNumber) } else { $null }
+                    managedNr5ApplyCount = if ($null -ne $nr5ManagedApplyCountNumber) { [int][Math]::Round([double]$nr5ManagedApplyCountNumber) } else { $null }
+                    managedNr5PositionApplyCount = if ($null -ne $nr5ManagedPositionApplyCountNumber) { [int][Math]::Round([double]$nr5ManagedPositionApplyCountNumber) } else { $null }
+                    managedNr5PolicyApplyCount = if ($null -ne $nr5ManagedPolicyApplyCountNumber) { [int][Math]::Round([double]$nr5ManagedPolicyApplyCountNumber) } else { $null }
+                    lastApplyReason = $nr5ManagedLastApplyReason
+                }) | Out-Null
+            }
+            $nr5ManagedApplyDelta = $null
+            $nr5ManagedPositionApplyDelta = $null
+            $nr5ManagedPolicyApplyDelta = $null
+            if ($nr5SameManagedGeneration) {
+                if ($null -ne $nr5PreviousManagedApplyCount -and $null -ne $nr5ManagedApplyCountNumber) {
+                    $nr5ManagedApplyDelta = [double]$nr5ManagedApplyCountNumber - [double]$nr5PreviousManagedApplyCount
+                }
+                if ($null -ne $nr5PreviousManagedPositionApplyCount -and $null -ne $nr5ManagedPositionApplyCountNumber) {
+                    $nr5ManagedPositionApplyDelta = [double]$nr5ManagedPositionApplyCountNumber - [double]$nr5PreviousManagedPositionApplyCount
+                }
+                if ($null -ne $nr5PreviousManagedPolicyApplyCount -and $null -ne $nr5ManagedPolicyApplyCountNumber) {
+                    $nr5ManagedPolicyApplyDelta = [double]$nr5ManagedPolicyApplyCountNumber - [double]$nr5PreviousManagedPolicyApplyCount
+                }
+                if (($null -ne $nr5ManagedPositionApplyDelta -and $nr5ManagedPositionApplyDelta -gt 0.0) -or
+                    ($null -ne $nr5ManagedPolicyApplyDelta -and $nr5ManagedPolicyApplyDelta -gt 0.0)) {
+                    if ($null -ne $nr5ManagedPositionApplyDelta -and $nr5ManagedPositionApplyDelta -gt 0.0) {
+                        $nr5ManagedPositionReapplyCount++
+                    }
+                    if ($null -ne $nr5ManagedPolicyApplyDelta -and $nr5ManagedPolicyApplyDelta -gt 0.0) {
+                        $nr5ManagedPolicyReapplyCount++
+                    }
+                    $nr5ManagedReapplySamples.Add([ordered]@{
+                        sampleIndex = [int](Get-JsonValue $sample "sampleIndex")
+                        sampledUtc = Get-JsonValue $sample "sampledUtc"
+                        channelGeneration = if ($null -ne $nr5ManagedChannelGenerationNumber) { [int][Math]::Round([double]$nr5ManagedChannelGenerationNumber) } else { $null }
+                        learnedFrames = if ($null -ne $nr5LearnedFramesNumber) { [int][Math]::Round([double]$nr5LearnedFramesNumber) } else { $null }
+                        managedNr5ApplyDelta = if ($null -ne $nr5ManagedApplyDelta) { [int][Math]::Round([double]$nr5ManagedApplyDelta) } else { $null }
+                        managedNr5PositionApplyDelta = if ($null -ne $nr5ManagedPositionApplyDelta) { [int][Math]::Round([double]$nr5ManagedPositionApplyDelta) } else { $null }
+                        managedNr5PolicyApplyDelta = if ($null -ne $nr5ManagedPolicyApplyDelta) { [int][Math]::Round([double]$nr5ManagedPolicyApplyDelta) } else { $null }
+                        managedNr5ApplyCount = if ($null -ne $nr5ManagedApplyCountNumber) { [int][Math]::Round([double]$nr5ManagedApplyCountNumber) } else { $null }
+                        managedNr5PositionApplyCount = if ($null -ne $nr5ManagedPositionApplyCountNumber) { [int][Math]::Round([double]$nr5ManagedPositionApplyCountNumber) } else { $null }
+                        managedNr5PolicyApplyCount = if ($null -ne $nr5ManagedPolicyApplyCountNumber) { [int][Math]::Round([double]$nr5ManagedPolicyApplyCountNumber) } else { $null }
+                        lastApplyReason = $nr5ManagedLastApplyReason
+                    }) | Out-Null
+                }
+            }
+            if ($null -ne $nr5LearnedFramesNumber) {
+                $nr5PreviousLearnedFrames = $nr5LearnedFramesNumber
+            }
+            if ($null -ne $nr5ManagedChannelGenerationNumber) {
+                $nr5PreviousManagedChannelGeneration = $nr5ManagedChannelGenerationNumber
+            }
+            if ($null -ne $nr5ManagedApplyCountNumber) {
+                $nr5PreviousManagedApplyCount = $nr5ManagedApplyCountNumber
+            }
+            if ($null -ne $nr5ManagedPositionApplyCountNumber) {
+                $nr5PreviousManagedPositionApplyCount = $nr5ManagedPositionApplyCountNumber
+            }
+            if ($null -ne $nr5ManagedPolicyApplyCountNumber) {
+                $nr5PreviousManagedPolicyApplyCount = $nr5ManagedPolicyApplyCountNumber
+            }
             Add-Number $nr5InputValues (Get-JsonValue $nr5 "inputDbfs")
             Add-Number $nr5OutputValues (Get-JsonValue $nr5 "outputDbfs")
             Add-Number $nr5MeanGainValues (Get-JsonValue $nr5 "meanGain")
@@ -2729,6 +2861,51 @@ function Build-Report {
     $nr5AdjacentNoiseAsymmetryStats = Get-NumberStats $nr5AdjacentNoiseAsymmetryValues
     $nr5AudioInputDeltaStats = Get-NumberStats $nr5AudioInputDeltaValues
     $nr5AudioOutputDeltaStats = Get-NumberStats $nr5AudioOutputDeltaValues
+    $nr5LearnedFrameStats = Get-NumberStats $nr5LearnedFrameValues
+    $nr5ManagedChannelGenerationStats = Get-NumberStats $nr5ManagedChannelGenerationValues
+    $nr5ManagedApplyCountStats = Get-NumberStats $nr5ManagedApplyCountValues
+    $nr5ManagedPositionApplyCountStats = Get-NumberStats $nr5ManagedPositionApplyCountValues
+    $nr5ManagedPolicyApplyCountStats = Get-NumberStats $nr5ManagedPolicyApplyCountValues
+    $nr5ManagedNoopApplyCountStats = Get-NumberStats $nr5ManagedNoopApplyCountValues
+    $nr5ManagedRunApplyCountStats = Get-NumberStats $nr5ManagedRunApplyCountValues
+    $nr5LearnerResetSampleCount = @($nr5LearnerResetSamples.ToArray()).Count
+    $nr5ManagedReapplySampleCount = @($nr5ManagedReapplySamples.ToArray()).Count
+    $nr5ManagedCounterCoveragePct = Get-CountPercent -Count $nr5ManagedCounterSampleCount -SampleCount $nr5SampleCount
+    $nr5LearnedFrameCoveragePct = Get-CountPercent -Count $nr5LearnedFrameSampleCount -SampleCount $nr5SampleCount
+    $nr5ManagedCountersComplete = ($nr5SampleCount -gt 0 -and $nr5ManagedCounterSampleCount -eq $nr5SampleCount)
+    $nr5LearnedFramesComplete = ($nr5SampleCount -gt 0 -and $nr5LearnedFrameSampleCount -eq $nr5SampleCount)
+    $nr5LearnerMonotonic = ($nr5LearnerResetSampleCount -eq 0)
+    $nr5LearnerStabilityStatus = if ($nr5SampleCount -eq 0) {
+        "not-observed"
+    }
+    elseif (-not $nr5LearnedFramesComplete) {
+        "learned-frames-missing"
+    }
+    elseif ($nr5LearnerResetSampleCount -gt 0) {
+        "learner-reset-watch"
+    }
+    elseif ($nr5ManagedReapplySampleCount -gt 0) {
+        "managed-reapply-watch"
+    }
+    elseif ($nr5ManagedGenerationChangeCount -gt 0) {
+        "channel-generation-changed"
+    }
+    elseif ($nr5ManagedCounterSampleCount -eq 0) {
+        "managed-counters-missing"
+    }
+    elseif (-not $nr5ManagedCountersComplete) {
+        "managed-counters-partial"
+    }
+    elseif ([int]$nr5LearnedFrameStats["count"] -gt 0 -and [double]$nr5LearnedFrameStats["max"] -lt 20.0) {
+        "warming"
+    }
+    else {
+        "stable"
+    }
+    $nr5ManagedReplayEvidenceReady = (
+        [string]::Equals($nr5LearnerStabilityStatus, "stable", [StringComparison]::OrdinalIgnoreCase) -and
+        $nr5ManagedCountersComplete -and
+        $nr5LearnedFramesComplete)
     $nr5WeakInputTopSamples = @($nr5WeakInputSamples.ToArray() |
         Sort-Object @{Expression = { $v = Get-NumericValue (Get-JsonValue $_ "finalAudioRmsDbfs"); if ($null -eq $v) { [double]::PositiveInfinity } else { [double]$v } }; Ascending = $true },
             @{Expression = { $v = Get-NumericValue (Get-JsonValue $_ "outputDbfs"); if ($null -eq $v) { [double]::PositiveInfinity } else { [double]$v } }; Ascending = $true } |
@@ -2769,6 +2946,15 @@ function Build-Report {
         Select-Object -First 8)
     $nr5AudioLevelerNormalizedTopSamples = @($nr5AudioLevelerNormalizedSamples.ToArray() |
         Sort-Object @{Expression = { [Math]::Abs([double]$_.outputDeltaDb) }; Descending = $true } |
+        Select-Object -First 8)
+    $nr5LearnerResetTopSamples = @($nr5LearnerResetSamples.ToArray() |
+        Sort-Object sampleIndex |
+        Select-Object -First 8)
+    $nr5ManagedReapplyTopSamples = @($nr5ManagedReapplySamples.ToArray() |
+        Sort-Object sampleIndex |
+        Select-Object -First 8)
+    $nr5ManagedGenerationChangeTopSamples = @($nr5ManagedGenerationChangeSamples.ToArray() |
+        Sort-Object sampleIndex |
         Select-Object -First 8)
     $nr5LowEvidenceLiftTopSamples = @($nr5LowEvidenceLiftSamples.ToArray() |
         Sort-Object @{Expression = "audioRmsDbfs"; Descending = $true }, @{Expression = "outputDbfs"; Descending = $true } |
@@ -3263,6 +3449,18 @@ function Build-Report {
     if ($nr5SampleCount -gt 0 -and $nr5PeakDiagnosticCount -lt $nr5SampleCount) {
         $summaryRecommendations.Add("Recapture this NR5 trace after restarting a backend that exports GetRXASPNRPeakDiagnostics; output peak and adaptive-knee evidence is missing.") | Out-Null
     }
+    if ($nr5LearnerResetSampleCount -gt 0) {
+        $summaryRecommendations.Add("NR5 learned frames reset during this trace; inspect nr5LearnerStabilityWatch before using it as acceptance evidence.") | Out-Null
+    }
+    elseif ($nr5ManagedReapplySampleCount -gt 0) {
+        $summaryRecommendations.Add("Managed NR5 position or policy was re-applied during this trace; inspect nr5LearnerStabilityWatch for state replay before judging NR5 weak-signal behavior.") | Out-Null
+    }
+    elseif ($nr5ManagedGenerationChangeCount -gt 0) {
+        $summaryRecommendations.Add("NR5 channel generation changed during this trace; recapture after the channel lifecycle is stable before accepting learner stability evidence.") | Out-Null
+    }
+    elseif ($nr5SampleCount -gt 0 -and $nr5ManagedCounterSampleCount -lt $nr5SampleCount) {
+        $summaryRecommendations.Add("Restart or rebuild the backend so every NR5 diagnostics sample exports managed replay counters before accepting NR5 learner-stability evidence.") | Out-Null
+    }
     if ($frontendAdjacentNoiseUsableCount -gt 0 -and $nr5SampleCount -gt 0 -and $nr5AdjacentNoiseUsableCount -eq 0) {
         $summaryRecommendations.Add("Frontend adjacent-noise profiles were usable, but native NR5 did not report adjacent-profile trust; verify the WDSP DLL exports Set/GetRXASPNRAdjacentNoise* and that the pipeline is pushing the profile.") | Out-Null
     }
@@ -3503,6 +3701,15 @@ function Build-Report {
     }
     elseif ($nr5SampleCount -gt 0 -and $nr5PeakDiagnosticCount -lt $nr5SampleCount) {
         $trendStatus = "nr5-peak-diagnostics-missing"
+    }
+    elseif ($nr5LearnerResetSampleCount -gt 0) {
+        $trendStatus = "nr5-learner-reset-watch"
+    }
+    elseif ($nr5ManagedReapplySampleCount -gt 0) {
+        $trendStatus = "nr5-managed-reapply-watch"
+    }
+    elseif ($nr5ManagedGenerationChangeCount -gt 0) {
+        $trendStatus = "nr5-channel-generation-changed"
     }
     elseif ($agcActivePumpingRisk) {
         $trendStatus = "agc-pumping-watch"
@@ -3956,6 +4163,31 @@ function Build-Report {
         nr5PeakEvidence = $nr5PeakEvidenceStats
         nr5PeakLimitDbfs = $nr5PeakLimitDbfsStats
         nr5PeakReductionDb = $nr5PeakReductionDbStats
+        nr5LearnerStabilityWatch = [ordered]@{
+            status = $nr5LearnerStabilityStatus
+            learnerMonotonic = $nr5LearnerMonotonic
+            managedReplayEvidenceReady = $nr5ManagedReplayEvidenceReady
+            nr5SampleCount = $nr5SampleCount
+            learnedFrameSampleCount = $nr5LearnedFrameSampleCount
+            learnedFrameCoveragePct = $nr5LearnedFrameCoveragePct
+            managedCounterSampleCount = $nr5ManagedCounterSampleCount
+            managedCounterCoveragePct = $nr5ManagedCounterCoveragePct
+            learnerResetSampleCount = $nr5LearnerResetSampleCount
+            managedReapplySampleCount = $nr5ManagedReapplySampleCount
+            managedPositionReapplySampleCount = $nr5ManagedPositionReapplyCount
+            managedPolicyReapplySampleCount = $nr5ManagedPolicyReapplyCount
+            managedGenerationChangeSampleCount = $nr5ManagedGenerationChangeCount
+            learnedFrames = $nr5LearnedFrameStats
+            managedChannelGeneration = $nr5ManagedChannelGenerationStats
+            managedNr5ApplyCount = $nr5ManagedApplyCountStats
+            managedNr5PositionApplyCount = $nr5ManagedPositionApplyCountStats
+            managedNr5PolicyApplyCount = $nr5ManagedPolicyApplyCountStats
+            managedNr5NoopApplyCount = $nr5ManagedNoopApplyCountStats
+            managedNr5RunApplyCount = $nr5ManagedRunApplyCountStats
+            topLearnerResetSamples = @($nr5LearnerResetTopSamples)
+            topManagedReapplySamples = @($nr5ManagedReapplyTopSamples)
+            topManagedGenerationChangeSamples = @($nr5ManagedGenerationChangeTopSamples)
+        }
         nr5AudioAlignmentWatch = [ordered]@{
             comparableSampleCount = $nr5AudioAlignmentSampleCount
             mismatchThresholdDb = 12.0
@@ -4224,6 +4456,10 @@ else {
     Write-Host "Status: $($report["trendStatus"])"
     Write-Host "Capture readiness: $($report["captureReadinessWatch"]["status"]) (hardGatePass=$($report["captureReadinessWatch"]["hardGatePass"]), strictPreflightPass=$($report["captureReadinessWatch"]["strictPreflightPass"]))"
     Write-Host "NR5 tuning: $($report["nr5TuningTraceStatus"]) ($($report["nr5TuningReadySampleCount"])/$($report["okSampleCount"]) ready)"
+    $learnerWatch = $report["nr5LearnerStabilityWatch"]
+    if ($null -ne $learnerWatch) {
+        Write-Host "NR5 learner: $($learnerWatch["status"]), learned frames $($learnerWatch["learnedFrames"]["min"])..$($learnerWatch["learnedFrames"]["max"]), position applies movement $($learnerWatch["managedNr5PositionApplyCount"]["movement"]), policy applies movement $($learnerWatch["managedNr5PolicyApplyCount"]["movement"])"
+    }
     Write-Host "Samples: $($report["okSampleCount"]) ok, $($report["failedSampleCount"]) failed, $($report["hardBlockerSampleCount"]) with hard blockers"
     Write-Host "AGC movement dB: $($report["agcGainDb"]["movement"]) ($($report["agcStabilityWatch"]["status"])), audio RMS movement dB: $($report["audioRmsDbfs"]["movement"]), min ADC headroom dB: $($report["adcHeadroomDb"]["min"])"
     Write-Host "NR5 normalization: input movement dB $($report["nr5InputDbfs"]["movement"]), output movement dB $($report["nr5OutputDbfs"]["movement"]), weak/strong output gap dB $($report["nr5WeakSignalWatch"]["weakStrongOutputGapDb"]), weak/strong final-audio gap dB $($report["nr5WeakSignalWatch"]["weakStrongFinalAudioGapDb"]), mixed weak/strong status $($report["nr5WeakSignalWatch"]["mixedWeakStrongEvidenceStatus"])"

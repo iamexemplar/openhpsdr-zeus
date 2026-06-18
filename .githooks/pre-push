@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+
+zero="0000000000000000000000000000000000000000"
+failed=0
+cr=$(printf '\r')
+
+while read -r local_ref local_sha remote_ref remote_sha
+do
+  local_ref=${local_ref%$cr}
+  local_sha=${local_sha%$cr}
+  remote_ref=${remote_ref%$cr}
+  remote_sha=${remote_sha%$cr}
+
+  [ "$local_sha" = "$zero" ] && continue
+
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  idents="$(git log --format='%H%x09%an <%ae>%x09%cn <%ce>' "$range" 2>/dev/null || true)"
+  case "$idents" in
+    *"Ramon Martinez"*|*"rampa@encomix.org"*)
+      echo "Refusing push: commits contain old Ramon/rampa identity." >&2
+      echo "$idents" >&2
+      failed=1
+      ;;
+  esac
+done
+
+if [ "$failed" -ne 0 ]; then
+  echo "Rewrite those commits to Christian Suarez (N9WAR) <christiantsuarez@gmail.com> before pushing." >&2
+  exit 1
+fi

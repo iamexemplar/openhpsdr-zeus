@@ -2536,6 +2536,401 @@ public sealed class DspModernizationValidationToolTests
     }
 
     [SkippableFact]
+    public async Task WatchLiveDiagnosticsReportsStableNr5LearnerReplayCounters()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell live diagnostics watcher smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-dsp-nr5-learner-stable-watch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(bundleDir);
+
+        try
+        {
+            var jsonlPath = Path.Combine(bundleDir, "nr5-learner-stable.jsonl");
+            await WriteAgcWatchJsonlAsync(
+                jsonlPath,
+                new[]
+                {
+                    AgcWatchSample(
+                        0,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -31.0,
+                        includeNr5: true,
+                        nr5InputDbfs: -36.0,
+                        learnedFrames: 60,
+                        managedChannelGeneration: 7,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        managedNr5LastApplyReason: "initial",
+                        frontendTopPeaks: [FrontendTopPeak(14_260_900, 900, 26.0, -72.0)]),
+                    AgcWatchSample(
+                        1,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.5,
+                        includeNr5: true,
+                        nr5InputDbfs: -35.0,
+                        learnedFrames: 90,
+                        managedChannelGeneration: 7,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        managedNr5LastApplyReason: "unchanged",
+                        frontendTopPeaks: [FrontendTopPeak(14_260_800, 800, 24.0, -74.0)]),
+                    AgcWatchSample(
+                        2,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.8,
+                        includeNr5: true,
+                        nr5InputDbfs: -34.5,
+                        learnedFrames: 125,
+                        managedChannelGeneration: 7,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        managedNr5LastApplyReason: "unchanged",
+                        frontendTopPeaks: [FrontendTopPeak(14_260_700, 700, 22.0, -76.0)])
+                });
+
+            var reportPath = Path.Combine(bundleDir, "nr5-learner-stable.summary.json");
+            var watch = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "watch-dsp-live-diagnostics.ps1"),
+                "-InputPath", jsonlPath,
+                "-ReportPath", reportPath,
+                "-JsonOnly");
+
+            Assert.Equal(0, watch.ExitCode);
+            Assert.True(File.Exists(reportPath), watch.CombinedOutput);
+
+            using var reportDoc = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+            var root = reportDoc.RootElement;
+            Assert.Equal("ready-trace", root.GetProperty("trendStatus").GetString());
+
+            var learnerWatch = root.GetProperty("nr5LearnerStabilityWatch");
+            Assert.Equal("stable", learnerWatch.GetProperty("status").GetString());
+            Assert.True(learnerWatch.GetProperty("learnerMonotonic").GetBoolean());
+            Assert.True(learnerWatch.GetProperty("managedReplayEvidenceReady").GetBoolean());
+            Assert.Equal(3, learnerWatch.GetProperty("nr5SampleCount").GetInt32());
+            Assert.Equal(3, learnerWatch.GetProperty("managedCounterSampleCount").GetInt32());
+            Assert.Equal(100.0, learnerWatch.GetProperty("managedCounterCoveragePct").GetDouble(), precision: 3);
+            Assert.Equal(0, learnerWatch.GetProperty("learnerResetSampleCount").GetInt32());
+            Assert.Equal(0, learnerWatch.GetProperty("managedReapplySampleCount").GetInt32());
+            Assert.Equal(60.0, learnerWatch.GetProperty("learnedFrames").GetProperty("min").GetDouble(), precision: 3);
+            Assert.Equal(125.0, learnerWatch.GetProperty("learnedFrames").GetProperty("max").GetDouble(), precision: 3);
+            Assert.Equal(0.0, learnerWatch.GetProperty("managedNr5PositionApplyCount").GetProperty("movement").GetDouble(), precision: 3);
+            Assert.Equal(0.0, learnerWatch.GetProperty("managedNr5PolicyApplyCount").GetProperty("movement").GetDouble(), precision: 3);
+        }
+        finally
+        {
+            if (Directory.Exists(bundleDir))
+            {
+                Directory.Delete(bundleDir, recursive: true);
+            }
+        }
+    }
+
+    [SkippableFact]
+    public async Task WatchLiveDiagnosticsFlagsNr5LearnerResetAndManagedReapply()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell live diagnostics watcher smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-dsp-nr5-learner-reset-watch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(bundleDir);
+
+        try
+        {
+            var jsonlPath = Path.Combine(bundleDir, "nr5-learner-reset.jsonl");
+            await WriteAgcWatchJsonlAsync(
+                jsonlPath,
+                new[]
+                {
+                    AgcWatchSample(
+                        0,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -31.0,
+                        includeNr5: true,
+                        nr5InputDbfs: -36.0,
+                        learnedFrames: 120,
+                        managedChannelGeneration: 9,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        managedNr5LastApplyReason: "initial",
+                        frontendTopPeaks: [FrontendTopPeak(14_260_900, 900, 26.0, -72.0)]),
+                    AgcWatchSample(
+                        1,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.5,
+                        includeNr5: true,
+                        nr5InputDbfs: -35.0,
+                        learnedFrames: 0,
+                        managedChannelGeneration: 9,
+                        managedNr5ApplyCount: 2,
+                        managedNr5PositionApplyCount: 2,
+                        managedNr5PolicyApplyCount: 2,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        managedNr5LastApplyReason: "position-replayed",
+                        frontendTopPeaks: [FrontendTopPeak(14_260_800, 800, 24.0, -74.0)]),
+                    AgcWatchSample(
+                        2,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.8,
+                        includeNr5: true,
+                        nr5InputDbfs: -34.5,
+                        learnedFrames: 24,
+                        managedChannelGeneration: 9,
+                        managedNr5ApplyCount: 2,
+                        managedNr5PositionApplyCount: 2,
+                        managedNr5PolicyApplyCount: 2,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        managedNr5LastApplyReason: "unchanged",
+                        frontendTopPeaks: [FrontendTopPeak(14_260_700, 700, 22.0, -76.0)])
+                });
+
+            var reportPath = Path.Combine(bundleDir, "nr5-learner-reset.summary.json");
+            var watch = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "watch-dsp-live-diagnostics.ps1"),
+                "-InputPath", jsonlPath,
+                "-ReportPath", reportPath,
+                "-JsonOnly");
+
+            Assert.Equal(0, watch.ExitCode);
+            Assert.True(File.Exists(reportPath), watch.CombinedOutput);
+
+            using var reportDoc = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+            var root = reportDoc.RootElement;
+            Assert.True(root.GetProperty("readyForBenchmarkTrace").GetBoolean());
+            Assert.Equal("nr5-learner-reset-watch", root.GetProperty("trendStatus").GetString());
+
+            var learnerWatch = root.GetProperty("nr5LearnerStabilityWatch");
+            Assert.Equal("learner-reset-watch", learnerWatch.GetProperty("status").GetString());
+            Assert.False(learnerWatch.GetProperty("learnerMonotonic").GetBoolean());
+            Assert.False(learnerWatch.GetProperty("managedReplayEvidenceReady").GetBoolean());
+            Assert.Equal(1, learnerWatch.GetProperty("learnerResetSampleCount").GetInt32());
+            Assert.Equal(1, learnerWatch.GetProperty("managedReapplySampleCount").GetInt32());
+            Assert.Equal(1, learnerWatch.GetProperty("managedPositionReapplySampleCount").GetInt32());
+            Assert.Equal(1, learnerWatch.GetProperty("managedPolicyReapplySampleCount").GetInt32());
+            Assert.Equal(1.0, learnerWatch.GetProperty("managedNr5PositionApplyCount").GetProperty("movement").GetDouble(), precision: 3);
+
+            var resetSample = learnerWatch.GetProperty("topLearnerResetSamples").EnumerateArray().Single();
+            Assert.Equal(1, resetSample.GetProperty("sampleIndex").GetInt32());
+            Assert.Equal(120, resetSample.GetProperty("previousLearnedFrames").GetInt32());
+            Assert.Equal(0, resetSample.GetProperty("learnedFrames").GetInt32());
+            Assert.Equal("position-replayed", resetSample.GetProperty("lastApplyReason").GetString());
+
+            var reapplySample = learnerWatch.GetProperty("topManagedReapplySamples").EnumerateArray().Single();
+            Assert.Equal(1, reapplySample.GetProperty("sampleIndex").GetInt32());
+            Assert.Equal(1, reapplySample.GetProperty("managedNr5PositionApplyDelta").GetInt32());
+            Assert.Equal(1, reapplySample.GetProperty("managedNr5PolicyApplyDelta").GetInt32());
+
+            Assert.Contains(
+                root.GetProperty("recommendations").EnumerateArray(),
+                recommendation => (recommendation.GetString() ?? "").Contains("learned frames reset", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(bundleDir))
+            {
+                Directory.Delete(bundleDir, recursive: true);
+            }
+        }
+    }
+
+    [SkippableFact]
+    public async Task WatchLiveDiagnosticsDoesNotTreatPartialManagedCountersAsReplayReady()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell live diagnostics watcher smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-dsp-nr5-partial-managed-watch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(bundleDir);
+
+        try
+        {
+            var jsonlPath = Path.Combine(bundleDir, "nr5-partial-managed.jsonl");
+            await WriteAgcWatchJsonlAsync(
+                jsonlPath,
+                new[]
+                {
+                    AgcWatchSample(
+                        0,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -31.0,
+                        includeNr5: true,
+                        nr5InputDbfs: -36.0,
+                        learnedFrames: 60,
+                        managedChannelGeneration: 7,
+                        frontendTopPeaks: [FrontendTopPeak(14_260_900, 900, 26.0, -72.0)]),
+                    AgcWatchSample(
+                        1,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.5,
+                        includeNr5: true,
+                        nr5InputDbfs: -35.0,
+                        learnedFrames: 90,
+                        managedChannelGeneration: 7,
+                        frontendTopPeaks: [FrontendTopPeak(14_260_800, 800, 24.0, -74.0)])
+                });
+
+            var reportPath = Path.Combine(bundleDir, "nr5-partial-managed.summary.json");
+            var watch = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "watch-dsp-live-diagnostics.ps1"),
+                "-InputPath", jsonlPath,
+                "-ReportPath", reportPath,
+                "-JsonOnly");
+
+            Assert.Equal(0, watch.ExitCode);
+            Assert.True(File.Exists(reportPath), watch.CombinedOutput);
+
+            using var reportDoc = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+            var learnerWatch = reportDoc.RootElement.GetProperty("nr5LearnerStabilityWatch");
+            Assert.Equal("managed-counters-missing", learnerWatch.GetProperty("status").GetString());
+            Assert.False(learnerWatch.GetProperty("managedReplayEvidenceReady").GetBoolean());
+            Assert.Equal(0, learnerWatch.GetProperty("managedCounterSampleCount").GetInt32());
+            Assert.Equal(0.0, learnerWatch.GetProperty("managedCounterCoveragePct").GetDouble(), precision: 3);
+            Assert.Equal(2, learnerWatch.GetProperty("managedChannelGeneration").GetProperty("count").GetInt32());
+            Assert.Equal(0, learnerWatch.GetProperty("managedNr5PositionApplyCount").GetProperty("count").GetInt32());
+            Assert.Equal(0, learnerWatch.GetProperty("managedNr5PolicyApplyCount").GetProperty("count").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(bundleDir))
+            {
+                Directory.Delete(bundleDir, recursive: true);
+            }
+        }
+    }
+
+    [SkippableFact]
+    public async Task WatchLiveDiagnosticsPromotesNr5ChannelGenerationChange()
+    {
+        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell live diagnostics watcher smoke runs on Windows.");
+
+        var powerShell = FindPowerShell();
+        Skip.If(powerShell is null, "PowerShell executable was not found.");
+
+        var repoRoot = FindRepoRoot();
+        var bundleDir = Path.Combine(Path.GetTempPath(), $"zeus-dsp-nr5-generation-change-watch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(bundleDir);
+
+        try
+        {
+            var jsonlPath = Path.Combine(bundleDir, "nr5-generation-change.jsonl");
+            await WriteAgcWatchJsonlAsync(
+                jsonlPath,
+                new[]
+                {
+                    AgcWatchSample(
+                        0,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -31.0,
+                        includeNr5: true,
+                        nr5InputDbfs: -36.0,
+                        learnedFrames: 120,
+                        managedChannelGeneration: 7,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        frontendTopPeaks: [FrontendTopPeak(14_260_900, 900, 26.0, -72.0)]),
+                    AgcWatchSample(
+                        1,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.5,
+                        includeNr5: true,
+                        nr5InputDbfs: -35.0,
+                        learnedFrames: 10,
+                        managedChannelGeneration: 8,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        frontendTopPeaks: [FrontendTopPeak(14_260_800, 800, 24.0, -74.0)]),
+                    AgcWatchSample(
+                        2,
+                        agcGainDb: -42.5,
+                        audioRmsDbfs: -30.8,
+                        includeNr5: true,
+                        nr5InputDbfs: -34.5,
+                        learnedFrames: 30,
+                        managedChannelGeneration: 8,
+                        managedNr5ApplyCount: 1,
+                        managedNr5PositionApplyCount: 1,
+                        managedNr5PolicyApplyCount: 1,
+                        managedNr5NoopApplyCount: 0,
+                        managedNr5RunApplyCount: 1,
+                        frontendTopPeaks: [FrontendTopPeak(14_260_700, 700, 22.0, -76.0)])
+                });
+
+            var reportPath = Path.Combine(bundleDir, "nr5-generation-change.summary.json");
+            var watch = await RunPowerShellAsync(
+                powerShell,
+                repoRoot,
+                Path.Combine(repoRoot, "tools", "watch-dsp-live-diagnostics.ps1"),
+                "-InputPath", jsonlPath,
+                "-ReportPath", reportPath,
+                "-JsonOnly");
+
+            Assert.Equal(0, watch.ExitCode);
+            Assert.True(File.Exists(reportPath), watch.CombinedOutput);
+
+            using var reportDoc = JsonDocument.Parse(await File.ReadAllTextAsync(reportPath));
+            var root = reportDoc.RootElement;
+            Assert.Equal("nr5-channel-generation-changed", root.GetProperty("trendStatus").GetString());
+
+            var learnerWatch = root.GetProperty("nr5LearnerStabilityWatch");
+            Assert.Equal("channel-generation-changed", learnerWatch.GetProperty("status").GetString());
+            Assert.False(learnerWatch.GetProperty("managedReplayEvidenceReady").GetBoolean());
+            Assert.Equal(1, learnerWatch.GetProperty("managedGenerationChangeSampleCount").GetInt32());
+            Assert.Equal(0, learnerWatch.GetProperty("learnerResetSampleCount").GetInt32());
+
+            var generationSample = learnerWatch.GetProperty("topManagedGenerationChangeSamples").EnumerateArray().Single();
+            Assert.Equal(1, generationSample.GetProperty("sampleIndex").GetInt32());
+            Assert.Equal(7, generationSample.GetProperty("previousGeneration").GetInt32());
+            Assert.Equal(8, generationSample.GetProperty("generation").GetInt32());
+
+            Assert.Contains(
+                root.GetProperty("recommendations").EnumerateArray(),
+                recommendation => (recommendation.GetString() ?? "").Contains("channel generation changed", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(bundleDir))
+            {
+                Directory.Delete(bundleDir, recursive: true);
+            }
+        }
+    }
+
+    [SkippableFact]
     public async Task WatchLiveDiagnosticsMarksRxStateDriftTraceNotBenchmarkReady()
     {
         Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "PowerShell live diagnostics watcher smoke runs on Windows.");
@@ -8804,6 +9199,14 @@ public sealed class DspModernizationValidationToolTests
         double signalProbability = 0.68,
         double textureFill = 0.04,
         double? nr5OutputDbfs = null,
+        int learnedFrames = 30,
+        int? managedChannelGeneration = null,
+        int? managedNr5ApplyCount = null,
+        int? managedNr5PositionApplyCount = null,
+        int? managedNr5PolicyApplyCount = null,
+        int? managedNr5NoopApplyCount = null,
+        int? managedNr5RunApplyCount = null,
+        string? managedNr5LastApplyReason = null,
         object[]? frontendTopPeaks = null,
         int rxChainFilterLowHz = 300,
         int rxChainFilterHighHz = 2600,
@@ -8866,7 +9269,7 @@ public sealed class DspModernizationValidationToolTests
                     {
                         run = true,
                         agcRun = true,
-                        learnedFrames = 30,
+                        learnedFrames,
                         inputDbfs = nr5InputDbfs,
                         outputDbfs = nr5OutputDbfs ?? audioRmsDbfs,
                         meanGain = 0.98,
@@ -8884,7 +9287,14 @@ public sealed class DspModernizationValidationToolTests
                         outputPeakDbfs = -10.0,
                         peakEvidence = 0.80,
                         peakLimitDbfs = -3.0,
-                        peakReductionDb = 0.0
+                        peakReductionDb = 0.0,
+                        managedChannelGeneration,
+                        managedNr5ApplyCount,
+                        managedNr5PositionApplyCount,
+                        managedNr5PolicyApplyCount,
+                        managedNr5NoopApplyCount,
+                        managedNr5RunApplyCount,
+                        managedNr5LastApplyReason
                     }
                     : null
             }
