@@ -251,6 +251,10 @@ public static class DspLiveDiagnosticsService
                 evidence.Add($"audio-rms-{rms:0.0}dbfs");
             if (runtimeEvidence.AudioPeakDbfs is { } peak)
                 evidence.Add($"audio-peak-{peak:0.0}dbfs");
+            if (runtimeEvidence.RxAudioLevelerNr5RmNoiseGateEnabled is true)
+                evidence.Add("nr5-rmnoise-gate-enabled");
+            else if (runtimeEvidence.RxAudioLevelerNr5RmNoiseGateEnabled is false)
+                evidence.Add("nr5-rmnoise-gate-disabled");
 
             if (!runtimeEvidence.AudioFresh)
             {
