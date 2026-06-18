@@ -74,12 +74,14 @@ public class AudioSuitePreviewEndpointTests : IClassFixture<AudioSuitePreviewEnd
         var mode = await client.GetAsync("/api/tx-audio-suite/processing-mode");
         var order = await client.GetAsync("/api/tx-audio-suite/chain/order");
         var meters = await client.GetAsync("/api/tx-audio-suite/chain/meters");
+        var rxMeters = await client.GetAsync("/api/rx-audio-suite/chain/meters");
         var txScan = await client.PostAsJsonAsync("/api/tx-audio-suite/scan-vst-directory", new { directory = "" });
         var rxScan = await client.PostAsJsonAsync("/api/rx-audio-suite/scan-vst-directory", new { directory = "" });
 
         Assert.Equal(HttpStatusCode.OK, mode.StatusCode);
         Assert.Equal(HttpStatusCode.OK, order.StatusCode);
         Assert.Equal(HttpStatusCode.OK, meters.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, rxMeters.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, txScan.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, rxScan.StatusCode);
     }

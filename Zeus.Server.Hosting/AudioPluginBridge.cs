@@ -100,6 +100,8 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
     // single-reader (the /chain/meters poll).
     private volatile float _engineInPeak;
     private volatile float _engineOutPeak;
+    private volatile float _rxInPeak;
+    private volatile float _rxOutPeak;
 
     public AudioPluginBridge(
         PluginManager manager,
@@ -224,6 +226,14 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
     /// </summary>
     public (float In, float Out) ChainMeters =>
         _vstEngine is { IsActive: true } ? (_engineInPeak, _engineOutPeak) : _chain.Meters;
+
+    /// <summary>
+    /// Chain-level signal meters for the receive-side Audio Suite insert lane.
+    /// The RX path can combine out-of-process VST slots and native rx.* slots,
+    /// so these capture the whole lane: audio entering <c>rx.post-demod</c>
+    /// and audio leaving it.
+    /// </summary>
+    public (float In, float Out) RxChainMeters => (_rxInPeak, _rxOutPeak);
 
     /// <summary>
     /// True if the TX insert plugin chain (Audio Suite) is currently being
@@ -982,15 +992,28 @@ public sealed class AudioPluginBridge : IHostedService, IAsyncDisposable
     /// </summary>
     private void ProcessRxBlock(Span<float> audio, int frames, int sampleRate)
     {
+        var block = audio[..frames];
+        var inPeak = BlockPeak(block);
         if (_rxChain.MasterBypassed)
         {
-            DspPipelineService.SanitizeAudioBuffer(audio[..frames]);
+            DspPipelineService.SanitizeAudioBuffer(block);
+            RecordRxChainMeters(inPeak, block);
             return;
         }
         var ctx = new AudioBlockContext(sampleRate, channels: 1, frames: frames, sampleTime: 0, mox: false);
-        _rxVstEngine?.ProcessIfActive(audio, audio, ctx);
-        _rxChain.Process(audio, audio, ctx);
-        DspPipelineService.SanitizeAudioBuffer(audio[..frames]);
+        _rxVstEngine?.ProcessIfActive(block, block, ctx);
+        _rxChain.Process(block, block, ctx);
+        DspPipelineService.SanitizeAudioBuffer(block);
+        RecordRxChainMeters(inPeak, block);
+    }
+
+    internal void ProcessRxForTest(Span<float> audio, int frames, int sampleRate)
+        => ProcessRxBlock(audio, frames, sampleRate);
+
+    private void RecordRxChainMeters(float inputPeak, ReadOnlySpan<float> output)
+    {
+        _rxInPeak = inputPeak;
+        _rxOutPeak = BlockPeak(output);
     }
 
     /// <summary>Returns the plugin's IAudioPlugin, or synthesises a

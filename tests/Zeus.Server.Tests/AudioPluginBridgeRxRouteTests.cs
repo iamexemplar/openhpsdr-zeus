@@ -53,6 +53,29 @@ public sealed class AudioPluginBridgeRxRouteTests
         Assert.Same(plugin, RxChain(bridge).GetSlot(0));
     }
 
+    [Fact]
+    public void ProcessRxBlock_UpdatesReceiveChainMeters()
+    {
+        using var fixture = new RxVstFixture();
+        var bridge = NewBridge(fixture.Service);
+        var plugin = new GainRxPlugin(0.25f);
+        const string pluginId = "com.openhpsdr.zeus.rx.native.gain";
+        SeedRxPlugin(bridge, pluginId, plugin);
+
+        var nativeActive = ReapplyRxSlots(bridge, [pluginId], out var engineRouteActive);
+        var audio = new[] { 0.20f, -0.50f, 0.10f, -0.25f };
+
+        bridge.ProcessRxForTest(audio, audio.Length, 48_000);
+
+        var meters = bridge.RxChainMeters;
+        Assert.True(nativeActive);
+        Assert.False(engineRouteActive);
+        Assert.Equal(0.50f, meters.In, precision: 3);
+        Assert.Equal(0.125f, meters.Out, precision: 3);
+        Assert.Equal(0.05f, audio[0], precision: 3);
+        Assert.Equal(-0.125f, audio[1], precision: 3);
+    }
+
     private static AudioPluginBridge NewBridge(RxVstEngineService rxVstEngine) =>
         new(
             isMoxOn: () => false,
@@ -182,6 +205,21 @@ public sealed class AudioPluginBridgeRxRouteTests
         public Task InitializeAudioAsync(IAudioHost host, CancellationToken ct) => Task.CompletedTask;
         public void Process(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx) =>
             input.CopyTo(output);
+        public Task ShutdownAudioAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class GainRxPlugin(float gain) : IAudioPlugin
+    {
+        public string DisplayName => "Gain RX";
+        public AudioPluginRequirements Requirements => new(48_000, 1, 2_048);
+        public Task InitializeAudioAsync(IAudioHost host, CancellationToken ct) => Task.CompletedTask;
+
+        public void Process(ReadOnlySpan<float> input, Span<float> output, AudioBlockContext ctx)
+        {
+            for (int i = 0; i < input.Length; i++)
+                output[i] = input[i] * gain;
+        }
+
         public Task ShutdownAudioAsync(CancellationToken ct) => Task.CompletedTask;
     }
 

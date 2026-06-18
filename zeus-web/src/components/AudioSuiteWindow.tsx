@@ -1801,12 +1801,8 @@ export function AudioSuiteWindow({
             minHeight: 0,
           }}
         >
-      {!isRxSuite && (
-        <>
-          {/* Chain IN / OUT signal meters (poll while window open). */}
-          <AudioChainMeters />
-        </>
-      )}
+      {/* Chain IN / OUT signal meters (poll while window open). */}
+      <AudioChainMeters route={route} />
 
       {/* Chain chips — the signal chain as a compact, reorderable strip.
           Click a chip to load its plugin into the detail pane below; drag

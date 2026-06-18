@@ -2,8 +2,8 @@
 //
 // AudioChainMeters — chain-level IN / OUT signal meters for the Audio
 // Suite, modelled on the VSTHost rack meters. Polls
-// /api/tx-audio-suite/chain/meters at ~15 Hz while the window is open and
-// renders two horizontal bars (green → yellow → red) with peak-hold.
+// /api/{tx,rx}-audio-suite/chain/meters at ~15 Hz while the window is open
+// and renders two horizontal bars (green -> yellow -> red) with peak-hold.
 //
 // Isolated into its own component so the high-frequency level updates
 // re-render only the meters, never the rack / sidebar (which would
@@ -28,6 +28,7 @@ interface ChainMetersDto {
 
 type AudioChainMetersProps = {
   compact?: boolean;
+  route?: 'tx' | 'rx';
   title?: string;
 };
 
@@ -156,7 +157,11 @@ function LevelBar({ label, db }: { label: string; db: number }) {
   );
 }
 
-export function AudioChainMeters({ compact = false, title }: AudioChainMetersProps = {}) {
+export function AudioChainMeters({
+  compact = false,
+  route = 'tx',
+  title,
+}: AudioChainMetersProps = {}) {
   const [meters, setMeters] = useState<ChainMetersDto>({
     inputPeak: 0,
     outputPeak: 0,
@@ -167,9 +172,13 @@ export function AudioChainMeters({ compact = false, title }: AudioChainMetersPro
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const endpoint =
+      route === 'rx'
+        ? '/api/rx-audio-suite/chain/meters'
+        : '/api/tx-audio-suite/chain/meters';
     const tick = async () => {
       try {
-        const res = await fetch('/api/tx-audio-suite/chain/meters');
+        const res = await fetch(endpoint);
         if (alive && res.ok) {
           const body = (await res.json()) as Partial<ChainMetersDto>;
           setMeters(normalizeMeters(body));
@@ -184,7 +193,7 @@ export function AudioChainMeters({ compact = false, title }: AudioChainMetersPro
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [route]);
 
   return (
     <div

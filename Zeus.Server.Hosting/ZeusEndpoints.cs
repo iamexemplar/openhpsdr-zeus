@@ -566,29 +566,30 @@ public static class ZeusEndpoints
         // Audio Suite window polls this ~15 Hz while open, mirroring the
         // per-plugin /meters polling (no new WS frame / wire-format
         // change).
-        app.MapGet("/api/audio-suite/chain/meters", (AudioPluginBridge bridge) =>
+        static object ChainMetersDto((float In, float Out) meters)
         {
-            var (inPk, outPk) = bridge.ChainMeters;
             static double ToDb(float lin) => lin <= 1e-6f ? -120.0 : 20.0 * Math.Log10(lin);
-            return Results.Ok(new
+            var (inPk, outPk) = meters;
+            return new
             {
                 inputPeak = inPk,
                 outputPeak = outPk,
                 inputDb = ToDb(inPk),
                 outputDb = ToDb(outPk),
-            });
+            };
+        }
+
+        app.MapGet("/api/audio-suite/chain/meters", (AudioPluginBridge bridge) =>
+        {
+            return Results.Ok(ChainMetersDto(bridge.ChainMeters));
         });
         app.MapGet("/api/tx-audio-suite/chain/meters", (AudioPluginBridge bridge) =>
         {
-            var (inPk, outPk) = bridge.ChainMeters;
-            static double ToDb(float lin) => lin <= 1e-6f ? -120.0 : 20.0 * Math.Log10(lin);
-            return Results.Ok(new
-            {
-                inputPeak = inPk,
-                outputPeak = outPk,
-                inputDb = ToDb(inPk),
-                outputDb = ToDb(outPk),
-            });
+            return Results.Ok(ChainMetersDto(bridge.ChainMeters));
+        });
+        app.MapGet("/api/rx-audio-suite/chain/meters", (AudioPluginBridge bridge) =>
+        {
+            return Results.Ok(ChainMetersDto(bridge.RxChainMeters));
         });
 
         // Audio Suite VST editor (plug-in GUI). Opens the plugin's REAL
