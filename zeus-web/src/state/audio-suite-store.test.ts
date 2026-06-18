@@ -40,6 +40,38 @@ describe('audio-suite-store profile selection', () => {
     expect(reloaded.useAudioSuiteStore.getState().selectedProfile).toBe('Ragchew');
   });
 
+  it('opens TX and RX suites explicitly and persists the last route', async () => {
+    const { useAudioSuiteStore } = await import('./audio-suite-store');
+
+    expect(useAudioSuiteStore.getState().suiteRoute).toBe('tx');
+
+    useAudioSuiteStore.getState().openRx();
+
+    expect(useAudioSuiteStore.getState().isOpen).toBe(true);
+    expect(useAudioSuiteStore.getState().suiteRoute).toBe('rx');
+
+    useAudioSuiteStore.getState().close();
+    useAudioSuiteStore.getState().openTx();
+
+    expect(useAudioSuiteStore.getState().isOpen).toBe(true);
+    expect(useAudioSuiteStore.getState().suiteRoute).toBe('tx');
+
+    useAudioSuiteStore.getState().setSuiteRoute('rx');
+
+    useAudioSuiteStore.getState().open();
+
+    expect(useAudioSuiteStore.getState().suiteRoute).toBe('tx');
+
+    useAudioSuiteStore.getState().setSuiteRoute('rx');
+
+    const stored = JSON.parse(localStorage.getItem('zeus-audio-suite') ?? '{}');
+    expect(stored.state.suiteRoute).toBe('rx');
+
+    vi.resetModules();
+    const reloaded = await import('./audio-suite-store');
+    expect(reloaded.useAudioSuiteStore.getState().suiteRoute).toBe('rx');
+  });
+
   it('clears a stale selected profile only after profiles load', async () => {
     localStorage.setItem(
       'zeus-audio-suite',

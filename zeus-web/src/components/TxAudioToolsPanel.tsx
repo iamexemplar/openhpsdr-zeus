@@ -13,7 +13,7 @@
 // See ATTRIBUTIONS.md at the repository root for the full provenance
 // statement and per-component attribution.
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type CSSProperties } from 'react';
 import { CfcSettingsPanel } from './CfcSettingsPanel';
 import { DownloadAudioSuiteButton } from './DownloadAudioSuiteButton';
 import { TxFidelityPanel } from '../layout/panels/TxFidelityPanel';
@@ -270,28 +270,41 @@ function ProcessingModeButton() {
 // no chain plugins are installed — there's nothing to show, and the
 // Download Audio Suite button to its right is the right action.
 function AudioSuiteOpenButton() {
-  const open = useAudioSuiteStore((s) => s.open);
+  const openTx = useAudioSuiteStore((s) => s.openTx);
+  const openRx = useAudioSuiteStore((s) => s.openRx);
+  const buttonStyle: CSSProperties = {
+    padding: '4px 12px',
+    borderRadius: 4,
+    border: '1px solid var(--accent)',
+    background: 'var(--bg-2)',
+    color: 'var(--fg-0)',
+    cursor: 'pointer',
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)',
+    whiteSpace: 'nowrap',
+  };
   return (
-    <button
-      type="button"
-      onClick={open}
-      style={{
-        padding: '4px 12px',
-        borderRadius: 4,
-        border: '1px solid var(--accent)',
-        background: 'var(--bg-2)',
-        color: 'var(--fg-0)',
-        cursor: 'pointer',
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: 1,
-        textTransform: 'uppercase',
-        fontFamily: 'var(--font-sans, Inter, system-ui, sans-serif)',
-      }}
-      title="Open the Audio Suite window to reorder, preview, and tune chain plugins"
-    >
-      Audio Suite
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={openTx}
+        style={buttonStyle}
+        title="Open the TX Audio Suite window to reorder, preview, and tune transmit plugins"
+      >
+        TX Suite
+      </button>
+      <button
+        type="button"
+        onClick={openRx}
+        style={buttonStyle}
+        title="Open the RX Audio Suite window to reorder and tune receive VST inserts"
+      >
+        RX Suite
+      </button>
+    </>
   );
 }
 

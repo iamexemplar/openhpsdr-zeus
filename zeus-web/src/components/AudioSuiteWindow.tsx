@@ -912,7 +912,8 @@ export function AudioSuiteWindow({ embedded = false }: { embedded?: boolean } = 
   const loadMasterBypassFromServer = useAudioSuiteStore(
     (s) => s.loadMasterBypassFromServer,
   );
-  const [suiteRoute, setSuiteRoute] = useState<'tx' | 'rx'>('tx');
+  const suiteRoute = useAudioSuiteStore((s) => s.suiteRoute);
+  const setSuiteRoute = useAudioSuiteStore((s) => s.setSuiteRoute);
   const isRxSuite = suiteRoute === 'rx';
 
   const allPanels = usePluginPanels();
@@ -1424,7 +1425,11 @@ export function AudioSuiteWindow({ embedded = false }: { embedded?: boolean } = 
       };
 
   return (
-    <div role={embedded ? 'group' : 'dialog'} aria-label="Audio Suite" style={containerStyle}>
+    <div
+      role={embedded ? 'group' : 'dialog'}
+      aria-label={isRxSuite ? 'RX Audio Suite' : 'TX Audio Suite'}
+      style={containerStyle}
+    >
       {/* Resize handles — floating mode only (the embedded host resizes
           with its container). */}
       {!embedded && RESIZE_EDGES.map((e) => <ResizeHandle key={e} edge={e} />)}
@@ -1457,7 +1462,7 @@ export function AudioSuiteWindow({ embedded = false }: { embedded?: boolean } = 
             textTransform: 'uppercase',
           }}
         >
-          Audio Suite
+          {isRxSuite ? 'RX Audio Suite' : 'TX Audio Suite'}
         </span>
 
         {/* Preview toggle. Drives the full TX-monitor path so the operator

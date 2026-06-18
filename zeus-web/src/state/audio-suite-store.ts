@@ -80,6 +80,7 @@ export interface VstScanResult {
 }
 
 export type VstScanRoute = 'auto' | 'tx' | 'rx' | 'both';
+export type AudioSuiteRoute = 'tx' | 'rx';
 
 export interface AudioProfileMutationResult {
   ok: boolean;
@@ -93,6 +94,7 @@ interface AudioSuiteState {
   y: number;
   width: number;
   height: number;
+  suiteRoute: AudioSuiteRoute;
 
   // Chain order — head = first in chain (processes mic first).
   // Mirrored from the server; updated by:
@@ -146,9 +148,12 @@ interface AudioSuiteState {
   selectedProfile: string;
 
   // Actions
-  open(): void;
+  open(route?: AudioSuiteRoute): void;
+  openTx(): void;
+  openRx(): void;
   close(): void;
   toggle(): void;
+  setSuiteRoute(route: AudioSuiteRoute): void;
   setPosition(x: number, y: number): void;
   setSize(width: number, height: number): void;
   setDragging(on: boolean): void;
@@ -249,6 +254,7 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
       y: DEFAULT_Y,
       width: DEFAULT_WIDTH,
       height: DEFAULT_HEIGHT,
+      suiteRoute: 'tx',
       chainOrder: [],
       rxChainOrder: [],
       previewSupported: false,
@@ -273,9 +279,12 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
       profilesLoaded: false,
       selectedProfile: '',
 
-      open: () => set({ isOpen: true }),
+      open: (route = 'tx') => set({ isOpen: true, suiteRoute: route }),
+      openTx: () => set({ isOpen: true, suiteRoute: 'tx' }),
+      openRx: () => set({ isOpen: true, suiteRoute: 'rx' }),
       close: () => set({ isOpen: false }),
       toggle: () => set((s) => ({ isOpen: !s.isOpen })),
+      setSuiteRoute: (route) => set({ suiteRoute: route }),
 
       setPosition: (x, y) => set({ x, y }),
       setSize: (width, height) =>
@@ -862,6 +871,7 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
         y: s.y,
         width: s.width,
         height: s.height,
+        suiteRoute: s.suiteRoute,
         collapsed: s.collapsed,
         selectedChainId: s.selectedChainId,
         sidebarCollapsed: s.sidebarCollapsed,
