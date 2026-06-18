@@ -8895,6 +8895,23 @@ public sealed class DspModernizationValidationToolTests
             },
             new
             {
+                Name = "passband-with-drift",
+                WeakOnly = true,
+                PassbandIncomplete = false,
+                OffPassband = false,
+                RxStateDrift = true,
+                ExpectedStatus = "weak-only-passband-with-drift",
+                ExpectedQualified = true,
+                ExpectedIncomplete = false,
+                ExpectedOffPassband = false,
+                ExpectedMissing = false,
+                ExpectedMissingRunCount = 0,
+                ExpectedDriftRunCount = 1,
+                ExpectedReadyPassbandRunCount = 2,
+                ExpectedQualifiedRunCount = 1
+            },
+            new
+            {
                 Name = "rx-state-drift",
                 WeakOnly = false,
                 PassbandIncomplete = false,
@@ -9408,7 +9425,8 @@ public sealed class DspModernizationValidationToolTests
         var totalNearStrongInputSampleCount = weakOnlyScenario ? 0 : 3;
         var totalSpeechQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 11;
         var totalSpeechQualifiedNearStrongInputSampleCount = weakOnlyScenario ? 0 : 2;
-        var totalPassbandQualifiedWeakInputSampleCount = weakOnlyPassbandIncomplete || weakOnlyOffPassband || rxStateDrift ? 0 : 9;
+        var forceMissingPassbandEvidence = weakOnlyPassbandIncomplete || weakOnlyOffPassband || (rxStateDrift && !weakOnly);
+        var totalPassbandQualifiedWeakInputSampleCount = forceMissingPassbandEvidence ? 0 : 9;
         var totalPassbandQualifiedStrongInputSampleCount = weakOnlyScenario ? 0 : 8;
         var totalPassbandQualifiedNearStrongInputSampleCount = weakOnlyScenario ? 0 : 1;
         var totalFrontendNearPassbandSampleCount = weakOnlyOffPassband ? 0 : rxStateDrift ? 7 : 20;

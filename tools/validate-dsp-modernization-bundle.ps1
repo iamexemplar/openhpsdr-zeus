@@ -14420,7 +14420,7 @@ else {
                 $g2RxPeakHuntEvidence["referencedJsonlMissingCount"] = $g2ReferencedJsonlMissingCount
 
                 $g2WeakOnlyEvidence = $weakInputSampleCount -gt 0 -and $strongInputSampleCount -le 0
-                $g2WeakOnlyPassbandQualified = $g2WeakOnlyEvidence -and $passbandQualifiedWeakInputSampleCount -gt 0 -and $g2RxStateDriftRunCount -le 0
+                $g2WeakOnlyPassbandQualified = $g2WeakOnlyEvidence -and $g2WeakOnlyPassbandQualifiedRunCount -gt 0
                 $g2PassbandEvidenceMissing = $g2WeakOnlyEvidence -and $passbandQualifiedWeakInputSampleCount -le 0
                 $g2WeakOnlyPassbandIncomplete = $g2PassbandEvidenceMissing -and $frontendNearPassbandSampleCount -gt 0
                 $g2WeakOnlyOffPassband = $g2PassbandEvidenceMissing -and $frontendNearPassbandSampleCount -le 0
@@ -14444,11 +14444,14 @@ else {
                     "no-runs"
                 }
                 elseif ($g2WeakOnlyEvidence) {
-                    if ($g2RxStateDriftRunCount -gt 0) {
-                        "weak-only-rx-state-drift"
+                    if ($g2WeakOnlyPassbandQualified -and $g2RxStateDriftRunCount -gt 0) {
+                        "weak-only-passband-with-drift"
                     }
                     elseif ($g2WeakOnlyPassbandQualified) {
                         "weak-only-passband"
+                    }
+                    elseif ($g2RxStateDriftRunCount -gt 0) {
+                        "weak-only-rx-state-drift"
                     }
                     elseif ($g2WeakOnlyPassbandIncomplete) {
                         "weak-only-passband-incomplete"

@@ -2376,9 +2376,13 @@ function Add-AcceptanceActionForGate {
                     }
                     if ($peakHuntStatus.StartsWith("weak-only", [StringComparison]::Ordinal) -or $peakHuntBestStatus -eq "missing-strong-input" -or ($peakHuntWeakSamples -gt 0 -and $peakHuntStrongSamples -le 0)) {
                         $peakHuntReason += " That weak-only or missing-strong-input scan is useful scouting evidence, but it cannot satisfy mixed weak+strong acceptance."
-                        if ($peakHuntPassbandEvidenceMissing -or $peakHuntRxStateDriftRunCount -gt 0) {
+                        if ($peakHuntPassbandEvidenceMissing) {
                             $peakHuntReason += " It also lacks stable passband-qualified weak evidence, so do not use it to tune NR5 weak-signal preservation."
                             $peakHuntManualContext = " The latest G2 peak hunt was weak-only with incomplete passband evidence or RX state drift, so keep scanning or retune to a stable near-passband window with both weak and strong speech before promotion."
+                        }
+                        elseif ($peakHuntRxStateDriftRunCount -gt 0) {
+                            $peakHuntReason += " Some windows had RX state drift; use only the stable passband-qualified weak windows as scouting evidence and keep collecting mixed weak+strong proof."
+                            $peakHuntManualContext = " The latest G2 peak hunt had stable weak-only passband evidence plus drifted windows, so keep scanning or retune to a stable window with both weak and strong speech before promotion."
                         }
                         else {
                             $peakHuntManualContext = " The latest G2 peak hunt was weak-only/missing strong input, so keep scanning or retune to a window with both weak and strong speech before promotion."
