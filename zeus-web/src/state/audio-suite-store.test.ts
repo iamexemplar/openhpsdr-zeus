@@ -40,6 +40,42 @@ describe('audio-suite-store profile selection', () => {
     expect(reloaded.useAudioSuiteStore.getState().selectedProfile).toBe('Ragchew');
   });
 
+  it('persists the selected RX profile until the operator changes it', async () => {
+    const { useAudioSuiteStore } = await import('./audio-suite-store');
+
+    useAudioSuiteStore.getState().setSelectedProfileForRoute('rx', 'Clear RX');
+
+    const stored = JSON.parse(localStorage.getItem('zeus-audio-suite') ?? '{}');
+    expect(stored.state.rxSelectedProfile).toBe('Clear RX');
+
+    vi.resetModules();
+    const reloaded = await import('./audio-suite-store');
+    expect(reloaded.useAudioSuiteStore.getState().rxSelectedProfile).toBe('Clear RX');
+  });
+
+  it('persists VST favorites and toggles them by plugin id', async () => {
+    const { useAudioSuiteStore } = await import('./audio-suite-store');
+
+    useAudioSuiteStore.getState().toggleFavoriteVst('com.openhpsdr.zeus.vst.clear');
+    useAudioSuiteStore.getState().toggleFavoriteVst('com.openhpsdr.zeus.rxvst.rnnoise');
+    useAudioSuiteStore.getState().toggleFavoriteVst('com.openhpsdr.zeus.vst.clear');
+
+    expect(useAudioSuiteStore.getState().favoriteVstIds).toEqual([
+      'com.openhpsdr.zeus.rxvst.rnnoise',
+    ]);
+
+    const stored = JSON.parse(localStorage.getItem('zeus-audio-suite') ?? '{}');
+    expect(stored.state.favoriteVstIds).toEqual([
+      'com.openhpsdr.zeus.rxvst.rnnoise',
+    ]);
+
+    vi.resetModules();
+    const reloaded = await import('./audio-suite-store');
+    expect(reloaded.useAudioSuiteStore.getState().favoriteVstIds).toEqual([
+      'com.openhpsdr.zeus.rxvst.rnnoise',
+    ]);
+  });
+
   it('opens TX and RX suites as independent windows', async () => {
     const { useAudioSuiteStore } = await import('./audio-suite-store');
 
@@ -133,6 +169,54 @@ describe('audio-suite-store profile selection', () => {
 
     expect(useAudioSuiteStore.getState().profilesLoaded).toBe(true);
     expect(useAudioSuiteStore.getState().selectedProfile).toBe('');
+  });
+
+  it('hydrates the selected RX profile from the server when profiles load', async () => {
+    localStorage.setItem(
+      'zeus-audio-suite',
+      JSON.stringify({
+        state: { rxSelectedProfile: 'Old RX' },
+        version: 0,
+      }),
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response({
+        selectedProfile: 'Clear RX',
+        profiles: [{ name: 'Clear RX' }],
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { useAudioSuiteStore } = await import('./audio-suite-store');
+
+    await useAudioSuiteStore.getState().loadProfiles('rx');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/rx-audio-suite/profiles');
+    expect(useAudioSuiteStore.getState().rxProfilesLoaded).toBe(true);
+    expect(useAudioSuiteStore.getState().rxSelectedProfile).toBe('Clear RX');
+  });
+
+  it('keeps a local RX profile selection when the server has no selected row yet', async () => {
+    localStorage.setItem(
+      'zeus-audio-suite',
+      JSON.stringify({
+        state: { rxSelectedProfile: 'Clear RX' },
+        version: 0,
+      }),
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(response({
+        selectedProfile: null,
+        profiles: [{ name: 'Clear RX' }],
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { useAudioSuiteStore } = await import('./audio-suite-store');
+
+    await useAudioSuiteStore.getState().loadProfiles('rx');
+
+    expect(useAudioSuiteStore.getState().rxSelectedProfile).toBe('Clear RX');
   });
 
   it('marks a profile selected after a successful apply', async () => {

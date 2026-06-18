@@ -62,6 +62,11 @@ type AudioProfileSummaryResponse = Omit<AudioProfileSummary, 'processingMode'> &
   processingMode?: string;
 };
 
+interface AudioProfilesResponse {
+  profiles?: AudioProfileSummaryResponse[];
+  selectedProfile?: string | null;
+}
+
 function normalizeAudioProfileSummary(profile: AudioProfileSummaryResponse): AudioProfileSummary {
   return {
     ...profile,
@@ -167,6 +172,10 @@ interface AudioSuiteState {
   selectedProfile: string;
   rxSelectedProfile: string;
 
+  // Operator-pinned scanned VSTs. Presentation-only: favorites sort to the
+  // top of the Available browser but never change the active chain order.
+  favoriteVstIds: string[];
+
   // Actions
   open(route?: AudioSuiteRoute): void;
   openTx(): void;
@@ -195,6 +204,9 @@ interface AudioSuiteState {
   // Profile selection.
   setSelectedProfile(name: string): void;
   setSelectedProfileForRoute(route: AudioSuiteRoute, name: string): void;
+
+  // VST favorites.
+  toggleFavoriteVst(pluginId: string): void;
 
   // Chain membership — park (active=false) / un-park (active=true) an
   // installed plugin. Parking pulls it out of the active chain (stops
@@ -285,6 +297,7 @@ type AudioSuitePersistedState = Pick<
   | 'rxSidebarCollapsed'
   | 'selectedProfile'
   | 'rxSelectedProfile'
+  | 'favoriteVstIds'
 >;
 
 // Default window placement — top-left quadrant, room for plugin panels.
@@ -353,6 +366,7 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
       rxProfilesLoaded: false,
       selectedProfile: '',
       rxSelectedProfile: '',
+      favoriteVstIds: [],
 
       open: (route = 'tx') => {
         if (route === 'rx') get().openRx();
@@ -494,6 +508,18 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
       setSelectedProfileForRoute: (route, name) =>
         set(route === 'rx' ? { rxSelectedProfile: name.trim() } : { selectedProfile: name.trim() }),
 
+      toggleFavoriteVst: (pluginId) => {
+        if (!pluginId.trim()) return;
+        set((s) => {
+          const exists = s.favoriteVstIds.includes(pluginId);
+          return {
+            favoriteVstIds: exists
+              ? s.favoriteVstIds.filter((id) => id !== pluginId)
+              : [...s.favoriteVstIds, pluginId],
+          };
+        });
+      },
+
       setChainMembership: async (pluginId, active) => {
         const prev = get().chainOrder;
         // Optimistic only for park (we know the result: drop the ID).
@@ -568,19 +594,29 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
         try {
           const res = await fetch(`/api/${route}-audio-suite/profiles`);
           if (!res.ok) return;
-          const body = (await res.json()) as { profiles?: AudioProfileSummaryResponse[] };
+          const body = (await res.json()) as AudioProfilesResponse;
           if (Array.isArray(body.profiles)) {
             const nextProfiles = body.profiles.map(normalizeAudioProfileSummary);
+            const serverSelected =
+              typeof body.selectedProfile === 'string'
+                ? body.selectedProfile.trim()
+                : '';
+            const profileExists = (name: string) =>
+              nextProfiles.some((p) => p.name === name);
+            const selectedFromServer =
+              serverSelected && profileExists(serverSelected)
+                ? serverSelected
+                : '';
             set((s) =>
               route === 'rx'
                 ? {
                     rxProfiles: nextProfiles,
                     rxProfilesLoaded: true,
                     rxSelectedProfile:
-                      s.rxSelectedProfile &&
-                      !nextProfiles.some((p) => p.name === s.rxSelectedProfile)
-                        ? ''
-                        : s.rxSelectedProfile,
+                      selectedFromServer ||
+                      (s.rxSelectedProfile && profileExists(s.rxSelectedProfile)
+                        ? s.rxSelectedProfile
+                        : ''),
                   }
                 : {
                     profiles: nextProfiles,
@@ -1213,6 +1249,9 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
           rxSidebarCollapsed: state.rxSidebarCollapsed === true,
           selectedProfile: state.selectedProfile ?? '',
           rxSelectedProfile: state.rxSelectedProfile ?? '',
+          favoriteVstIds: Array.isArray(state.favoriteVstIds)
+            ? state.favoriteVstIds.filter((id): id is string => typeof id === 'string')
+            : [],
         } satisfies AudioSuitePersistedState;
       },
       // Persist only window placement + open flag. Chain order and
@@ -1241,6 +1280,7 @@ export const useAudioSuiteStore = create<AudioSuiteState>()(
         rxSidebarCollapsed: s.rxSidebarCollapsed,
         selectedProfile: s.selectedProfile,
         rxSelectedProfile: s.rxSelectedProfile,
+        favoriteVstIds: s.favoriteVstIds,
       }),
     },
   ),

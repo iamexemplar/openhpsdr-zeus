@@ -453,7 +453,11 @@ public static class ZeusEndpoints
                 createdUtc = p.CreatedUtc,
                 updatedUtc = p.UpdatedUtc,
             });
-            return Results.Ok(new { profiles = list });
+            return Results.Ok(new
+            {
+                profiles = list,
+                selectedProfile = profiles.SelectedProfileName,
+            });
         });
         app.MapPut("/api/rx-audio-suite/profiles/{name}", async (string name, RxAudioProfileService profiles) =>
         {
@@ -468,6 +472,7 @@ public static class ZeusEndpoints
                 parked = entry.Parked,
                 masterBypass = entry.MasterBypass,
                 vstStates = entry.PluginStates.Count,
+                selectedProfile = profiles.SelectedProfileName,
                 createdUtc = entry.CreatedUtc,
                 updatedUtc = entry.UpdatedUtc,
             });
@@ -490,6 +495,7 @@ public static class ZeusEndpoints
                     engineAvailable = rxVst.EngineAvailable,
                     activePlugins = rxVst.ActivePluginCount,
                     degradedBlocks = rxVst.DegradedBlocks,
+                    selectedProfile = profiles.SelectedProfileName,
                     masterBypass = masterBypass.IsRxBypassed,
                 });
             return Results.NotFound(new { error = $"no RX audio profile named '{name}'" });
