@@ -59,6 +59,54 @@ describe('workspace grid collision policy', () => {
     { i: 'below', x: 0, y: 2, w: 6, h: 2 },
   ];
 
+  it('keeps drag layouts sparse while clearing transient moved flags', () => {
+    const next = WORKSPACE_DRAG_COMPACTOR.compact(
+      [{ i: 'dragged', x: 3, y: 4, w: 5, h: 2, moved: true }],
+      24,
+    );
+
+    expect(next).toEqual([
+      { i: 'dragged', x: 3, y: 4, w: 5, h: 2, moved: false },
+    ]);
+  });
+
+  it('cascades drag displacement through the default right-column stack', () => {
+    const layout: Layout = cloneLayout([
+      { i: 'filter', x: 0, y: 0, w: 12, h: 10 },
+      { i: 'filterpresets', x: 12, y: 0, w: 6, h: 10 },
+      { i: 'hero', x: 0, y: 10, w: 18, h: 38 },
+      { i: 'vfo', x: 18, y: 0, w: 6, h: 11 },
+      { i: 'smeter', x: 18, y: 11, w: 6, h: 5 },
+      { i: 'tx', x: 18, y: 16, w: 6, h: 10 },
+      { i: 'txmeters', x: 18, y: 26, w: 6, h: 12 },
+      { i: 'dsp', x: 18, y: 38, w: 6, h: 10 },
+    ]);
+    const dragged = layout[1]!;
+
+    const moved = moveElement(
+      layout,
+      dragged,
+      18,
+      16,
+      true,
+      WORKSPACE_DRAG_COMPACTOR.preventCollision,
+      WORKSPACE_DRAG_COMPACTOR.type,
+      24,
+      WORKSPACE_DRAG_COMPACTOR.allowOverlap,
+    );
+    const next = WORKSPACE_DRAG_COMPACTOR.compact(moved, 24);
+
+    expect(next.find((item) => item.i === 'filterpresets')).toMatchObject({
+      x: 18,
+      y: 16,
+      moved: false,
+    });
+    expect(next.find((item) => item.i === 'tx')).toMatchObject({ y: 26 });
+    expect(next.find((item) => item.i === 'txmeters')).toMatchObject({ y: 36 });
+    expect(next.find((item) => item.i === 'dsp')).toMatchObject({ y: 48 });
+    expectNoCollisions(next);
+  });
+
   it('pushes a colliding panel out of the dragged panel target', () => {
     const layout = cloneLayout(baseLayout);
     const dragged = layout[0]!;

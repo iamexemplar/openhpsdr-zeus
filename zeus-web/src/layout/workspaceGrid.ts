@@ -1,18 +1,29 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-import { getCompactor } from 'react-grid-layout/core';
 import type { Compactor, Layout, LayoutItem } from 'react-grid-layout';
 
 // Keep the workspace sparse (no automatic gap-filling), but let RGL displace
 // occupied tiles during the live drag. The final drag-stop layout is normalized
 // by autoFitDroppedPanel below before it is persisted.
-export const WORKSPACE_DRAG_COMPACTOR = getCompactor(null, false, false);
+export const WORKSPACE_DRAG_COMPACTOR: Compactor = {
+  type: null,
+  allowOverlap: false,
+  compact: compactDragSparse,
+};
 
 export const WORKSPACE_RESIZE_COMPACTOR: Compactor = {
   type: null,
   allowOverlap: false,
   compact: compactResizePushDown,
 };
+
+function compactDragSparse(layout: Layout): Layout {
+  const priorityId = layout.find((item) => item.moved)?.i;
+  return compactPushDownWithPriority(layout, priorityId).map((item) => ({
+    ...item,
+    moved: false,
+  }));
+}
 
 export function autoFitDroppedPanel(
   layout: Layout,
