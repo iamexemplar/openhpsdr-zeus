@@ -30,6 +30,7 @@ import {
   ResponsiveGridLayout,
   useContainerWidth,
   type Layout,
+  type LayoutItem,
 } from 'react-grid-layout';
 import { absoluteStrategy } from 'react-grid-layout/core';
 import { Plus, Puzzle, Settings } from 'lucide-react';
@@ -39,6 +40,7 @@ import { getPanelDef } from './panels';
 import {
   WORKSPACE_DRAG_COMPACTOR,
   WORKSPACE_RESIZE_COMPACTOR,
+  autoFitDroppedPanel,
 } from './workspaceGrid';
 import { usePluginPanels } from '../plugins/runtime/usePluginPanels';
 import {
@@ -233,6 +235,7 @@ function WorkspaceCanvas({
   const [containerHeight, setContainerHeight] = useState(0);
   const [gridInteraction, setGridInteraction] =
     useState<GridInteraction>(null);
+  const autoFitNextDropRef = useRef(false);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -315,7 +318,34 @@ function WorkspaceCanvas({
 
   const onDragStart = useCallback(() => setGridInteraction('drag'), []);
   const onResizeStart = useCallback(() => setGridInteraction('resize'), []);
-  const onInteractionStop = useCallback(() => setGridInteraction(null), []);
+  const onDragStop = useCallback((
+    _layout: Layout,
+    oldItem: LayoutItem | null,
+    newItem: LayoutItem | null,
+  ) => {
+    autoFitNextDropRef.current = !!(
+      oldItem &&
+      newItem &&
+      (oldItem.x !== newItem.x || oldItem.y !== newItem.y)
+    );
+    setGridInteraction(null);
+  }, []);
+  const onResizeStop = useCallback(() => {
+    autoFitNextDropRef.current = false;
+    setGridInteraction(null);
+  }, []);
+  const handleLayoutChange = useCallback(
+    (next: Layout) => {
+      const shouldAutoFit = autoFitNextDropRef.current;
+      autoFitNextDropRef.current = false;
+      onLayoutChange(
+        shouldAutoFit
+          ? autoFitDroppedPanel(next, WORKSPACE_GRID_COLS)
+          : next,
+      );
+    },
+    [onLayoutChange],
+  );
 
   // RGL needs a stable per-render layouts.lg array. Memoise against the
   // tile list identity so we don't push a new prop on every parent render.
@@ -395,10 +425,10 @@ function WorkspaceCanvas({
             bounded: false,
           }}
           onDragStart={onDragStart}
-          onDragStop={onInteractionStop}
+          onDragStop={onDragStop}
           onResizeStart={onResizeStart}
-          onResizeStop={onInteractionStop}
-          onLayoutChange={onLayoutChange}
+          onResizeStop={onResizeStop}
+          onLayoutChange={handleLayoutChange}
           layouts={rglLayouts}
         >
           {tiles.map((tile) => (
