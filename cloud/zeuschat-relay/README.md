@@ -33,9 +33,15 @@ side mirrors it.
 Backend → relay: `hello`, `presence`, `msg`, `ping`
 Relay → backend: `welcome`, `roster`, `msg`, `error`, `pong`
 
-Connect to `wss://<host>/chat`. If `RELAY_SHARED_SECRET` is set, present it as
-`Authorization: Bearer <secret>` or `?token=<secret>` on the upgrade. First
-frame must be `hello` with a callsign.
+Connect to `wss://<host>/chat`. Auth is at the HTTP upgrade via headers:
+
+- `Authorization: Bearer <secret>` (or `?token=<secret>`) if `RELAY_SHARED_SECRET` is set.
+- `X-QRZ-Session: <live QRZ session key>` and `X-QRZ-Callsign: <own callsign>`
+  when `QRZ_VERIFY` is on (the default). The relay validates the session against
+  the QRZ XML API and locks the verified callsign for the connection.
+
+The first frame is `hello` (presence: grid/freq/mode/status). Its `callsign` is
+only used in local dev where `QRZ_VERIFY=off`.
 
 ## Develop locally
 
@@ -75,12 +81,18 @@ npm run deploy
 `new_sqlite_classes` is used for the DO namespace, which is available on the
 free Workers plan.
 
-## Security notes (MVP)
+## Security notes
 
-- Callsign identity is **trust-on-assert**: it comes from the backend's
-  QRZ-authenticated session over TLS (not spoofable from a browser), but a
-  modified backend could assert a false callsign. Hardened in ZeusChat P4.
-- `RELAY_SHARED_SECRET` gates *who can connect at all*; set it in production so
-  the relay is not an open endpoint.
+- **QRZ-login required.** With `QRZ_VERIFY` on (default), every connection must
+  present a live QRZ session key, which the relay validates against the QRZ XML
+  API before admitting. Only operators logged into QRZ can use chat. Works for
+  any QRZ login tier (subscription not required). Fails closed if QRZ is
+  unreachable.
+- `RELAY_SHARED_SECRET` gates *who can reach the relay at all*; set it in
+  production so the relay is not an open endpoint.
+- **Callsign↔account binding is best-effort.** The QRZ session proves a valid
+  login; QRZ XML does not cleanly prove which callsign owns that session, so a
+  determined modified client could present a valid session under a different
+  callsign. Tightening this is tracked in ZeusChat P4.
 - Messages are capped at `MAX_MESSAGE_LEN` (2000 chars). Rate limiting lands in
   P3.

@@ -2,6 +2,11 @@ name = "zeuschat-relay"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 
+# QRZ-login enforcement is on by default. For local `wrangler dev`, override
+# with: wrangler dev --var QRZ_VERIFY:off
+[vars]
+QRZ_VERIFY = "on"
+
 # Chat room Durable Object (WebSocket Hibernation).
 [[durable_objects.bindings]]
 name = "CHAT_ROOM"

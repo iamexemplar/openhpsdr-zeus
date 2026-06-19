@@ -6,6 +6,14 @@
 //
 // Transport: text WebSocket frames, one JSON object per frame, discriminated by
 // the `t` (type) field.
+//
+// Connection auth happens at the HTTP upgrade (before any frame), via headers:
+//   Authorization: Bearer <RELAY_SHARED_SECRET>   (if the relay sets a secret)
+//   X-QRZ-Session:  <live QRZ session key>         (when QRZ_VERIFY != "off")
+//   X-QRZ-Callsign: <operator's own callsign>      (validated against QRZ)
+// The relay validates the QRZ session, then locks the verified callsign for the
+// connection. `hello` thereafter carries presence; its `callsign` is only used
+// as a fallback in local dev (QRZ_VERIFY=off), where header auth is unavailable.
 
 /** Operator presence/activity state. */
 export type PresenceStatus = 'rx' | 'tx' | 'away';

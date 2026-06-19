@@ -11,4 +11,12 @@ export interface Env {
    * (local dev only).
    */
   RELAY_SHARED_SECRET?: string;
+
+  /**
+   * QRZ-login enforcement. Default "on": each connection must present a valid
+   * QRZ session (X-QRZ-Session + X-QRZ-Callsign headers) which the relay
+   * validates against the QRZ XML API. Set "off" for local dev only — browser
+   * WebSocket clients cannot set request headers.
+   */
+  QRZ_VERIFY?: string;
 }

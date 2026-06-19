@@ -42,15 +42,17 @@ export class ChatRoom extends DurableObject<Env> {
   }
 
   /** Upgrade an incoming request to a hibernatable WebSocket. */
-  override async fetch(_request: Request): Promise<Response> {
+  override async fetch(request: Request): Promise<Response> {
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
 
     this.ctx.acceptWebSocket(server);
-    // Placeholder identity until the client sends `hello`. Connections without
-    // a callsign are excluded from the roster.
-    const initial: Attachment = { callsign: '', since: Date.now() };
+    // The Worker entry verifies the QRZ login and forwards the authoritative
+    // callsign here. When present it is locked in (hello cannot change it);
+    // when absent (local dev with QRZ_VERIFY=off) the callsign comes from hello.
+    const verified = (request.headers.get('X-Operator-Callsign') ?? '').trim().toUpperCase();
+    const initial: Attachment = { callsign: verified, since: Date.now() };
     server.serializeAttachment(initial);
 
     return new Response(null, { status: 101, webSocket: client });
@@ -73,7 +75,9 @@ export class ChatRoom extends DurableObject<Env> {
 
     switch (msg.t) {
       case 'hello': {
-        const callsign = (msg.callsign ?? '').trim().toUpperCase();
+        // Prefer the verified callsign locked in at connect; fall back to the
+        // hello-provided one only when the relay didn't verify one (local dev).
+        const callsign = att.callsign || (msg.callsign ?? '').trim().toUpperCase();
         if (!callsign) {
           this.send(ws, { t: 'error', code: 'no_callsign', message: 'callsign required' });
           return;
