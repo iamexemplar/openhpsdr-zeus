@@ -24,6 +24,10 @@ interface TileRect {
   height: number;
 }
 
+interface StubbedZeusApi {
+  layoutWrites: { count: number };
+}
+
 async function fulfillJson(route: Route, body: unknown) {
   await route.fulfill({
     status: 200,
@@ -32,7 +36,9 @@ async function fulfillJson(route: Route, body: unknown) {
   });
 }
 
-async function stubZeusApi(page: Page) {
+async function stubZeusApi(page: Page): Promise<StubbedZeusApi> {
+  const layoutWrites = { count: 0 };
+
   await page.addInitScript(() => {
     class MockZeusWebSocket extends EventTarget {
       readonly url: string;
@@ -123,6 +129,7 @@ async function stubZeusApi(page: Page) {
     }
 
     if (url.pathname === '/api/ui/layouts') {
+      layoutWrites.count += 1;
       await route.fulfill({ status: 204, body: '' });
       return;
     }
@@ -134,6 +141,8 @@ async function stubZeusApi(page: Page) {
 
     await fulfillJson(route, {});
   });
+
+  return { layoutWrites };
 }
 
 async function tileRects(page: Page): Promise<TileRect[]> {
@@ -213,11 +222,11 @@ async function centerOf(locator: ReturnType<Page['locator']>) {
 async function openStubbedWorkspace(page: Page) {
   const pageErrors: string[] = [];
   page.on('pageerror', (err) => pageErrors.push(err.message));
-  await stubZeusApi(page);
+  const api = await stubZeusApi(page);
 
   await page.goto('/');
 
-  return { pageErrors };
+  return { pageErrors, layoutWrites: api.layoutWrites };
 }
 
 function expectNoReactDragLoop(pageErrors: string[]) {
@@ -232,7 +241,7 @@ function expectNoReactDragLoop(pageErrors: string[]) {
 test('dragging a panel into an occupied workspace slot swaps without blanking the grid', async ({
   page,
 }) => {
-  const { pageErrors } = await openStubbedWorkspace(page);
+  const { pageErrors, layoutWrites } = await openStubbedWorkspace(page);
 
   const draggedHeader = page.locator(
     '[data-tile-uid="tile-filterpresets"] .workspace-tile-header',
@@ -253,6 +262,8 @@ test('dragging a panel into an occupied workspace slot swaps without blanking th
   await page.mouse.move(target.x, target.y, { steps: 12 });
   await waitForRectNear(page, 'tile-filterpresets', targetBefore);
   await waitForRectNear(page, 'tile-tx', draggedBefore);
+  await page.waitForTimeout(1100);
+  expect(layoutWrites.count).toBe(0);
 
   const duringDrag = await tileRects(page);
   expect(duringDrag).toHaveLength(8);
@@ -263,6 +274,7 @@ test('dragging a panel into an occupied workspace slot swaps without blanking th
   await page.mouse.up();
   await waitForRectNear(page, 'tile-filterpresets', targetBefore);
   await waitForRectNear(page, 'tile-tx', draggedBefore);
+  await expect.poll(() => layoutWrites.count, { timeout: 3500 }).toBeGreaterThan(0);
 
   const after = await tileRects(page);
   expect(after).toHaveLength(8);

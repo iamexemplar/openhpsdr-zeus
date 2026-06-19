@@ -238,8 +238,9 @@ function WorkspaceCanvas({
   const [containerHeight, setContainerHeight] = useState(0);
   const [gridInteraction, setGridInteraction] =
     useState<GridInteraction>(null);
+  const draggingRef = useRef(false);
+  const skipPostDropLayoutChangeRef = useRef(false);
   const dragStartRef = useRef<WorkspaceDragStartSnapshot | null>(null);
-  const autoFitDropRef = useRef<WorkspaceDragStartSnapshot | null>(null);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -328,6 +329,8 @@ function WorkspaceCanvas({
     layout: Layout,
     oldItem: LayoutItem | null,
   ) => {
+    draggingRef.current = true;
+    skipPostDropLayoutChangeRef.current = false;
     dragStartRef.current = oldItem
       ? {
           item: { ...oldItem },
@@ -338,34 +341,50 @@ function WorkspaceCanvas({
   }, []);
   const onResizeStart = useCallback(() => setGridInteraction('resize'), []);
   const onDragStop = useCallback((
-    _layout: Layout,
+    layout: Layout,
     oldItem: LayoutItem | null,
     newItem: LayoutItem | null,
   ) => {
-    autoFitDropRef.current = (
-      oldItem &&
-      newItem &&
-      (oldItem.x !== newItem.x || oldItem.y !== newItem.y)
-    )
-      ? dragStartRef.current ?? { item: { ...oldItem }, layout: [] }
+    const dragStart = dragStartRef.current;
+    const finalItem = dragStart
+      ? layout.find((item) => item.i === dragStart.item.i)
+      : newItem;
+    const moved = dragStart && finalItem
+      ? dragStart.item.x !== finalItem.x || dragStart.item.y !== finalItem.y
+      : Boolean(
+          oldItem &&
+            newItem &&
+            (oldItem.x !== newItem.x || oldItem.y !== newItem.y),
+        );
+    const previousDropItem = moved
+      ? dragStart ?? (oldItem ? { item: { ...oldItem }, layout: [] } : null)
       : null;
+    draggingRef.current = false;
     dragStartRef.current = null;
     setGridInteraction(null);
-  }, []);
+
+    if (previousDropItem) {
+      skipPostDropLayoutChangeRef.current = true;
+      window.setTimeout(() => {
+        skipPostDropLayoutChangeRef.current = false;
+      }, 250);
+      onLayoutChange(
+        autoFitDroppedPanel(layout, WORKSPACE_GRID_COLS, previousDropItem),
+      );
+    }
+  }, [onLayoutChange]);
   const onResizeStop = useCallback(() => {
-    autoFitDropRef.current = null;
+    draggingRef.current = false;
     dragStartRef.current = null;
     setGridInteraction(null);
   }, []);
   const handleLayoutChange = useCallback(
     (next: Layout) => {
-      const previousDropItem = autoFitDropRef.current;
-      autoFitDropRef.current = null;
-      onLayoutChange(
-        previousDropItem
-          ? autoFitDroppedPanel(next, WORKSPACE_GRID_COLS, previousDropItem)
-          : next,
-      );
+      if (draggingRef.current || skipPostDropLayoutChangeRef.current) {
+        return;
+      }
+
+      onLayoutChange(next);
     },
     [onLayoutChange],
   );
