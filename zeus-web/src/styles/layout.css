@@ -2248,7 +2248,7 @@
   border-radius: inherit;
   background: linear-gradient(100deg, transparent 42%, var(--meter-sheen) 50%, transparent 58%);
   background-size: 280% 100%;
-  animation: meterBarSheen 5.5s linear infinite;
+  animation: meterBarSheen 6.9s linear infinite;
 }
 @keyframes meterBarSheen {
   from { background-position: 220% 0; }
@@ -4314,11 +4314,11 @@
   100% { transform: translateX(390%); opacity: 0; }
 }
 .lm-sheen {
-  animation: lmSheenSweep 5.5s linear infinite;
+  animation: lmSheenSweep 6.9s linear infinite;
   will-change: transform, opacity;
 }
 .lm-caustic {
-  animation: lmCausticSweep 9s ease-in-out infinite;
+  animation: lmCausticSweep 11.25s ease-in-out infinite;
   animation-delay: -3.2s;
   will-change: transform, opacity;
 }
@@ -4333,11 +4333,11 @@
   to   { transform: translateX(var(--caustic-travel, 160px)); }
 }
 .meter-sheen-drift {
-  animation: meterSheenDrift 5.5s linear infinite;
+  animation: meterSheenDrift 6.9s linear infinite;
   will-change: transform;
 }
 .meter-caustic-drift {
-  animation: meterCausticDrift 9s ease-in-out infinite;
+  animation: meterCausticDrift 11.25s ease-in-out infinite;
   animation-delay: -3.2s;
   will-change: transform;
 }

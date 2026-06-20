@@ -214,10 +214,10 @@
   --meter-glass-dome:  rgba(255,255,255,0.30);
   --meter-glass-top:   rgba(255,255,255,0.13);
   --meter-glass-bot:   rgba(255,255,255,0.00);
-  --meter-sheen:       rgba(255,255,255,0.34);
+  --meter-sheen:       rgba(255,255,255,0.04);
   --meter-sheen-soft:  rgba(255,255,255,0.00);
   /* traveling caustic — wet-light highlight gliding across the glass */
-  --meter-caustic:     rgba(176,210,255,0.22);
+  --meter-caustic:     rgba(176,210,255,0.022);
   --meter-caustic-soft:rgba(176,210,255,0.00);
   /* machined chrome bezel — warm key edge (TL) → mid sweep → deep shadow (BR) */
   --meter-bezel-hi:    rgba(255,251,242,0.62);
