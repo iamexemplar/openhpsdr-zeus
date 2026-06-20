@@ -222,7 +222,7 @@ function clampLeveling(c: TxLevelingConfigDto): TxLevelingConfigDto {
   };
 }
 
-function levelingChanged(a: TxLevelingConfigDto, b: TxLevelingConfigDto): boolean {
+export function levelingChanged(a: TxLevelingConfigDto, b: TxLevelingConfigDto): boolean {
   return (
     a.alcMaxGainDb !== b.alcMaxGainDb ||
     a.alcDecayMs !== b.alcDecayMs ||
@@ -423,14 +423,16 @@ export function recommendTxAutoTune(
     actions.push('ALC max gain -1 dB');
   }
 
-  // CPDR compressor over-squash: a pinched compressor crest (or a pinched chain
-  // crest while the compressor is doing the squashing) means the compander is
-  // flattening the speech. Back its gain off, disabling it once it reaches 0.
+  // CPDR compressor over-squash: only back the compander off when the
+  // COMPRESSOR's OWN crest is pinched. A tight chain crest is just as often the
+  // leveler or CFC doing the squashing, so attributing it to the compressor
+  // would wrongly disable an operator's deliberate compression. When the comp
+  // stage isn't metered (compCrestMedianDb null) we hold rather than guess.
   const compPinched =
     next.txLeveling.compressorEnabled &&
     next.txLeveling.compressorGainDb > COMP_GAIN_HARD_MIN &&
-    ((stats.compCrestMedianDb !== null && stats.compCrestMedianDb < 5) ||
-      (stats.crestMedianDb !== null && stats.crestMedianDb < 6));
+    stats.compCrestMedianDb !== null &&
+    stats.compCrestMedianDb < 5;
   if (compPinched) {
     const reduced = roundTenth(clamp(next.txLeveling.compressorGainDb - 2, COMP_GAIN_HARD_MIN, COMP_GAIN_HARD_MAX));
     next.txLeveling = {
@@ -561,7 +563,11 @@ export function recommendTxAutoTune(
 
     // CPDR compressor for max density: the compander is the strongest clean
     // talk-power lever. Only engage it on a wide-open crest with real output
-    // headroom so it tightens dynamics instead of pinching them.
+    // headroom so it tightens dynamics instead of pinching them. Unlike the
+    // drive raise (keyed-only, because it touches RF) this is deliberately
+    // allowed in silent Preview — the compressor is a pre-RF audio stage, so
+    // shaping it from a Preview sample is safe and matches how the operator
+    // would dial it in off-air.
     if (
       target >= 90 &&
       stats.alcP95Db < 6 &&

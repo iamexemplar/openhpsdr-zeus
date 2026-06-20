@@ -21,6 +21,7 @@ import {
   type TxLevelingConfigDto,
 } from '../../api/client';
 import {
+  levelingChanged,
   recommendTxAutoTune,
   type TxAutoTunePlan,
   type TxAutoTuneSample,
@@ -212,17 +213,6 @@ function cfcConfigChanged(a: TxAutoTuneSettings['cfcConfig'], b: TxAutoTuneSetti
   });
 }
 
-function txLevelingChanged(a: TxLevelingConfigDto, b: TxLevelingConfigDto): boolean {
-  return (
-    a.alcMaxGainDb !== b.alcMaxGainDb ||
-    a.alcDecayMs !== b.alcDecayMs ||
-    a.levelerEnabled !== b.levelerEnabled ||
-    a.levelerDecayMs !== b.levelerDecayMs ||
-    a.compressorEnabled !== b.compressorEnabled ||
-    a.compressorGainDb !== b.compressorGainDb
-  );
-}
-
 function autoTuneMessage(plan: TxAutoTunePlan): string {
   if (plan.actions.length === 0) return plan.summary;
   return `${plan.summary}: ${plan.actions.join(', ')}`;
@@ -381,7 +371,7 @@ function TxFidelityAutoTune({ targetSpectralDensity }: { targetSpectralDensity: 
         setCfcConfigLocal(state.cfc);
       }
       const beforeLeveling = useConnectionStore.getState().txLeveling;
-      if (txLevelingChanged(beforeLeveling, plan.settings.txLeveling)) {
+      if (levelingChanged(beforeLeveling, plan.settings.txLeveling)) {
         setTxLevelingLocal(plan.settings.txLeveling);
         const state = await setTxLeveling(plan.settings.txLeveling, signal);
         applyState(state);

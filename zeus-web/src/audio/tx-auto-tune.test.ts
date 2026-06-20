@@ -215,9 +215,12 @@ describe('recommendTxAutoTune', () => {
     );
 
     expect(plan.blockers).toEqual([]);
-    expect(plan.settings.txLeveling.alcMaxGainDb).toBe(4);
+    // Lock the full per-run blast radius of a clean max-density run so the
+    // number of dynamics stages that move at once stays explicit.
+    expect(plan.settings.txLeveling.alcMaxGainDb).toBe(4); // 3 -> +1
     expect(plan.settings.txLeveling.compressorEnabled).toBe(true);
-    expect(plan.settings.txLeveling.compressorGainDb).toBe(2);
+    expect(plan.settings.txLeveling.compressorGainDb).toBe(2); // off -> on +2
+    expect(plan.settings.txLeveling.levelerDecayMs).toBe(140); // 100 -> +40
     expect(plan.settings.cfcConfig.prePeqDb).toBeGreaterThan(0);
     expect(plan.actions.join(' ')).toContain('compressor on');
   });
