@@ -48,6 +48,7 @@ import {
   EMPTY_WORKSPACE_LAYOUT,
   WORKSPACE_GRID_COLS,
   WORKSPACE_ROW_HEIGHT_PX,
+  WORKSPACE_TARGET_ROWS,
   WORKSPACE_TILE_MIN_H,
   WORKSPACE_TILE_MIN_W,
   type WorkspaceTile,
@@ -69,6 +70,7 @@ import {
 } from './panels/urlEmbedConfig';
 
 const WORKSPACE_GRID_MARGIN_PX = 3;
+const WORKSPACE_ROW_GAP_SHARE = 6;
 
 type GridInteraction = 'drag' | 'resize' | null;
 
@@ -244,22 +246,60 @@ function WorkspaceCanvas({
   // Track container height so rowHeight can shrink when the workspace is
   // tight. Rows do not grow past the authored design density; extra viewport
   // height stays on the workspace ground instead of stretching every panel.
+  const [containerHeight, setContainerHeight] = useState(0);
   const [gridInteraction, setGridInteraction] =
     useState<GridInteraction>(null);
   const draggingRef = useRef(false);
   const skipPostDropLayoutChangeRef = useRef(false);
   const dragStartRef = useRef<WorkspaceDragStartSnapshot | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerHeight(el.getBoundingClientRect().height);
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setContainerHeight(e.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [containerRef]);
+  // The workspace must NEVER show a scrollbar — it fits the viewport like a
+  // hardware front panel. So the grid is fit-to-viewport: the cell size is
+  // sized so the whole layout fits the container height.
+  const layoutRows = useMemo(
+    () => tiles.reduce((max, t) => Math.max(max, t.y + t.h), 0),
+    [tiles],
+  );
+  // Divisor is max(layoutRows, target): while panels are rearranged WITHIN the
+  // authored design height the divisor is the constant target, so repositioning
+  // never rescales a panel. Only stacking a layout taller than the design fold
+  // shrinks the cell — the unavoidable cost of never scrolling. A sparse layout
+  // keeps the authored density (capped at WORKSPACE_ROW_HEIGHT_PX) and just
+  // leaves empty ground at the bottom rather than ballooning its tiles.
+  const targetRows = Math.max(layoutRows, WORKSPACE_TARGET_ROWS);
 
-  // Fixed cell size. A panel's size only ever changes when the operator drags
-  // its resize handle — never as a side effect of repositioning. When a layout
-  // stacks taller than the viewport the workspace scrolls (see
-  // .all-panels-workspace in all-panels.css) instead of shrinking every panel
-  // to fit, matching how grid dashboards (Grafana, Gridstack) behave. Earlier
-  // builds divided the viewport height by the live layout height, so moving a
-  // panel that grew the stack rescaled every other panel — the incidental
-  // resize we deliberately removed here.
-  const rowHeight = WORKSPACE_ROW_HEIGHT_PX;
-  const rowMargin = WORKSPACE_GRID_MARGIN_PX;
+  // Shrink-to-fit rowHeight: solve containerHeight ≈ rowHeight*N + margin*(N-1)
+  // + 2*containerPadding, capped at WORKSPACE_ROW_HEIGHT_PX. Margin and
+  // containerPadding mirror the props passed to ResponsiveGridLayout below —
+  // keep them in sync if those change. The row gap shrinks with very dense
+  // layouts so gaps alone can never make the grid taller than the viewport.
+  const rowMargin = useMemo(() => {
+    if (containerHeight <= 0 || targetRows <= 1) return WORKSPACE_GRID_MARGIN_PX;
+    return Math.min(
+      WORKSPACE_GRID_MARGIN_PX,
+      containerHeight / (targetRows * WORKSPACE_ROW_GAP_SHARE),
+    );
+  }, [containerHeight, targetRows]);
+
+  const rowHeight = useMemo(() => {
+    if (containerHeight <= 0) return WORKSPACE_ROW_HEIGHT_PX;
+    const containerPadding = 0;
+    const inner =
+      containerHeight - 2 * containerPadding - rowMargin * Math.max(0, targetRows - 1);
+    return Math.min(
+      WORKSPACE_ROW_HEIGHT_PX,
+      Math.max(0.1, inner / Math.max(1, targetRows)),
+    );
+  }, [containerHeight, rowMargin, targetRows]);
 
   const workspaceDragCompactor = useMemo(
     () => createWorkspaceDragCompactor(() => dragStartRef.current),
