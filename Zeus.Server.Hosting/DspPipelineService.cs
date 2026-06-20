@@ -308,6 +308,16 @@ public class DspPipelineService : BackgroundService,
         double currentDb = double.IsFinite(state.GainDb) ? state.GainDb : 0.0;
         currentDb = Math.Clamp(currentDb, RxLevelerMaxCutDb, RxLevelerMaxBoostDb);
 
+        // True when the gain we are currently holding would, on its own, drive
+        // this block's peak past the limiter target — i.e. a gain "held" high
+        // across a quiet gap (pause memory / catch-up) is about to be dumped onto
+        // a louder block. The raw input-peak gate below (peak > target) misses
+        // this case because the danger is gain × peak, not peak alone: a signal
+        // whose input peak is modest still blasts the speaker if the held gain is
+        // large. When this is set we cut as urgently as a clipping peak would.
+        bool currentGainOverdrivesPeak =
+            double.IsFinite(peakHeadroomDb) && currentDb > peakHeadroomDb;
+
         double nextDb = currentDb;
         if (belowGate)
         {
@@ -370,18 +380,29 @@ public class DspPipelineService : BackgroundService,
         }
         else if (!belowGate)
         {
-            double cutSlewDb = (peak > RxLevelerPeakTarget || peakLimited)
+            double cutSlewDb = (peak > RxLevelerPeakTarget || peakLimited || currentGainOverdrivesPeak)
                 ? Math.Max(RxLevelerSmoothCutDb, currentDb - desiredDb)
                 : RxLevelerSmoothCutDb;
             nextDb = Math.Max(desiredDb, currentDb - cutSlewDb);
         }
         nextDb = Math.Clamp(nextDb, RxLevelerMaxCutDb, RxLevelerMaxBoostDb);
 
+        // Hard per-block peak guard. The smooth boost/cut slews above track
+        // loudness gently; this is the safety floor that stops a held-high gain
+        // from ever being *applied* to a block whose peak would then exceed the
+        // limiter target. Without it, gain banked across a quiet gap gets dumped
+        // onto the first loud-ish block of a new signal and rides the soft-limit
+        // ceiling for several blocks before the slew catches up — the "sudden
+        // strong signal blasts the speaker" failure this leveler exists to stop.
+        // Cutting straight to the peak-safe gain is inaudible next to that blast.
+        if (!belowGate && double.IsFinite(peakHeadroomDb) && nextDb > peakHeadroomDb)
+            nextDb = Math.Clamp(peakHeadroomDb, RxLevelerMaxCutDb, RxLevelerMaxBoostDb);
+
         int rampSamples = Math.Clamp(Math.Min(samples.Length, RxLevelerGainRampMaxSamples), 1, Math.Max(1, samples.Length));
         double preLimitPeak = 0.0;
         int outputLimitSampleCount = 0;
         double appliedEndDb = belowGate ? 0.0 : nextDb;
-        bool emergencyCut = !belowGate && desiredDb < currentDb && (peak > RxLevelerPeakTarget || peakLimited);
+        bool emergencyCut = !belowGate && nextDb < currentDb && (peak > RxLevelerPeakTarget || peakLimited || currentGainOverdrivesPeak);
         for (int i = 0; i < samples.Length; i++)
         {
             float clean = SanitizeAudioSample(samples[i]);
