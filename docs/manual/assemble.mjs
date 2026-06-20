@@ -14,6 +14,14 @@ const OUT = join(BUILD, 'Zeus-Operator-Manual.html');
 const EDITION = process.env.MANUAL_EDITION || 'June 2026 Edition';
 const COVERS = process.env.MANUAL_COVERS || 'Covers the Zeus 0.9.x release line and the 0.10.0 development series';
 
+// Cover logo, inlined as a data URI so the print engine never depends on a
+// relative file path (headless Chrome prints from build/, the asset lives in
+// assets/). assets/zeus_manual_logo.png is the brand emblem on a transparent
+// background, so it floats on the cover gradient with no box.
+const LOGO_DATA_URI =
+  'data:image/png;base64,' +
+  readFileSync(join(HERE, 'assets', 'zeus_manual_logo.png')).toString('base64');
+
 marked.setOptions({ gfm: true, breaks: false });
 mkdirSync(BUILD, { recursive: true });
 
@@ -61,13 +69,13 @@ const css = `
   body{ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; color:var(--ink); font-size:11pt; line-height:1.55; }
   @page{ size:Letter; margin:20mm 18mm 18mm 18mm; }
   a{ color:var(--accent); text-decoration:none; }
-  .cover{ page-break-after:always; height:247mm; display:flex; flex-direction:column; justify-content:center; align-items:center; background:linear-gradient(160deg,var(--panel-top),var(--panel-bot)); color:#eef2f8; text-align:center; margin:-20mm -18mm 0 -18mm; padding:0 22mm; }
-  .cover .bolt{ font-size:54pt; color:var(--amber); line-height:1; margin-bottom:6mm; }
+  .cover{ page-break-after:always; height:247mm; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#ffffff; color:#111111; text-align:center; margin:-20mm -18mm 0 -18mm; padding:0 22mm; }
+  .cover .logo{ width:104mm; max-width:72%; height:auto; margin-bottom:12mm; }
   .cover h1{ font-size:46pt; margin:0; letter-spacing:1px; font-weight:800; }
-  .cover .king{ font-size:15pt; color:var(--amber); letter-spacing:5px; text-transform:uppercase; margin-top:3mm; }
-  .cover .sub{ font-size:18pt; color:#cdd6e4; margin-top:14mm; font-weight:300; }
-  .cover .ed{ margin-top:20mm; font-size:11pt; color:#9fb0c8; }
-  .cover .covers{ font-size:9.5pt; color:#7e8ea8; margin-top:2mm; max-width:120mm; }
+  .cover .king{ font-size:15pt; color:#111111; letter-spacing:5px; text-transform:uppercase; margin-top:3mm; }
+  .cover .sub{ font-size:18pt; color:#111111; margin-top:14mm; font-weight:400; }
+  .cover .ed{ margin-top:20mm; font-size:11pt; color:#555555; }
+  .cover .covers{ font-size:9.5pt; color:#777777; margin-top:2mm; max-width:120mm; }
   .toc{ page-break-after:always; } .toc h2{ border:0; color:var(--ink); font-size:22pt; margin:0 0 6mm 0; }
   .toc-ch{ margin-top:3.5mm; } .toc-ch a{ color:var(--ink); font-weight:700; font-size:12pt; display:flex; gap:6mm; align-items:baseline; }
   .toc-num{ color:var(--accent); min-width:8mm; font-variant-numeric:tabular-nums; }
@@ -83,7 +91,7 @@ const css = `
   h2,h3,h4{ break-after:avoid; } table,blockquote,pre{ break-inside:avoid; }
 `;
 
-const cover = `<div class="cover"><div class="bolt">&#9889;</div><h1>ZEUS</h1><div class="king">The King of SDRs</div><div class="sub">Operator's Manual</div><div class="ed">${EDITION}</div><div class="covers">${COVERS}</div></div>`;
+const cover = `<div class="cover"><img class="logo" src="${LOGO_DATA_URI}" alt="Zeus — Software Defined Radio" /><div class="king">The King of SDRs</div><div class="sub">Operator's Manual</div><div class="ed">${EDITION}</div><div class="covers">${COVERS}</div></div>`;
 const doc = `<!doctype html><html><head><meta charset="utf-8"><title>Zeus Operator's Manual</title><style>${css}</style></head><body>${cover}<div class="toc"><h2>Table of Contents</h2>${tocHtml}</div>${chapterHtml.join('\n')}</body></html>`;
 
 writeFileSync(OUT, doc, 'utf8');
