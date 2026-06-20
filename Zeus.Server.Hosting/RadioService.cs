@@ -417,10 +417,10 @@ public sealed class RadioService : IDisposable
             LevelerMaxGainDb: overlayLevelerMaxGain ?? Math.Clamp(rsSnap?.LevelerMaxGainDb ?? 8.0, 0.0, 20.0),
             AutoAgcEnabled: rsSnap?.AutoAgcEnabled ?? false,
             AgcOffsetDb: 0.0,       // always reset — control-loop accumulator
-            // Persisted AGC knee, or null when the operator has never set it
-            // (WDSP's per-mode default threshold stays in effect — no change
-            // vs. pre-#741). Pushed to WDSP from DspPipelineService when non-null.
-            AgcThresholdDbm: _dspSettingsStore.GetAgcThresholdDbm(),
+            // AGC knee removed: AGC-T is the single manual AGC control, so the
+            // threshold is never operator-driven (it and AGC-T are the same WDSP
+            // register — driving both clobbered each other). Always null.
+            AgcThresholdDbm: null,
             // PS persisted fields (or DTO defaults when not persisted yet).
             PsEnabled: false, // master arm is never persisted — operator must re-arm each session
             PsAuto: ps?.Auto ?? true,
@@ -2251,32 +2251,11 @@ public sealed class RadioService : IDisposable
         return Snapshot();
     }
 
-    // AGC threshold ("knee") in operator/displayed dBm. This is the smooth,
-    // signal-relative AGC control (Thetis panadapter knee → WDSP SetRXAAGCThresh)
-    // — distinct from the AgcTopDb max-gain cap. Clamp matches Thetis's
-    // SetRXAAGCThresh range ([-160, 2] dBm). The displayed-dBm → WDSP-scale
-    // conversion (per-board RX meter offset) happens at the engine push in
-    // DspPipelineService, where that offset is already computed for meters.
-    // Setting the knee does NOT disturb Auto-AGC (which acts on the top), so —
-    // unlike SetAgcTop — we leave AutoAgcEnabled/AgcOffsetDb alone.
-    public StateDto SetAgcThreshold(double dbm)
-    {
-        double clamped = Math.Clamp(dbm, -160.0, 2.0);
-        Mutate(s => s with { AgcThresholdDbm = clamped });
-        _dspSettingsStore.SetAgcThresholdDbm(clamped);
-        return Snapshot();
-    }
-
-    // Disengage the AGC knee: clear the operator override (→ null) and persist
-    // the cleared state. The DSP pipeline sees AgcThresholdDbm go null and
-    // restores WDSP's captured per-mode default threshold, so AGC returns to its
-    // default behaviour (#741).
-    public StateDto DisengageAgcThreshold()
-    {
-        Mutate(s => s with { AgcThresholdDbm = null });
-        _dspSettingsStore.ClearAgcThresholdDbm();
-        return Snapshot();
-    }
+    // (Removed: the manual AGC "knee" / threshold control. In WDSP the threshold
+    // and AGC-T are the SAME register (max_gain); exposing both as independent
+    // operator controls made them clobber each other and made AGC-T hair-trigger.
+    // AGC-T (SetAgcTop) is now the single manual AGC control; Auto-AGC tracks the
+    // noise floor on top of it.)
 
     // Master RX AF gain in dB. −50 dB is effectively silent (0.003 linear),
     // 0 dB matches the fresh-open default, +20 dB is a 10× linear boost for
