@@ -96,13 +96,16 @@ Peak total ≈ 100 KB/s — comfortably inside a single WebRTC peer; no media SF
 | Phase 1 server transport (auth over DataChannel, gated egress) | ✅ done | 2-peer transport test: correct→frame flows, wrong→nothing |
 | Browser connect flow (`connect.ts`) | ✅ written | `tsc`; live WebRTC needs a browser bench |
 | Scan-to-remote QR | ✅ done | 7 tests |
+| Phase 3 broker (Worker + DO, `cloud/zeus-remote-broker`) | ✅ written | `tsc` + workers-types; needs CF deploy |
+| Radio-side broker client (`RemoteBrokerClient`) | ✅ written | offer→answer bridge tested; WS-to-broker needs live broker |
 
-**Needs a live bench / deploy (not headlessly verifiable):**
-- StreamingHub → frames-channel bridge (real audio/IQ onto the unlocked session) and the browser
-  media path (frame decode + WebAudio). The transport exposes `TrySendFrame`; wiring it to the live
-  frame pipeline + measuring real RTT is bench work.
-- Phase 3 Cloudflare broker (Worker + Durable Object): signalling relay over the domain, QRZ
-  identity, TURN-cred minting. Needs deployment to the `openhpsdrzeus.com` Cloudflare account.
+**Code-complete. Remaining to go live needs hardware / a deploy (not headlessly verifiable):**
+- Deploy `cloud/zeus-remote-broker` to the `openhpsdrzeus.com` Cloudflare account
+  (`wrangler deploy` + TURN secrets); creates `remote.openhpsdrzeus.com`.
+- StreamingHub → frames-channel bridge (real audio/IQ onto the unlocked session) + the browser
+  media path (frame decode + WebAudio). The transport exposes `TrySendFrame` and the browser
+  `connect.ts` surfaces `onFrame`; wiring them to the live DSP pipeline + measuring real RTT is the
+  one piece deliberately left for a radio bench (it touches the real-time `/ws` hot path).
 
 ## Implementation phases
 
