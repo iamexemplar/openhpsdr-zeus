@@ -2735,6 +2735,18 @@ public static class ZeusEndpoints
             await hub.AttachClientAsync(ws, ctx.RequestAborted);
         });
 
+        // -- Remote-access QR (Server menu: scan → open remote client) --------
+        // Renders any URL to an SVG QR. The Server menu requests it for the
+        // operator's /go/<callsign> address (RemoteQr.AddressFor). See
+        // docs/designs/remote-access-webrtc.md.
+        app.MapGet("/api/remote/qr.svg", (string? data) =>
+        {
+            if (string.IsNullOrWhiteSpace(data) || data.Length > 1024)
+                return Results.BadRequest(new { error = "data required (max 1024 chars)" });
+            return Results.Content(
+                Zeus.Server.Hosting.Remote.RemoteQr.Svg(data), "image/svg+xml");
+        });
+
         // -- WebRTC data-plane spike (Phase 0) --------------------------------
         // Dev-only: inert unless ZEUS_RTC_SPIKE=1. Answers a browser SDP offer
         // and echoes binary DataChannel messages so we can measure real

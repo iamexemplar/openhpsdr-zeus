@@ -13,6 +13,7 @@ import {
   setServerBaseUrl,
 } from '../serverUrl';
 import { useCapabilitiesStore } from '../state/capabilities-store';
+import { useQrzStore } from '../state/qrz-store';
 
 // Settings tab: lets the operator point a Capacitor / standalone build at a
 // specific Zeus.Server on their LAN (e.g. https://192.168.1.23:6443). Browser
@@ -251,7 +252,97 @@ export function ServerUrlPanel() {
         </div>
       )}
 
+      <RemoteQrSection />
+
       <TunnelSection />
+    </div>
+  );
+}
+
+// Remote-access QR: encodes the operator's openhpsdrzeus.com/go/<callsign>
+// address so a phone camera opens the remote client directly. The callsign comes
+// from the QRZ sign-in (Settings → QRZ); access still requires the session
+// password — the link alone is useless (ADR-0007/0008).
+function RemoteQrSection() {
+  const home = useQrzStore((s) => s.home);
+  const callsign = home?.callsign?.trim().toUpperCase() ?? '';
+  const remoteUrl = callsign
+    ? `${TUNNEL_BROKER_ORIGIN}/go/${encodeURIComponent(callsign)}`
+    : null;
+  const qrSrc = remoteUrl
+    ? `${getServerBaseUrl()}/api/remote/qr.svg?data=${encodeURIComponent(remoteUrl)}`
+    : null;
+
+  return (
+    <div style={{ marginTop: 28 }}>
+      <h3
+        style={{
+          margin: '0 0 14px',
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--fg-2)',
+        }}
+      >
+        REMOTE ACCESS QR
+      </h3>
+
+      <p style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.5, marginTop: 0 }}>
+        Scan with your phone to open your radio from anywhere at your personal
+        address. The link is safe to share — access still requires the session
+        password, so the address alone reaches nothing.
+      </p>
+
+      {remoteUrl ? (
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginTop: 14 }}>
+          <img
+            src={qrSrc!}
+            alt={`Remote access QR for ${remoteUrl}`}
+            width={148}
+            height={148}
+            style={{ background: '#fff', padding: 8, borderRadius: 'var(--r-sm)', flex: '0 0 auto' }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+            <a
+              href={remoteUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 13,
+                color: 'var(--accent)',
+                wordBreak: 'break-all',
+              }}
+            >
+              {remoteUrl}
+            </a>
+            <span style={{ fontSize: 11, color: 'var(--fg-2)' }}>
+              Point your phone camera at the code.
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 10,
+            fontSize: 11,
+            lineHeight: 1.5,
+            color: 'var(--fg-2)',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--panel-border)',
+            borderRadius: 'var(--r-sm)',
+          }}
+        >
+          Sign in to QRZ (Settings → QRZ) so Zeus knows your callsign. Your remote
+          address will be{' '}
+          <code style={{ fontFamily: 'monospace', color: 'var(--fg-1)' }}>
+            openhpsdrzeus.com/go/&lt;your-callsign&gt;
+          </code>
+          .
+        </div>
+      )}
     </div>
   );
 }
