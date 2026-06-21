@@ -33,6 +33,25 @@ public sealed class Spake2PlusRegistrationTests
     }
 
     [Fact]
+    public void DeriveScalars_MatchesCrossLanguageVector()
+    {
+        // Pinned identically in the browser test registration.test.ts — guarantees
+        // the noble (browser) and Konscious (server) Argon2id agree, so a password
+        // set on the radio unlocks from the phone.
+        var salt = new byte[16];
+        for (var i = 0; i < 16; i++) salt[i] = (byte)i;
+
+        var (w0, w1) = Spake2PlusRegistration.DeriveScalars("zeus-cross-vector", salt, 1, 8, 1);
+
+        Assert.Equal(
+            "5038ef6d5486f2dd9321ec16a6d4e0d91379299bc14650db32c78dfd58e43818",
+            Convert.ToHexString(Spake2Plus.EncodeScalar(w0)).ToLowerInvariant());
+        Assert.Equal(
+            "5df0c3ed05e170c4296186f19639c7c79de43fddb39f7745d6a3c61241b5175f",
+            Convert.ToHexString(Spake2Plus.EncodeScalar(w1)).ToLowerInvariant());
+    }
+
+    [Fact]
     public void Register_StoresVerifierMatchingRederivation()
     {
         var v = Spake2PlusRegistration.Register("pw", Iter, MemKib, Par);
