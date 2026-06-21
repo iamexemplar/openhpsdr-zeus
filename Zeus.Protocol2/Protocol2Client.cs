@@ -158,6 +158,16 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
     // accessed ints/uints. _rx2Enabled: 0 = off, 1 = on.
     private int _rx2Enabled;
     private uint _rx2FreqHz = 7_100_000;
+    // TX DUC NCO frequency. Normally tracks _rxFreqHz (the shared RX0/TX LO) so
+    // the TX carrier lands at the RX0 frequency — byte-identical to the historic
+    // single-frequency model. For dual-RX split TX (TX VFO = B with RX2 on) the
+    // hosting layer sets this INDEPENDENTLY to VFO B's effective LO via
+    // SetTxDucFrequency, so the TX carrier goes to VFO B WITHOUT dragging RX0/RX1
+    // off VFO A (the dual-RX TUNE "two carriers, one on each RX" bug).
+    // _txDucIndependent latches that override; it is cleared when split ends so
+    // the DUC follows RX0 again.
+    private uint _txDucFreqHz = 14_200_000;
+    private volatile bool _txDucIndependent;
     // Per-source-port IQ packet rate (packets in the last completed ~1 s
     // window) for UDP ports RxDataPortBase..RxDataPortBase+MaxRxDdc-1 (1035..1042)
     // → index 0..7 → DDC 0..7. Written by the single RX thread on each window
@@ -624,10 +634,41 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
         // (`rxPhase = _rxFreqHz * HzToPhase`).
         long corrected = (long)Math.Round(hz * factor, MidpointRounding.AwayFromZero);
         _rxFreqHz = (uint)Math.Clamp(corrected, 0L, uint.MaxValue);
+        // The TX DUC follows RX0 unless an independent split-TX freq is latched.
+        if (!_txDucIndependent) _txDucFreqHz = _rxFreqHz;
         var running = _rxTask is not null;
         _log.LogInformation("p2.tune hz={Hz} running={Running} hpSeq={Seq}",
             _rxFreqHz, running, _seqCmdHp);
         if (running) SendCmdHighPriority(run: true);
+    }
+
+    /// <summary>
+    /// Set the TX DUC NCO frequency independently of the shared RX0/TX LO. Used
+    /// for dual-RX split TX (TX VFO = B with RX2 enabled): the TX carrier must
+    /// land on VFO B while RX1 keeps receiving VFO A, so the TX DUC can no longer
+    /// be tied to RX0's frequency. <paramref name="hz"/> &lt;= 0 clears the
+    /// override and the DUC follows RX0 again (the non-split / single-VFO model,
+    /// byte-identical to before). Applies the same host-side frequency correction
+    /// as <see cref="SetVfoAHz"/>. Re-sends the high-priority packet when live.
+    /// </summary>
+    public void SetTxDucFrequency(long hz)
+    {
+        if (hz <= 0)
+        {
+            if (!_txDucIndependent && _txDucFreqHz == _rxFreqHz) return;
+            _txDucIndependent = false;
+            _txDucFreqHz = _rxFreqHz;
+        }
+        else
+        {
+            double factor = BitConverter.Int64BitsToDouble(Interlocked.Read(ref _freqCorrectionBits));
+            long corrected = (long)Math.Round(hz * factor, MidpointRounding.AwayFromZero);
+            uint next = (uint)Math.Clamp(corrected, 0L, uint.MaxValue);
+            if (_txDucIndependent && _txDucFreqHz == next) return;
+            _txDucFreqHz = next;
+            _txDucIndependent = true;
+        }
+        if (_rxTask is not null) SendCmdHighPriority(run: true);
     }
 
     /// <summary>
@@ -716,6 +757,12 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
     /// <see cref="FrequencyCorrectionFactor"/>.
     /// </summary>
     internal uint CorrectedRxFreqHzForTesting => _rxFreqHz;
+
+    /// <summary>Test accessor: the (correction-applied) TX DUC NCO frequency.</summary>
+    internal uint TxDucFreqHzForTesting => _txDucFreqHz;
+
+    /// <summary>Test accessor: whether the TX DUC is on the independent split-TX override.</summary>
+    internal bool TxDucIndependentForTesting => _txDucIndependent;
 
     public void SetSampleRateKhz(int rateKhz)
     {
@@ -1811,7 +1858,11 @@ public sealed class Protocol2Client : IDisposable, IAsyncDisposable
         uint rxPhase = (uint)(_rxFreqHz * HzToPhase);
         int rxDdc = RxBaseDdc(_boardKind);
         WriteBeU32(p, 9 + rxDdc * 4, rxPhase);
-        WriteBeU32(p, 329, rxPhase);
+        // TX DUC NCO phase. Normally _txDucFreqHz == _rxFreqHz, so this is
+        // identical to rxPhase (DUC follows RX0). For dual-RX split TX it is set
+        // independently to VFO B (SetTxDucFrequency), so the carrier lands on B
+        // while the RX0 DDC above stays on VFO A — fixing the two-carrier bug.
+        WriteBeU32(p, 329, (uint)(_txDucFreqHz * HzToPhase));
 
         // Second receiver (RX2): tune its own DDC's NCO to _rx2FreqHz so it
         // demodulates an independent band. Each DDC's phase word lives at

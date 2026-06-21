@@ -8,6 +8,7 @@
 // See ATTRIBUTIONS.md at the repository root for the full provenance
 // statement and per-component attribution.
 
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using Zeus.Contracts;
 
@@ -192,5 +193,43 @@ public class Rx2DdcTests
         // And the LPF component specifically must be the TX-band LPF.
         Assert.Equal(Protocol2Client.LpfBits(txHz), alex1 & Protocol2Client.LpfBits(txHz));
         Assert.NotEqual(Protocol2Client.LpfBits(rx2Hz), Protocol2Client.LpfBits(txHz));
+    }
+
+    // ---- split TX: independent TX DUC (dual-RX two-carrier fix) ----
+
+    [Fact]
+    public void TxDuc_DefaultFollowsRx0_NonSplit_ByteIdentical()
+    {
+        // Non-split: the TX DUC tracks RX0 (VFO A) exactly, so the wire is
+        // byte-identical to the historic single-frequency model.
+        using var p2 = new Protocol2Client(NullLogger<Protocol2Client>.Instance);
+        p2.SetVfoAHz(14_200_000);
+        Assert.False(p2.TxDucIndependentForTesting);
+        Assert.Equal(p2.CorrectedRxFreqHzForTesting, p2.TxDucFreqHzForTesting);
+    }
+
+    [Fact]
+    public void TxDuc_Independent_SplitTx_OnVfoB_WhileRx0StaysVfoA()
+    {
+        // Split TX: the TX DUC is driven to VFO B independently, so the carrier
+        // lands on B, while RX0 (the shared LO that feeds RX1's DDC) stays on
+        // VFO A — RX1 is no longer dragged to B (the two-carrier bug).
+        using var p2 = new Protocol2Client(NullLogger<Protocol2Client>.Instance);
+        p2.SetVfoAHz(14_200_000);          // RX0 / RX1 on 20 m
+        p2.SetTxDucFrequency(7_200_000);   // TX DUC on 40 m (VFO B)
+
+        Assert.True(p2.TxDucIndependentForTesting);
+        Assert.Equal(7_200_000u, p2.TxDucFreqHzForTesting);
+        Assert.Equal(14_200_000u, p2.CorrectedRxFreqHzForTesting);   // RX0 not dragged
+
+        // While the override is latched, an RX0 retune must NOT clobber the TX DUC.
+        p2.SetVfoAHz(14_250_000);
+        Assert.Equal(7_200_000u, p2.TxDucFreqHzForTesting);
+        Assert.Equal(14_250_000u, p2.CorrectedRxFreqHzForTesting);
+
+        // Clearing (split ended) returns the DUC to following RX0.
+        p2.SetTxDucFrequency(0);
+        Assert.False(p2.TxDucIndependentForTesting);
+        Assert.Equal(p2.CorrectedRxFreqHzForTesting, p2.TxDucFreqHzForTesting);
     }
 }
