@@ -4993,7 +4993,7 @@ export async function exportPrefsDatabase(
   // the relative path.
   const cd = res.headers.get('content-disposition') ?? '';
   const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(cd);
-  const fileName = match
+  const fileName = match?.[1]
     ? decodeURIComponent(match[1])
     : relativePath.split('/').pop() || 'zeus-prefs.db';
 
