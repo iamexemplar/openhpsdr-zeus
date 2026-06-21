@@ -173,6 +173,7 @@ export function FlexWorkspace({
         workspaceLocked={workspaceLocked}
         isLoaded={isLoaded}
         layoutId={targetLayoutId}
+        isPrimary={!layoutId}
         onLayoutChange={onLayoutChange}
         onRequestRemoveTile={(uid, title) => setPendingRemoveTile({ uid, title })}
         onToggleTileLock={(uid, locked, lockedHeightPx) =>
@@ -226,6 +227,9 @@ interface WorkspaceCanvasProps {
   workspaceLocked: boolean;
   isLoaded: boolean;
   layoutId: string;
+  /** True for the main dock workspace (not a detached window). Only the primary
+   *  reports its page size to the store, which drives add-panel pagination. */
+  isPrimary: boolean;
   onLayoutChange: (next: Layout) => void;
   onRequestRemoveTile: (uid: string, title: string) => void;
   onToggleTileLock: (
@@ -240,6 +244,7 @@ function WorkspaceCanvas({
   workspaceLocked,
   isLoaded,
   layoutId,
+  isPrimary,
   onLayoutChange,
   onRequestRemoveTile,
   onToggleTileLock,
@@ -371,6 +376,20 @@ function WorkspaceCanvas({
     [deriveTiles, gridHeight],
   );
   const { rowHeight, rowMargin } = derived;
+
+  // Report this workspace's live page size (in grid cells) to the store so the
+  // add-panel flow knows when a panel no longer fits the visible page and must
+  // spill onto a new workspace tab. Only the primary (docked) workspace reports;
+  // detached windows do not drive pagination.
+  const setViewportPage = useLayoutStore((s) => s.setViewportPage);
+  useEffect(() => {
+    if (!isPrimary || !(rowHeight > 0)) return;
+    const visibleRows = Math.max(
+      1,
+      Math.floor((gridHeight + rowMargin) / (rowHeight + rowMargin)),
+    );
+    setViewportPage(cols, visibleRows);
+  }, [isPrimary, cols, gridHeight, rowHeight, rowMargin, setViewportPage]);
 
   // Stored geometry, keyed by uid, for reconciling RGL's echo of the derived
   // (possibly shrunk) render layout back to what we persist. Refs keep the
